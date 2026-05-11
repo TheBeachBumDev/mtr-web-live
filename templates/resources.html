@@ -1,0 +1,1677 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .res-hero {
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .res-hero--ok { background: #dcfce7; border-color: #86efac; }
+  html[data-theme="dark"] .res-hero--ok { background: #14532d; border-color: #22c55e; }
+  .res-hero--warn { background: #fef9c3; border-color: #facc15; }
+  html[data-theme="dark"] .res-hero--warn { background: #422006; border-color: #eab308; }
+  .res-hero--crit { background: #fee2e2; border-color: #f87171; }
+  html[data-theme="dark"] .res-hero--crit { background: #450a0a; border-color: #ef4444; }
+  .res-hero--unk { background: var(--code-bg); }
+  .res-hero h1 { margin: 0; font-size: 1.25rem; }
+  .res-hero .sub { margin: 4px 0 0 0; font-size: 0.92rem; color: var(--muted); }
+
+  .res-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .res-card {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--card);
+  }
+  .res-card .lbl { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+  .res-card .val { font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .res-card .pill {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 650;
+    letter-spacing: 0.03em;
+  }
+  .pill--ok { background: #dcfce7; color: #166534; }
+  html[data-theme="dark"] .pill--ok { background: #14532d; color: #bbf7d0; }
+  .pill--warn { background: #fef9c3; color: #854d0e; }
+  html[data-theme="dark"] .pill--warn { background: #422006; color: #fef08a; }
+  .pill--crit { background: #fee2e2; color: #991b1b; }
+  html[data-theme="dark"] .pill--crit { background: #450a0a; color: #fecaca; }
+  .pill--unk { background: var(--code-bg); color: var(--muted); }
+
+  .res-panel { margin-top: 10px; }
+  .res-panel h2 { font-size: 1.02rem; margin: 0 0 8px 0; }
+  .res-hint { font-size: 0.9rem; color: var(--muted); margin-top: 8px; }
+  .res-chart-wrap {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    padding: 10px 10px 8px 10px;
+  }
+  .res-chart-legend {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .res-chart-legend .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    transform: translateY(1px);
+  }
+  .res-chart-note {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .res-chart-counters {
+    margin-top: 8px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+  }
+  .res-chart-counter {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--card) 90%, var(--border) 10%);
+  }
+  .res-chart-counter .k {
+    font-size: 0.76rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .res-chart-counter .v {
+    font-size: 1rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .clone-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
+  .clone-grid label { display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .clone-grid input, .clone-grid textarea, .clone-grid select { width:100%; box-sizing:border-box; }
+  .clone-grid select[multiple] { min-height: 150px; }
+  .clone-advanced { margin-top:10px; border:1px solid var(--border); border-radius:10px; background:var(--card); padding:10px; }
+  .clone-advanced summary { cursor:pointer; font-weight:600; color:var(--muted); }
+  .clone-advanced textarea { margin-top:8px; min-height:86px; }
+  .clone-schedule-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+  .clone-schedule-row label { display:flex; align-items:center; gap:6px; }
+  .clone-schedule-summary {
+    margin: 10px 0 12px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card) 88%, var(--border) 12%);
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .clone-schedule-summary .mono { font-family: ui-monospace, monospace; font-size: 0.86em; }
+  .clone-schedule-summary strong { font-weight: 600; color: var(--text); }
+  .clone-log { max-height: 220px; overflow: auto; border:1px solid var(--border); border-radius:10px; padding:8px; background: var(--code-bg); }
+  .clone-runs-scroll { max-height: 220px; margin-top: 8px; }
+  .clone-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0,0,0,0.55);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .clone-modal-overlay.is-open { display: flex; }
+  .clone-modal-panel {
+    max-width: 720px;
+    width: 100%;
+    max-height: min(88vh, 900px);
+    overflow: auto;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 16px 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .clone-modal-panel h3 { margin: 0 0 10px 0; font-size: 1.05rem; }
+  .clone-modal-panel h4 { margin: 14px 0 6px 0; font-size: 0.95rem; color: var(--muted); }
+  .clone-modal-panel pre, .clone-modal-panel .mono-pre {
+    margin: 6px 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .clone-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+
+  /* Desktop (all widths): row bands with thin border + radius — same chrome as mobile cards */
+  table.res-stack-table {
+    border-collapse: separate;
+    border-spacing: 0 10px;
+    width: 100%;
+  }
+  table.res-stack-table thead th {
+    border-bottom: 2px solid var(--border);
+    padding: 8px 10px;
+    font-size: 0.88rem;
+    text-align: left;
+    vertical-align: bottom;
+    background: var(--code-bg);
+  }
+  table.res-stack-table tbody td {
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 10px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  }
+  html[data-theme="dark"] table.res-stack-table tbody td {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  table.res-stack-table tbody td:first-child {
+    border-left: 1px solid var(--border);
+    border-radius: 10px 0 0 10px;
+  }
+  table.res-stack-table tbody td:last-child {
+    border-right: 1px solid var(--border);
+    border-radius: 0 10px 10px 0;
+  }
+  table.res-stack-table tbody td:only-child {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  /* Mobile: stack wide tables as bordered cards (no whole-page horizontal scroll) */
+  @media (max-width: 767px) {
+    .tableWrap.res-stack-wrap {
+      overflow: visible;
+    }
+    .res-stack-wrap {
+      overflow-x: visible;
+      max-height: none !important;
+    }
+    .res-stack-table {
+      min-width: 0 !important;
+      width: 100%;
+    }
+    .res-stack-table thead {
+      display: none;
+    }
+    .res-stack-table tbody tr {
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      background: var(--card);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    }
+    html[data-theme="dark"] .res-stack-table tbody tr {
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .res-stack-table tbody tr:last-child {
+      margin-bottom: 0;
+    }
+    .res-stack-table tbody td {
+      display: grid;
+      grid-template-columns: minmax(100px, 40%) 1fr;
+      gap: 6px 10px;
+      align-items: start;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      border-bottom: 1px solid var(--border);
+      padding: 8px 0;
+      text-align: left;
+      font-size: 0.92rem;
+      white-space: normal;
+      word-break: break-word;
+    }
+    .res-stack-table tbody td:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .res-stack-table tbody td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      line-height: 1.3;
+      padding-top: 2px;
+    }
+    .res-stack-table tbody td[colspan] {
+      display: block;
+      padding: 10px 0;
+    }
+    .res-stack-table tbody td[colspan]::before {
+      display: none;
+    }
+    .clone-modal-panel {
+      max-height: min(92dvh, 100%);
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+</style>
+
+  <h1 class="title" style="margin-top:0">Server resources</h1>
+  <p class="hint">This host (the machine running MTR Web). Refreshes every 5s. Tune yellow/red with <code>RESOURCE_*</code> env vars.</p>
+
+  <noscript>
+    <p style="padding:12px;border:2px solid #b91c1c;border-radius:8px;background:#fef2f2;color:#450a0a;font-weight:600;">JavaScript is required for this dashboard. Enable JS and reload.</p>
+  </noscript>
+
+<script>
+/** Shared JSON reader for main dashboard + clone/DR (runs before the large script so clone still loads if that script fails). */
+function mtrReadJsonResponse(r) {
+  return r.text().then(function (text) {
+    var trimmed = (text == null ? "" : String(text)).trim();
+    if (!trimmed) {
+      if (!r.ok) throw new Error("HTTP " + r.status + " (empty body). Upstream may be restarting.");
+      return {};
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      var isHtml = trimmed.charAt(0) === "<";
+      var msg =
+        "HTTP " +
+        r.status +
+        (isHtml ? " — received HTML instead of JSON (gateway error or app restarting)." : " — non-JSON response: ") +
+        (isHtml ? "" : trimmed.replace(/\s+/g, " ").slice(0, 240));
+      throw new Error(msg);
+    }
+  });
+}
+</script>
+
+  <div id="resHero" class="res-hero res-hero--unk">
+    <div>
+      <h1 id="resOverallTitle">Loading…</h1>
+      <p class="sub mono" id="resHostLine"></p>
+    </div>
+    <span class="muted mono" id="resUpdated"></span>
+  </div>
+
+  <div class="res-grid" id="resCards"></div>
+
+  <div class="panel">
+    <div class="clearfix">
+      <h2 class="title">CPU &amp; load per core (12h)</h2>
+      <span class="right small" id="resCpuChartRange">Rolling 12h</span>
+    </div>
+    <div class="res-chart-wrap">
+      <svg id="resCpuChart" viewBox="0 0 960 268" width="100%" height="268" role="img" aria-label="CPU and load trend chart"></svg>
+      <div class="res-chart-legend">
+        <span><span class="dot" style="background:#2563eb;"></span>CPU %</span>
+        <span><span class="dot" style="background:#16a34a;"></span>Load 1m ÷ cores</span>
+        <span><span class="dot" style="background:#a855f7;"></span>Load 5m ÷ cores</span>
+        <span><span class="dot" style="background:#ea580c;"></span>Load 15m ÷ cores</span>
+      </div>
+      <div class="res-chart-counters" id="resCpuCounters"></div>
+      <p class="res-hint" style="margin:8px 0 6px 0;font-size:0.88rem;">Trend data is stored in <strong>this browser</strong> only (localStorage), not PostgreSQL. Samples arrive every 5s while this tab stays open and <code class="mono">/api/resources</code> succeeds.</p>
+      <div class="res-chart-note" id="resCpuChartNote">Waiting for first sample…</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="clearfix">
+      <h2 class="title">Disk space</h2>
+      <span class="right small" id="resDiskNote"></span>
+    </div>
+    <div class="tableWrap res-stack-wrap" style="max-height: none;">
+      <table class="res-stack-table">
+        <thead>
+          <tr>
+            <th>Mount</th>
+            <th>Used</th>
+            <th>Free (GB)</th>
+            <th>Size (GB)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="resDiskBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel res-panel">
+    <h2>PostgreSQL</h2>
+    <p class="sub" id="resPgIntro">Live database metrics when the app uses Postgres.</p>
+    <div class="tableWrap res-stack-wrap" style="max-height: none; margin-top: 8px;">
+      <table class="res-stack-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody id="resPgBody"></tbody>
+      </table>
+    </div>
+    <p class="err small" id="resPgErr" style="display:none;margin-top:8px"></p>
+  </div>
+
+  <div class="panel res-panel">
+    <h2>Modules and services</h2>
+    <p class="sub">One row per Compose app service; tab names are grouped by where that service runs today (see <code class="mono">docker-compose.yml</code>). Postgres and Redis are shared infrastructure.</p>
+    <p class="err small" id="resComposeErr" style="display:none;margin:8px 0 0 0;"></p>
+    <div class="tableWrap res-stack-wrap" style="max-height: none; margin-top: 8px;">
+      <table class="res-stack-table">
+        <thead>
+          <tr>
+            <th>Module / area</th>
+            <th>Compose service</th>
+            <th>Container</th>
+            <th>Runtime status</th>
+            <th>Upstream (host)</th>
+            <th>Paths</th>
+            <th>Data / deps</th>
+          </tr>
+        </thead>
+        <tbody id="resTopoBody">
+          {% for row in topology_bootstrap|default([], true) %}
+          <tr>
+            <td data-label="Module / area">{{ row.module }}</td>
+            <td data-label="Compose service"><code>{{ row.service }}</code></td>
+            <td class="mono small" data-label="Container">{{ row.container }}</td>
+            <td class="muted small" data-label="Runtime status">Waiting for Docker status…</td>
+            <td class="mono small" data-label="Upstream (host)">{{ row.upstream }}</td>
+            <td class="small" data-label="Paths">{{ row.paths }}</td>
+            <td class="small" data-label="Data / deps">{{ row.data }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <details class="res-host-commands" style="margin-top:12px;">
+      <summary style="cursor:pointer;font-size:0.95rem;color:var(--text);">Host commands — restart one module or rebuild the stack</summary>
+      <div class="small" style="margin-top:10px;padding-left:2px;">
+        <p class="hint" style="margin:0 0 10px 0;">Run on the server from the directory that contains <code class="mono">docker-compose.yml</code> (for example <code class="mono">~/mtr-web-live</code>). Project name <code class="mono">-p mtr-web-live</code> must match your deployment.</p>
+        <p class="sub" style="margin:0 0 4px 0;">Restart a single Compose service (lightweight)</p>
+        <pre class="mono small" style="margin:0 0 14px 0;padding:10px 12px;background:var(--panel2, #f5f5f7);border-radius:6px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border);">docker compose -f docker-compose.yml -p mtr-web-live restart &lt;service&gt;</pre>
+        <p class="hint" style="margin:0 0 6px 0;">Use the <strong>Compose service</strong> column above. Typical values: <code class="mono">core</code>, <code class="mono">mtr_live</code>, <code class="mono">download_test</code>, <code class="mono">fieldtech</code>, <code class="mono">ipam</code>, <code class="mono">monitoring</code>, <code class="mono">location_sync</code>, <code class="mono">routers</code>, <code class="mono">backhauls</code>, <code class="mono">stock_management</code>, <code class="mono">purchase_orders</code>, <code class="mono">postgres</code>, <code class="mono">redis</code>.</p>
+        <pre class="mono small" style="margin:0 0 14px 0;padding:10px 12px;background:var(--panel2, #f5f5f7);border-radius:6px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border);">docker compose -f docker-compose.yml -p mtr-web-live restart core
+docker compose -f docker-compose.yml -p mtr-web-live restart postgres</pre>
+        <p class="sub" style="margin:0 0 4px 0;">Full stack rebuild (rebuild images and recreate all containers — expect downtime)</p>
+        <pre class="mono small" style="margin:0 0 14px 0;padding:10px 12px;background:var(--panel2, #f5f5f7);border-radius:6px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border);">docker compose -f docker-compose.yml -p mtr-web-live up -d --build --force-recreate</pre>
+        <p class="sub" style="margin:0 0 4px 0;">If you see 502 after a rebuild, bring anything still stopped back up:</p>
+        <pre class="mono small" style="margin:0;padding:10px 12px;background:var(--panel2, #f5f5f7);border-radius:6px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border);">docker compose -f docker-compose.yml -p mtr-web-live up -d</pre>
+      </div>
+    </details>
+  </div>
+
+  <div class="panel res-panel">
+    <h2>PO Realtime Bus</h2>
+    <p class="sub">Cross-worker Purchase Order updates (SSE + Redis pub/sub).</p>
+    <div class="tableWrap res-stack-wrap" style="max-height: none; margin-top: 8px;">
+      <table class="res-stack-table">
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Status</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="resPoEventsBody">
+          <tr><td data-label="Check">Loading</td><td data-label="Status">…</td><td data-label="Details">Checking PO event bus health…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="err small" id="resPoEventsErr" style="display:none;margin-top:8px"></p>
+  </div>
+
+  <p class="res-hint err" id="resErr" style="display:none"></p>
+
+  {% if can_clone %}
+  <div class="panel res-panel">
+    <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; justify-content:space-between;">
+      <h2 style="margin:0;">Clone Rebuild (Admin)</h2>
+      <button type="button" class="btn" id="cloneReqModalBtn" style="font-size:0.9rem;">Remote configuration requirements</button>
+    </div>
+    <p class="sub">Creates a full target replica over SSH. Confirmation phrase: <code>CLONE &lt;target_host&gt;</code></p>
+    <details class="clone-advanced" style="margin-bottom:10px;">
+      <summary>Target prerequisites (run once per new target host)</summary>
+      <div class="mono small" style="margin-top:8px; white-space:pre-wrap;">
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin rsync ufw curl openssl
+sudo systemctl enable --now docker
+sudo usermod -aG docker wibernetdev
+      </div>
+      <p class="hint" style="margin:6px 0 0 0;">Then reconnect SSH and verify: <code>docker --version</code>, <code>docker compose version</code>, <code>rsync --version</code>.</p>
+      <p class="hint" style="margin:10px 0 6px 0;"><strong>Firewall UI / host agent</strong> — Run <strong>on the target once</strong> after the stack comes up (from the clone dir, e.g. <code>~/mtr-web-live</code>): installs the <code>mtr-firewall-agent</code> systemd service, opens UFW from the Docker bridge subnet to port <code>9191</code>, aligns <code>FIREWALL_AGENT_URL</code> / token in <code>.env.compose</code>, and recreates <code>core</code>.</p>
+      <pre class="mono small" style="margin-top:0; white-space:pre-wrap;">cd /path/to/mtr-web-live   # same folder clone restored to
+bash scripts/security/bootstrap_firewall_agent.sh</pre>
+      <p class="hint" style="margin:6px 0 0 0;">Without this, <strong>/firewall</strong> shows errors like “Firewall agent unreachable” (<code>http://172.18.0.1:9191</code>): containers reach the host via the Docker gateway; nothing listens until the agent is installed. The clone copies DB/config only — not host UFW state.</p>
+      <p class="hint" style="margin:6px 0 0 0;">To reuse the primary’s agent secret instead of a fresh token, copy <code>/etc/default/mtr-firewall-agent</code> from primary → standby before bootstrap (then skip overwriting token), or edit standby so agent env matches cloned <code>FIREWALL_AGENT_TOKEN</code> and reopen port <code>9191</code> for the compose subnet.</p>
+    </details>
+    <details class="clone-advanced" style="margin-bottom:10px;">
+      <summary>One-time run on standby (after clone / <code>compose up</code>)</summary>
+      <p class="hint" style="margin:8px 0 6px 0;">SSH to the <strong>target</strong>, then from the restored project directory (adjust the path):</p>
+      <pre class="mono small" style="margin-top:0; white-space:pre-wrap;">cd /path/to/mtr-web-live
+sudo apt-get install -y ufw curl openssl
+bash scripts/security/bootstrap_firewall_agent.sh</pre>
+      <p class="hint" style="margin:6px 0 0 0;">This installs the host firewall agent, opens UFW for Docker → port <code>9191</code>, aligns <code>.env.compose</code>, and recreates <code>core</code> so <strong>/firewall</strong> works.</p>
+      <p class="hint" style="margin:8px 0 0 0;"><strong>Location Sync:</strong> full clone already appends <code>LOCATION_SYNC_SCHEDULER_ENABLED=0</code> so the <code>location_sync</code> container does <strong>not</strong> run the nightly Splynx pull on standby (cache matches the cloned DB). <strong>Promote Standby</strong> sets it back to <code>1</code>.</p>
+    </details>
+    <div class="clone-grid">
+      <label>Target host/IP
+        <input id="cloneTargetHost" type="text" placeholder="203.0.113.10" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Target SSH user
+        <input id="cloneTargetUser" type="text" value="root" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Target SSH port
+        <input id="cloneTargetPort" type="number" min="1" max="65535" value="22" autocomplete="off">
+      </label>
+      <label>Target folder path
+        <input id="cloneTargetDir" type="text" placeholder="/opt/mtr-web-live" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Confirmation phrase (exactly <code class="mono">CLONE</code> + space + same host as above)
+        <input id="cloneConfirmPhrase" type="text" placeholder="CLONE 203.0.113.10" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" />
+      </label>
+      <p class="hint" style="margin:0 0 8px 0;grid-column:1/-1;font-size:0.88rem;">If this box shows your SSH key path, clear it—that is the browser autofilling the wrong field. Type <code class="mono">CLONE &lt;target_host&gt;</code> manually.</p>
+      <label>SSH key path (on source host)
+        <input id="cloneSshKey" type="text" placeholder="/home/user/.ssh/id_rsa" autocomplete="off" spellcheck="false">
+      </label>
+      <label>Expected host fingerprint (optional)
+        <input id="cloneHostFp" type="text" placeholder="SHA256:..." autocomplete="off" spellcheck="false">
+      </label>
+      <input type="hidden" id="cloneProfile" value="full" />
+      <div class="ur-field" style="grid-column:1/-1;">
+        <span class="hint"><strong>Clone type:</strong> full clone only — all Compose services, Postgres, and app data volumes.</span>
+      </div>
+    </div>
+    <details class="clone-advanced">
+      <summary>Advanced: Optional target `.env` overrides</summary>
+      <textarea id="cloneOverrideText" rows="4" placeholder="PUBLIC_BASE_URL=https://new.example.com"></textarea>
+      <p class="hint" style="margin:6px 0 0 0;">Only use this if standby needs different env values (domain, host URLs). Leave empty for normal clones.</p>
+    </details>
+    <p style="margin-top:10px;">
+      <label><input id="cloneDryRun" type="checkbox"> Dry run (no transfer/restore)</label>
+    </p>
+    <p style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="cloneStartBtn">Start Clone Rebuild</button>
+      <button type="button" id="cloneRefreshBtn">Refresh Clone Status</button>
+      <button type="button" id="cloneSaveTargetBtn">Save Target</button>
+      <button type="button" id="cloneResetTargetBtn">Reset Target</button>
+    </p>
+    <hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">
+    <h3 style="margin:0 0 8px 0;">Nightly Clone Scheduler</h3>
+    <p class="clone-schedule-row">
+      <label><input id="cloneSchedEnabled" type="checkbox"> Enable nightly schedule</label>
+      <label>Hour <input id="cloneSchedHour" type="number" min="0" max="23" value="0" style="width:70px;"></label>
+      <label>Minute <input id="cloneSchedMinute" type="number" min="0" max="59" value="0" style="width:70px;"></label>
+    </p>
+    <div id="cloneScheduleSummary" class="clone-schedule-summary" aria-live="polite">Loading schedule summary…</div>
+    <p class="hint" style="margin:0 0 8px 0;">To run every night: tick <b>Enable nightly schedule</b> then click <b>Save Scheduler</b>. Use <b>Run Scheduled Clone Now</b> for an immediate test.</p>
+    <p style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="cloneSchedSaveBtn">Save Scheduler</button>
+      <button type="button" id="cloneSchedLoadBtn">Reload Scheduler</button>
+      <button type="button" id="cloneSchedRunNowBtn">Run Scheduled Clone Now</button>
+    </p>
+    <p class="hint" id="cloneStatusMeta"></p>
+    <div class="clone-log mono small" id="cloneLog">No clone run yet.</div>
+    <div class="tableWrap res-stack-wrap clone-runs-scroll">
+      <table class="res-stack-table">
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>Status</th>
+            <th>Phase</th>
+            <th>Target</th>
+            <th>Started</th>
+            <th>Finished</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody id="cloneRunsBody"></tbody>
+      </table>
+    </div>
+    <p class="err small" id="cloneErr" style="display:none;"></p>
+  </div>
+
+  <div id="cloneReqModal" class="clone-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cloneReqModalTitle">
+    <div class="clone-modal-panel">
+      <h3 id="cloneReqModalTitle">Remote configuration requirements</h3>
+      <p class="hint" style="margin:0 0 12px 0;">Run these on the <strong>standby / target</strong> host before the first clone (or after changing OS). Clone uses non-interactive SSH and expects the same tools as below.</p>
+
+      <h4>1. Networking &amp; SSH</h4>
+      <ul style="margin:6px 0;padding-left:1.2rem;font-size:0.92rem;">
+        <li>SSH daemon listening on the port you enter in Clone (firewall allows inbound).</li>
+        <li><strong>Key-based login</strong> for the clone user (clone cannot type passwords). Test from primary: <code>ssh -o BatchMode=yes -i /path/to/private_key -p PORT user@host 'echo KEY_OK'</code></li>
+        <li>SSH user must be able to run Docker (see below) or use root.</li>
+      </ul>
+
+      <h4>2. Fix broken apt <code>cdrom</code> repo (Ubuntu installs)</h4>
+      <p class="hint" style="margin:4px 0;">If <code>apt-get update</code> errors about <code>file:/cdrom</code>:</p>
+      <pre>sudo sed -i '/^deb cdrom:/s/^/#/' /etc/apt/sources.list
+sudo apt-get update</pre>
+
+      <h4>3. Docker Engine &amp; Compose v2</h4>
+      <p class="hint" style="margin:4px 0;">Engine plus <strong>Compose v2</strong> (<code>docker compose</code>). Prefer the plugin from apt; on older repos install the CLI plugin binary.</p>
+      <pre>sudo apt-get install -y docker.io rsync
+sudo systemctl enable --now docker
+sudo usermod -aG docker YOUR_USER</pre>
+      <p class="hint" style="margin:4px 0;">Try plugin package first:</p>
+      <pre>sudo apt-get install -y docker-compose-plugin
+docker compose version</pre>
+      <p class="hint" style="margin:4px 0;">If <code>docker-compose-plugin</code> is not found, install the v2 plugin manually:</p>
+      <pre>sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo curl -SL https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64 \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+docker compose version</pre>
+      <p class="hint" style="margin:4px 0;"><strong>Avoid</strong> legacy Python <code>docker-compose</code> v1 if it errors on OpenSSL — use <code>docker compose</code> v2 instead.</p>
+
+      <h4>4. Daemon &amp; permissions</h4>
+      <pre>sudo systemctl status docker
+docker ps</pre>
+      <p class="hint" style="margin:4px 0;">If &quot;Cannot connect to the Docker daemon&quot;, fix group membership and <strong>log out and SSH back in</strong>, or use <code>newgrp docker</code>.</p>
+
+      <h4>5. Tools used by the clone script</h4>
+      <pre>command -v docker
+docker compose version
+command -v rsync</pre>
+
+      <h4>6. Primary (source) server</h4>
+      <p class="hint" style="margin:4px 0;">The <code>core</code> container mounts your SSH private key path and Docker socket so clone can run compose from the UI. SSH key path must exist on the host at the path you enter.</p>
+
+      <h4>7. Host firewall agent (required for /firewall on standby)</h4>
+      <p class="hint" style="margin:4px 0;">Clone restores Postgres/images/env — not host listeners or UFW. The app talks to a small HTTP agent on the <strong>target host</strong> at <code>FIREWALL_AGENT_URL</code> (often <code>http://&lt;docker_bridge_gateway&gt;:9191</code>). If the agent is missing or UFW blocks that path, you see “Firewall agent unreachable”.</p>
+      <p class="hint" style="margin:4px 0;"><strong>Recommended once per target</strong> after <code>docker compose up</code> succeeds:</p>
+      <pre>cd /path/to/mtr-web-live
+sudo apt-get install -y ufw curl openssl
+bash scripts/security/bootstrap_firewall_agent.sh</pre>
+      <p class="hint" style="margin:4px 0;">Ensure SSH stays allowed before enabling UFW (<code>sudo ufw allow OpenSSH</code> etc.). For DR parity with primary’s rules through the UI, use Firewall after the agent is healthy; importing raw host UFW from primary is optional and machine-specific.</p>
+
+      <h4>8. Fresh test on standby (optional — destructive)</h4>
+      <p class="hint" style="margin:4px 0;">On the <strong>failover</strong> machine only, to wipe the app folder and Docker volumes for a clean rerun (adjust path if not <code>~/mtr-web-live</code>):</p>
+      <pre>cd ~/mtr-web-live 2>/dev/null || cd /opt/mtr-web-live
+docker compose down -v 2>/dev/null || true
+cd ..
+rm -rf ~/mtr-web-live /opt/mtr-web-live</pre>
+      <p class="hint" style="margin:4px 0;color:#b91c1c;">Warning: <code>docker compose down -v</code> deletes named volumes (database data). Only run when you intend a full reset.</p>
+
+      <div class="clone-modal-actions">
+        <button type="button" class="btn" id="cloneReqModalClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel res-panel">
+    <h2>Standby Promotion (Admin)</h2>
+    <p class="sub">For disaster recovery: promote this standby server to active, then update DNS to this server.</p>
+    <p class="hint" id="drModeLine"></p>
+    <p style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input id="drConfirmPhrase" type="text" placeholder="PROMOTE STANDBY" style="max-width:260px;">
+      <button type="button" id="drPromoteBtn">Promote Standby</button>
+      <button type="button" id="drRefreshBtn">Refresh DR Status</button>
+    </p>
+    <div class="clone-log mono small" id="drLog">No promotion run yet.</div>
+    <p class="err small" id="drErr" style="display:none;"></p>
+  </div>
+  {% endif %}
+
+{# Base64 embed avoids raw JSON cutting off script tags when fields contain angle brackets. #}
+<!-- mtr-resources-page: embedded snapshot via base64 -->
+<script type="text/plain" id="mtr-res-topology-b64">{{ topology_bootstrap_b64|default('', true) }}</script>
+<script type="text/plain" id="mtr-resources-initial-b64">{{ resources_initial_snapshot_b64|default('', true) }}</script>
+<script>
+  function mtrDecodeResourcesB64(elId) {
+    try {
+      var el = document.getElementById(elId);
+      if (!el || !el.textContent) return null;
+      var txt = el.textContent.trim().replace(/\s+/g, "");
+      if (!txt) return null;
+      return JSON.parse(atob(txt));
+    } catch (e1) {
+      return null;
+    }
+  }
+
+  var __MTR_BOOTSTRAP_TOPOLOGY__ = mtrDecodeResourcesB64("mtr-res-topology-b64") || [];
+
+  function escTopoText(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /** Abort slow polls so the dashboard never stays on «Loading…» forever (Docker/DB hang). */
+  function fetchJsonWithTimeout(url, ms) {
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var tid = null;
+    var fetchOpts = { credentials: "same-origin" };
+    if (ctrl) fetchOpts.signal = ctrl.signal;
+    var p = fetch(url, fetchOpts).finally(function () {
+      if (tid) clearTimeout(tid);
+    });
+    if (ctrl && ms > 0) {
+      tid = setTimeout(function () {
+        try {
+          ctrl.abort();
+        } catch (_a) {}
+      }, ms);
+    }
+    return p.then(mtrReadJsonResponse);
+  }
+
+  function fmtUptime(sec) {
+    if (sec == null || isNaN(sec)) return "—";
+    var s = Math.floor(sec);
+    var d = Math.floor(s / 86400);
+    s -= d * 86400;
+    var h = Math.floor(s / 3600);
+    s -= h * 3600;
+    var m = Math.floor(s / 60);
+    var parts = [];
+    if (d) parts.push(d + "d");
+    if (h) parts.push(h + "h");
+    if (m) parts.push(m + "m");
+    if (!parts.length) parts.push("<1m");
+    return parts.join(" ");
+  }
+
+  function pillClass(st) {
+    if (st === "crit") return "pill--crit";
+    if (st === "warn") return "pill--warn";
+    if (st === "ok") return "pill--ok";
+    return "pill--unk";
+  }
+
+  function pillLabel(st) {
+    if (st === "crit") return "CRIT";
+    if (st === "warn") return "WARN";
+    if (st === "ok") return "OK";
+    return "N/A";
+  }
+
+  function render(data) {
+    data = data || {};
+    var apiOk = !!data.ok;
+    var err = document.getElementById("resErr");
+    if (!apiOk) {
+      var msg =
+        data.error ||
+        data.detail ||
+        "Could not load full resources snapshot (partial data below if available).";
+      err.textContent = msg;
+      err.style.display = "block";
+    } else {
+      err.style.display = "none";
+      err.textContent = "";
+    }
+
+    var st = (data.status && data.status.overall) || "unknown";
+    var m = data.metrics || {};
+
+    if (apiOk) {
+      var hero = document.getElementById("resHero");
+      if (hero) {
+        hero.className =
+          "res-hero " +
+          (st === "ok"
+            ? "res-hero--ok"
+            : st === "warn"
+              ? "res-hero--warn"
+              : st === "crit"
+                ? "res-hero--crit"
+                : "res-hero--unk");
+      }
+      var title =
+        st === "ok"
+          ? "All clear"
+          : st === "warn"
+            ? "Heads up"
+            : st === "crit"
+              ? "Needs attention"
+              : "Status";
+      var ot = document.getElementById("resOverallTitle");
+      if (ot) ot.textContent = title;
+      var host = data.hostname || "this host";
+      var up = fmtUptime(m.uptime_sec);
+      var hl = document.getElementById("resHostLine");
+      if (hl) hl.textContent = host + " · up " + up + " · source " + (m.source || "?");
+    } else {
+      var heroBad = document.getElementById("resHero");
+      if (heroBad) heroBad.className = "res-hero res-hero--crit";
+      var ot2 = document.getElementById("resOverallTitle");
+      if (ot2) ot2.textContent = "Resources snapshot incomplete";
+      var hl2 = document.getElementById("resHostLine");
+      if (hl2) {
+        hl2.textContent = String(data.error || data.detail || "See banner below.").slice(0, 320);
+      }
+      var cnBad = document.getElementById("resCpuChartNote");
+      if (cnBad) {
+        cnBad.textContent =
+          "Chart updates after metrics load — disk/modules/PG filled below even if the chart fails.";
+      }
+    }
+
+    var ru = document.getElementById("resUpdated");
+    if (ru) ru.textContent = "now";
+
+    var S = data.status || {};
+    var T = data.thresholds || {};
+    var cards = document.getElementById("resCards");
+    if (cards) {
+      cards.innerHTML = "";
+      function addCard(lbl, val, sub, key) {
+        var c = S[key] || "unknown";
+        var d = document.createElement("div");
+        d.className = "res-card";
+        d.innerHTML = "<div class=\"lbl\">" + lbl + "</div><div class=\"val\">" + val + "</div><span class=\"pill " + pillClass(c) + "\">" + pillLabel(c) + "</span>" + (sub ? "<div class=\"small\" style=\"margin-top:8px;color:var(--muted)\">" + sub + "</div>" : "");
+        cards.appendChild(d);
+      }
+
+      var cpu = m.cpu_percent;
+      addCard("CPU", cpu != null ? cpu + "%" : "—", "warn ≥ " + (T.cpu_warn != null ? T.cpu_warn : "?") + "% · crit ≥ " + (T.cpu_crit != null ? T.cpu_crit : "?") + "%", "cpu");
+
+      var mem = m.mem_percent;
+      var memSub = "";
+      if (m.mem_used_bytes != null && m.mem_total_bytes != null) {
+        memSub = (m.mem_used_bytes / 1e9).toFixed(2) + " / " + (m.mem_total_bytes / 1e9).toFixed(2) + " GB";
+      }
+      if (m.swap_percent != null) {
+        memSub = (memSub ? memSub + " · " : "") + "swap " + m.swap_percent + "%";
+      }
+      var memFoot = "warn ≥ " + (T.mem_warn != null ? T.mem_warn : "?") + "% · crit ≥ " + (T.mem_crit != null ? T.mem_crit : "?") + "%";
+      addCard("Memory", mem != null ? mem + "%" : "—", (memSub ? memSub + " · " : "") + memFoot, "memory");
+
+      var la = m.loadavg;
+      var loadStr = la ? (la[0] + " · " + la[1] + " · " + la[2]) : "—";
+      var loadNote = (T.load_per_core ? "1m load ÷ CPUs vs " : "1m load vs ") + (T.load_warn != null ? T.load_warn : "?") + " / " + (T.load_crit != null ? T.load_crit : "?");
+      addCard("Load avg (1 / 5 / 15)", loadStr, loadNote, "load");
+    }
+
+    var dn = document.getElementById("resDiskNote");
+    if (dn) dn.textContent = (m.disks && m.disks.length) ? ("worst disk: " + (S.disk_worst || "?")) : "";
+
+    var tbody = document.getElementById("resDiskBody");
+    if (tbody) {
+      tbody.innerHTML = "";
+      (m.disks || []).forEach(function(d) {
+        var tr = document.createElement("tr");
+        if (d.error) {
+          tr.innerHTML = "<td class=\"mono\" data-label=\"Mount\">" + (d.path || "") + "</td><td colspan=\"4\" class=\"err\" data-label=\"Error\">" + d.error + "</td>";
+        } else {
+          var ds = d.status || "ok";
+          tr.innerHTML = "<td class=\"mono\" data-label=\"Mount\">" + (d.path || "") + "</td><td data-label=\"Used\">" + (d.percent_used != null ? d.percent_used + "%" : "—") + "</td><td data-label=\"Free (GB)\">" + (d.free_gb != null ? d.free_gb : "—") + "</td><td data-label=\"Size (GB)\">" + (d.total_gb != null ? d.total_gb : "—") + "</td><td data-label=\"Status\"><span class=\"pill " + pillClass(ds) + "\">" + pillLabel(ds) + "</span></td>";
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    var pgIntro = document.getElementById("resPgIntro");
+    var pgBody = document.getElementById("resPgBody");
+    var pgErr = document.getElementById("resPgErr");
+    if (pgErr) {
+      pgErr.style.display = "none";
+      pgErr.textContent = "";
+    }
+    if (pgBody) pgBody.innerHTML = "";
+    var pg = data.postgres;
+    if (pgIntro) pgIntro.textContent = "Primary datastore for this deployment.";
+    if (pgBody) {
+      if (pg && pg.error) {
+        if (pgErr) {
+          pgErr.textContent = pg.error;
+          pgErr.style.display = "block";
+        }
+        var er = document.createElement("tr");
+        er.innerHTML = "<td colspan=\"2\" class=\"muted\" data-label=\"Message\">Unable to query Postgres (details below).</td>";
+        pgBody.appendChild(er);
+      } else if (pg) {
+        function pgRow(k, v) {
+          var tr = document.createElement("tr");
+          tr.innerHTML = "<td data-label=\"Metric\">" + k + "</td><td class=\"mono\" data-label=\"Value\">" + v + "</td>";
+          pgBody.appendChild(tr);
+        }
+        pgRow("Database", (pg.database || "") + " @ " + (pg.host || "") + ":" + (pg.port || ""));
+        pgRow("Logical size", pg.size_pretty != null ? pg.size_pretty : "—");
+        if (pg.size_bytes != null) {
+          pgRow("Size (bytes)", String(pg.size_bytes));
+        }
+        pgRow("Connections (this DB)", pg.connections != null ? String(pg.connections) : "—");
+        if (pg.schema_migrations != null) {
+          pgRow("Applied migrations (rows)", String(pg.schema_migrations));
+        }
+      } else {
+        var tr0 = document.createElement("tr");
+        var hint =
+          data.postgres_mode === false
+            ? "This deployment is not using Postgres for app data."
+            : "No Postgres snapshot in this JSON response — check Network → /api/resources (often means the request failed, timed out, or returned non-JSON).";
+        tr0.innerHTML = "<td colspan=\"2\" class=\"muted\" data-label=\"Message\">" + hint + "</td>";
+        pgBody.appendChild(tr0);
+      }
+    }
+
+    var composeHint = document.getElementById("resComposeErr");
+    var cs = data.compose_services || {};
+    if (composeHint) {
+      if (cs._error) {
+        composeHint.style.display = "block";
+        composeHint.textContent = "Could not load Compose runtime status: " + cs._error;
+      } else {
+        composeHint.style.display = "none";
+        composeHint.textContent = "";
+      }
+    }
+
+    function topoStatusCell(svc, cmap) {
+      var s = String(svc || "").trim();
+      if (!s || s.indexOf(" ") >= 0 || s.indexOf("/") >= 0) {
+        return "<td class=\"muted small\" data-label=\"Runtime status\">n/a</td>";
+      }
+      var rec = cmap[s];
+      if (!rec || typeof rec !== "object") {
+        return "<td class=\"muted small\" data-label=\"Runtime status\">—</td>";
+      }
+      var lv = rec.level || "unknown";
+      var pillCls = lv === "ok" ? "pill--ok" : lv === "crit" ? "pill--crit" : lv === "warn" ? "pill--warn" : "pill--unk";
+      var lbl = lv === "ok" ? "OK" : lv === "crit" ? "DOWN" : lv === "warn" ? "WARN" : "?";
+      var detail = escTopoText(rec.display || rec.state || "");
+      return "<td class=\"small\" data-label=\"Runtime status\"><span class=\"pill " + pillCls + "\">" + lbl + "</span> <span style=\"color:var(--muted);font-size:0.82rem\">" + detail + "</span></td>";
+    }
+
+    var topoBody = document.getElementById("resTopoBody");
+    if (topoBody) {
+      topoBody.innerHTML = "";
+      var topo = (data.module_topology && data.module_topology.length) ? data.module_topology : (__MTR_BOOTSTRAP_TOPOLOGY__ || []);
+      topo.forEach(function(row) {
+        var tr = document.createElement("tr");
+        var svc = String(row.service || "").trim();
+        tr.innerHTML = "<td data-label=\"Module / area\">" + (row.module || "") + "</td><td data-label=\"Compose service\"><code>" + (row.service || "") + "</code></td><td class=\"mono small\" data-label=\"Container\">" + (row.container || "") + "</td>" + topoStatusCell(svc, cs) + "<td class=\"mono small\" data-label=\"Upstream (host)\">" + (row.upstream || "") + "</td><td class=\"small\" data-label=\"Paths\">" + (row.paths || "") + "</td><td class=\"small\" data-label=\"Data / deps\">" + (row.data || "") + "</td>";
+        topoBody.appendChild(tr);
+      });
+    }
+
+    try {
+      if (apiOk) {
+        updateCpuHistory(data);
+      }
+      renderCpuChart();
+    } catch (chartErr) {
+      try {
+        console.error("resources cpu chart", chartErr);
+      } catch (_) {}
+      var cn = document.getElementById("resCpuChartNote");
+      if (cn) {
+        cn.textContent = "CPU chart error — metrics above still apply. " + String(chartErr || "");
+      }
+    }
+
+  }
+
+  var CPU_HISTORY_KEY = "mtr_resources_cpu_history_v2";
+  var CPU_WINDOW_MS = 12 * 60 * 60 * 1000;
+  /** Per-core load at this value uses full chart height (same 0–100 vertical scale as CPU %). */
+  var LOAD_PC_CHART_CAP = 2.0;
+  var cpuHistory = [];
+
+  function loadCpuHistory() {
+    try {
+      var raw = localStorage.getItem(CPU_HISTORY_KEY);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      cpuHistory = parsed.filter(function (p) {
+        return p && typeof p.ts === "number";
+      });
+    } catch (_) {}
+  }
+
+  function saveCpuHistory() {
+    try {
+      localStorage.setItem(CPU_HISTORY_KEY, JSON.stringify(cpuHistory.slice(-10000)));
+    } catch (_) {}
+  }
+
+  function updateCpuHistory(data) {
+    var now = Date.now();
+    var m = (data && data.metrics) || {};
+    var la = Array.isArray(m.loadavg) ? m.loadavg : null;
+    var n = (data && data.cpu_count != null) ? Math.max(1, Number(data.cpu_count)) : 1;
+    function perCore(idx) {
+      if (!la || la[idx] == null || isNaN(la[idx])) return null;
+      return Number(la[idx]) / n;
+    }
+    cpuHistory.push({
+      ts: now,
+      ncpu: n,
+      cpu: (m.cpu_percent != null && !isNaN(m.cpu_percent)) ? Number(m.cpu_percent) : null,
+      l1: (la && la[0] != null && !isNaN(la[0])) ? Number(la[0]) : null,
+      l5: (la && la[1] != null && !isNaN(la[1])) ? Number(la[1]) : null,
+      l15: (la && la[2] != null && !isNaN(la[2])) ? Number(la[2]) : null,
+      l1pc: perCore(0),
+      l5pc: perCore(1),
+      l15pc: perCore(2)
+    });
+    var cutoff = now - CPU_WINDOW_MS;
+    cpuHistory = cpuHistory.filter(function (p) { return p.ts >= cutoff; });
+    saveCpuHistory();
+  }
+
+  function loadToChartY(loadPerCore) {
+    if (loadPerCore == null || isNaN(loadPerCore)) return null;
+    var v = (Number(loadPerCore) / LOAD_PC_CHART_CAP) * 100;
+    return Math.min(100, Math.max(0, v));
+  }
+
+  function seriesToPoints(series, minTs, maxTs, vMax, width, plotH, plotTop) {
+    var pts = [];
+    var spanTs = Math.max(1, maxTs - minTs);
+    var spanV = Math.max(1, vMax);
+    series.forEach(function (p) {
+      if (p.v == null || isNaN(p.v)) return;
+      var x = ((p.ts - minTs) / spanTs) * width;
+      var y = plotTop + plotH - ((p.v / spanV) * plotH);
+      pts.push(String(Math.round(x * 10) / 10) + "," + String(Math.round(y * 10) / 10));
+    });
+    return pts.join(" ");
+  }
+
+  function fmtAxisTime(ts) {
+    try {
+      return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function escSvgText(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function renderCpuChart() {
+    var svg = document.getElementById("resCpuChart");
+    var note = document.getElementById("resCpuChartNote");
+    var counters = document.getElementById("resCpuCounters");
+    if (!svg || !note || !counters) return;
+    if (!cpuHistory.length) {
+      svg.innerHTML = "";
+      note.textContent = "Waiting for samples… Keep this page open (poll every 5s). Data is not written to PostgreSQL.";
+      counters.innerHTML = "";
+      return;
+    }
+    var width = 960;
+    var plotTop = 12;
+    var plotH = 200;
+    var axisY = 232;
+    var now = Date.now();
+    var minTs = Math.max(cpuHistory[0].ts, now - CPU_WINDOW_MS);
+    var maxTs = now;
+    var cpuSeries = cpuHistory.map(function (p) { return { ts: p.ts, v: p.cpu }; });
+    var l1Series = cpuHistory.map(function (p) { return { ts: p.ts, v: loadToChartY(p.l1pc) }; });
+    var l5Series = cpuHistory.map(function (p) { return { ts: p.ts, v: loadToChartY(p.l5pc) }; });
+    var l15Series = cpuHistory.map(function (p) { return { ts: p.ts, v: loadToChartY(p.l15pc) }; });
+    var grid = [0, 25, 50, 75, 100].map(function (v) {
+      var y = plotTop + plotH - (v / 100) * plotH;
+      return '<line x1="0" y1="' + y + '" x2="' + width + '" y2="' + y + '" stroke="var(--border)" stroke-width="1" />';
+    }).join("");
+    var yLbl = [0, 50, 100].map(function (v) {
+      var y = plotTop + plotH - (v / 100) * plotH + 4;
+      return '<text x="6" y="' + y + '" fill="var(--muted)" font-size="11" font-family="ui-sans-serif,system-ui,sans-serif">' + v + "%</text>";
+    }).join("");
+    var pCpu = seriesToPoints(cpuSeries, minTs, maxTs, 100, width, plotH, plotTop);
+    var pL1 = seriesToPoints(l1Series, minTs, maxTs, 100, width, plotH, plotTop);
+    var pL5 = seriesToPoints(l5Series, minTs, maxTs, 100, width, plotH, plotTop);
+    var pL15 = seriesToPoints(l15Series, minTs, maxTs, 100, width, plotH, plotTop);
+    var xAxis =
+      '<text x="8" y="' + axisY + '" fill="var(--muted)" font-size="11" font-family="ui-sans-serif,system-ui,sans-serif">' + escSvgText(fmtAxisTime(minTs)) + '</text>' +
+      '<text x="' + (width / 2) + '" y="' + axisY + '" text-anchor="middle" fill="var(--muted)" font-size="11" font-family="ui-sans-serif,system-ui,sans-serif">12h window ← → now</text>' +
+      '<text x="' + (width - 8) + '" y="' + axisY + '" text-anchor="end" fill="var(--muted)" font-size="11" font-family="ui-sans-serif,system-ui,sans-serif">' + escSvgText(fmtAxisTime(maxTs)) + '</text>';
+    svg.innerHTML =
+      '<rect x="0" y="0" width="' + width + '" height="268" fill="transparent"></rect>' +
+      grid +
+      yLbl +
+      (pCpu ? '<polyline fill="none" stroke="#2563eb" stroke-width="2" points="' + pCpu + '"></polyline>' : "") +
+      (pL1 ? '<polyline fill="none" stroke="#16a34a" stroke-width="2" points="' + pL1 + '"></polyline>' : "") +
+      (pL5 ? '<polyline fill="none" stroke="#a855f7" stroke-width="2" points="' + pL5 + '"></polyline>' : "") +
+      (pL15 ? '<polyline fill="none" stroke="#ea580c" stroke-width="2" points="' + pL15 + '"></polyline>' : "") +
+      xAxis;
+    var latest = cpuHistory[cpuHistory.length - 1] || {};
+    function seriesStats(key) {
+      var vals = cpuHistory.map(function (p) { return p[key]; }).filter(function (v) { return v != null && !isNaN(v); }).map(Number);
+      if (!vals.length) return { now: null, min: null, max: null };
+      return {
+        now: vals[vals.length - 1],
+        min: Math.min.apply(null, vals),
+        max: Math.max.apply(null, vals),
+      };
+    }
+    function avgField(key) {
+      var vals = cpuHistory.map(function (p) { return p[key]; }).filter(function (v) { return v != null && !isNaN(v); }).map(Number);
+      if (!vals.length) return null;
+      var s = 0;
+      for (var i = 0; i < vals.length; i++) s += vals[i];
+      return s / vals.length;
+    }
+    var cpuStats = seriesStats("cpu");
+    var l1pcStats = seriesStats("l1pc");
+    var l5pcStats = seriesStats("l5pc");
+    var l15pcStats = seriesStats("l15pc");
+    function fmtPct(v) { return v == null ? "—" : (Number(v).toFixed(1) + "%"); }
+    function fmtLoadPc(v) { return v == null ? "—" : Number(v).toFixed(3); }
+    counters.innerHTML =
+      '<div class="res-chart-counter"><div class="k">CPU % (now / min / max)</div><div class="v">' + fmtPct(cpuStats.now) + " / " + fmtPct(cpuStats.min) + " / " + fmtPct(cpuStats.max) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">Load 1m ÷ cores (now / min / max)</div><div class="v">' + fmtLoadPc(l1pcStats.now) + " / " + fmtLoadPc(l1pcStats.min) + " / " + fmtLoadPc(l1pcStats.max) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">Load 5m ÷ cores (now / min / max)</div><div class="v">' + fmtLoadPc(l5pcStats.now) + " / " + fmtLoadPc(l5pcStats.min) + " / " + fmtLoadPc(l5pcStats.max) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">Load 15m ÷ cores (now / min / max)</div><div class="v">' + fmtLoadPc(l15pcStats.now) + " / " + fmtLoadPc(l15pcStats.min) + " / " + fmtLoadPc(l15pcStats.max) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">12h avg load 1m ÷ cores</div><div class="v">' + fmtLoadPc(avgField("l1pc")) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">12h avg load 5m ÷ cores</div><div class="v">' + fmtLoadPc(avgField("l5pc")) + "</div></div>" +
+      '<div class="res-chart-counter"><div class="k">12h avg load 15m ÷ cores</div><div class="v">' + fmtLoadPc(avgField("l15pc")) + "</div></div>";
+    var ncpu = latest.ncpu != null ? latest.ncpu : "?";
+    note.textContent =
+      "Rolling 12h · " + cpuHistory.length + " samples · " + ncpu + " CPUs · " +
+      "Y-axis: CPU % and load÷cores (chart caps load lines at " + LOAD_PC_CHART_CAP + " per core = full height).";
+  }
+
+  function tickResources() {
+    fetchJsonWithTimeout("/api/resources", 25000)
+      .catch(function (e) {
+        return { ok: false, error: String(e), metrics: {} };
+      })
+      .then(function (data) {
+        try {
+          render(data || {});
+        } catch (re) {
+          try {
+            console.error("resources render", re);
+          } catch (_) {}
+          var er = document.getElementById("resErr");
+          if (er) {
+            er.textContent = "Dashboard render error: " + String(re);
+            er.style.display = "block";
+          }
+        }
+      });
+  }
+
+  function tickPoBus() {
+    fetchJsonWithTimeout("/api/po/events/health", 15000)
+      .catch(function (e) {
+        return { ok: false, detail: String(e || "") };
+      })
+      .then(function (poh) {
+        try {
+          renderPoEventsHealth(poh || {});
+        } catch (_) {}
+      });
+  }
+
+  function tick() {
+    tickResources();
+    tickPoBus();
+  }
+
+  function healthPill(level, label) {
+    var cls = level === "ok" ? "pill--ok" : level === "crit" ? "pill--crit" : level === "warn" ? "pill--warn" : "pill--unk";
+    return "<span class=\"pill " + cls + "\">" + label + "</span>";
+  }
+
+  function renderPoEventsHealth(j) {
+    var body = document.getElementById("resPoEventsBody");
+    var err = document.getElementById("resPoEventsErr");
+    if (!body || !err) return;
+    body.innerHTML = "";
+    if (!j || !j.ok) {
+      err.style.display = "block";
+      err.textContent = "Could not load PO event bus health: " + String((j && (j.detail || j.error)) || "unknown error");
+      var tr0 = document.createElement("tr");
+      tr0.innerHTML = "<td data-label=\"Check\">PO event bus</td><td data-label=\"Status\">" + healthPill("crit", "DOWN") + "</td><td data-label=\"Details\">Health endpoint unavailable.</td>";
+      body.appendChild(tr0);
+      return;
+    }
+    err.style.display = "none";
+    err.textContent = "";
+    var checks = [
+      {
+        k: "SSE loop bound",
+        ok: !!j.sse_loop_bound,
+        d: "role=" + String(j.app_role || "") + " pid=" + String(j.pid || "")
+      },
+      {
+        k: "Redis configured",
+        ok: !!j.redis_configured,
+        d: "module=" + (j.redis_module_available ? "available" : "missing")
+      },
+      {
+        k: "Redis subscriber",
+        ok: !!j.redis_subscriber_running,
+        d: "channel=" + String(j.channel || "mtr:po_events")
+      },
+      {
+        k: "Workers local subscribers",
+        ok: true,
+        d: "current process SSE clients=" + String(j.sse_subscribers_local || 0)
+      }
+    ];
+    checks.forEach(function (c) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td data-label=\"Check\">" + c.k + "</td>" +
+        "<td data-label=\"Status\">" + (c.ok ? healthPill("ok", "OK") : healthPill("warn", "WARN")) + "</td>" +
+        "<td data-label=\"Details\" class=\"small\">" + c.d + "</td>";
+      body.appendChild(tr);
+    });
+  }
+
+  try {
+    loadCpuHistory();
+    var _snapEl = document.getElementById("mtr-resources-initial-b64");
+    if (_snapEl && _snapEl.textContent && _snapEl.textContent.trim()) {
+      try {
+        var _snapObj = mtrDecodeResourcesB64("mtr-resources-initial-b64");
+        if (_snapObj == null) throw new Error("base64 decode returned null");
+        render(_snapObj);
+      } catch (parseErr) {
+        try {
+          console.error("resources embedded snapshot", parseErr);
+        } catch (_) {}
+        var er0 = document.getElementById("resErr");
+        if (er0) {
+          er0.style.display = "block";
+          er0.textContent =
+            "Embedded resources snapshot could not be parsed (JSON error). Try reloading or check container logs.";
+        }
+        renderCpuChart();
+      }
+    } else {
+      renderCpuChart();
+    }
+    tick();
+    setInterval(tick, 5000);
+  } catch (initErr) {
+    try {
+      console.error("resources dashboard init", initErr);
+    } catch (_) {}
+    var chartNote = document.getElementById("resCpuChartNote");
+    if (chartNote) {
+      chartNote.textContent = "Dashboard script error — check browser console.";
+    }
+  }
+</script>
+{% if can_clone %}
+<script>
+  function cloneErr(msg) {
+    var el = document.getElementById("cloneErr");
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = String(msg || "");
+  }
+
+  function renderClone(run) {
+    var meta = document.getElementById("cloneStatusMeta");
+    var log = document.getElementById("cloneLog");
+    if (!run) {
+      meta.textContent = "No clone run found.";
+      log.textContent = "No clone run yet.";
+      return;
+    }
+    meta.textContent = "Run " + (run.run_id || "") + " | status: " + (run.status || "") + " | phase: " + (run.phase || "");
+    var lines = (run.events || []).slice(-120).map(function (e) {
+      return "[" + (e.ts || "") + "] " + (e.kind || "log") + " " + (e.message || "");
+    });
+    log.textContent = lines.length ? lines.join("\n") : "No events yet.";
+    log.scrollTop = log.scrollHeight;
+  }
+  function renderCloneRuns(rows) {
+    var body = document.getElementById("cloneRunsBody");
+    body.innerHTML = "";
+    (rows || []).forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td class='mono small' data-label='Run ID'>" + (r.run_id || "") + "</td>" +
+        "<td data-label='Status'>" + (r.status || "") + "</td>" +
+        "<td data-label='Phase'>" + (r.phase || "") + "</td>" +
+        "<td class='mono small' data-label='Target'>" + ((r.target_user || "root") + "@" + (r.target_host || "") + ":" + (r.target_port || 22)) + "</td>" +
+        "<td class='small' data-label='Started'>" + (r.started_at || "") + "</td>" +
+        "<td class='small' data-label='Finished'>" + (r.finished_at || "") + "</td>" +
+        "<td class='small' data-label='Type'>" + (r.dry_run ? "dry-run " : "") + (r.profile || "full") + ((r.services && r.services.length) ? (" [" + r.services.join(",") + "]") : "") + "</td>";
+      body.appendChild(tr);
+    });
+    if (!body.innerHTML) {
+      var tr0 = document.createElement("tr");
+      tr0.innerHTML = "<td colspan='7' class='muted' data-label='Message'>No clone runs yet.</td>";
+      body.appendChild(tr0);
+    }
+  }
+
+  function fetchCloneLatest() {
+    cloneErr("");
+    fetch("/api/clone/runs?limit=50", { credentials: "same-origin" })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to load clone runs");
+        var run = (j.runs && j.runs.length) ? j.runs[0] : null;
+        renderClone(run);
+        renderCloneRuns(j.runs || []);
+        var meta = document.getElementById("cloneStatusMeta");
+        if (meta && j.clone_state_dir && (!j.runs || !j.runs.length)) {
+          meta.textContent =
+            "No clone-*.json files under " + j.clone_state_dir +
+            " — clone logs live there (Docker volume app_data → /app/data), not in PostgreSQL. Start a clone or verify this volume.";
+        }
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function readCloneForm() {
+    return {
+      target_host: (document.getElementById("cloneTargetHost").value || "").trim(),
+      target_user: (document.getElementById("cloneTargetUser").value || "").trim() || "root",
+      target_port: Number(document.getElementById("cloneTargetPort").value || 22),
+      target_dir: (document.getElementById("cloneTargetDir").value || "").trim(),
+      ssh_key_path: (document.getElementById("cloneSshKey").value || "").trim(),
+      host_fingerprint: (document.getElementById("cloneHostFp").value || "").trim(),
+      override_text: (document.getElementById("cloneOverrideText").value || ""),
+      profile: "full",
+      services: [],
+      hour: Number(document.getElementById("cloneSchedHour").value || 0),
+      minute: Number(document.getElementById("cloneSchedMinute").value || 0),
+      enabled: !!document.getElementById("cloneSchedEnabled").checked
+    };
+  }
+
+  function escCloneHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function cloneProfileDescription(profile) {
+    return "Full clone — all services, Postgres, and app data volumes";
+  }
+  function updateCloneScheduleSummary() {
+    var el = document.getElementById("cloneScheduleSummary");
+    if (!el) return;
+    var f;
+    try {
+      f = readCloneForm();
+    } catch (e) {
+      el.textContent = "Could not read clone form.";
+      return;
+    }
+    var hh = String(f.hour != null ? f.hour : 0).padStart(2, "0");
+    var mm = String(f.minute != null ? f.minute : 0).padStart(2, "0");
+    var when = f.enabled
+      ? "When enabled, runs <strong>every day</strong> at <strong>" + hh + ":" + mm + "</strong> (server local time)."
+      : "Nightly run is <strong>off</strong>. With current hour/minute, an enabled schedule would run at <strong>" + hh + ":" + mm + "</strong> daily.";
+    var dest;
+    if (f.target_host) {
+      dest =
+        '<span class="mono">' +
+        escCloneHtml(f.target_user || "root") +
+        "@" +
+        escCloneHtml(f.target_host) +
+        ":" +
+        String(f.target_port || 22) +
+        "</span> → <span class=\"mono\">" +
+        escCloneHtml(f.target_dir || "(folder not set)") +
+        "</span>";
+    } else {
+      dest =
+        '<em>No target host in this form.</em> Fill <strong>Target host</strong> / <strong>Target folder path</strong> above, or rely on <code class="mono">CLONE_TARGET_HOST</code> and <code class="mono">CLONE_TARGET_DIR</code> in the core container environment.';
+    }
+    el.innerHTML =
+      '<div style="margin-bottom:8px">' +
+      when +
+      "</div>" +
+      '<div><strong>Scheduled clone type:</strong> ' +
+      cloneProfileDescription(f.profile) +
+      "</div>" +
+      '<div style="margin-top:6px"><strong>Destination:</strong> ' +
+      dest +
+      "</div>";
+  }
+
+  function saveCloneDraft() {
+    try { localStorage.setItem("mtr_clone_form_draft_v1", JSON.stringify(readCloneForm())); } catch (_) {}
+  }
+
+  function loadCloneDraft() {
+    try {
+      var raw = localStorage.getItem("mtr_clone_form_draft_v1");
+      if (!raw) return;
+      var d = JSON.parse(raw || "{}");
+      if (!d || typeof d !== "object") return;
+      if (d.target_host != null) document.getElementById("cloneTargetHost").value = String(d.target_host || "");
+      if (d.target_user != null) document.getElementById("cloneTargetUser").value = String(d.target_user || "root");
+      if (d.target_port != null) document.getElementById("cloneTargetPort").value = Number(d.target_port || 22);
+      if (d.target_dir != null) document.getElementById("cloneTargetDir").value = String(d.target_dir || "");
+      if (d.ssh_key_path != null) document.getElementById("cloneSshKey").value = String(d.ssh_key_path || "");
+      if (d.host_fingerprint != null) document.getElementById("cloneHostFp").value = String(d.host_fingerprint || "");
+      if (d.override_text != null) document.getElementById("cloneOverrideText").value = String(d.override_text || "");
+      if (d.hour != null) document.getElementById("cloneSchedHour").value = Number(d.hour || 0);
+      if (d.minute != null) document.getElementById("cloneSchedMinute").value = Number(d.minute || 0);
+      if (d.enabled != null) document.getElementById("cloneSchedEnabled").checked = !!d.enabled;
+    } catch (_) {}
+  }
+
+  function applyCloneScheduleForm(s) {
+    var sch = s || {};
+    document.getElementById("cloneSchedEnabled").checked = !!sch.enabled;
+    document.getElementById("cloneSchedHour").value = Number(sch.hour != null ? sch.hour : 0);
+    document.getElementById("cloneSchedMinute").value = Number(sch.minute != null ? sch.minute : 0);
+    if (sch.target_host != null) document.getElementById("cloneTargetHost").value = String(sch.target_host || "");
+    if (sch.target_user != null) document.getElementById("cloneTargetUser").value = String(sch.target_user || "root");
+    if (sch.target_port != null) document.getElementById("cloneTargetPort").value = Number(sch.target_port || 22);
+    if (sch.target_dir != null) document.getElementById("cloneTargetDir").value = String(sch.target_dir || "");
+    if (sch.ssh_key_path != null) document.getElementById("cloneSshKey").value = String(sch.ssh_key_path || "");
+    if (sch.host_fingerprint != null) document.getElementById("cloneHostFp").value = String(sch.host_fingerprint || "");
+    if (sch.override_text != null) document.getElementById("cloneOverrideText").value = String(sch.override_text || "");
+    saveCloneDraft();
+    updateCloneScheduleSummary();
+  }
+
+  function loadCloneSchedule() {
+    cloneErr("");
+    fetch("/api/clone/schedule", { credentials: "same-origin" })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to load clone scheduler");
+        applyCloneScheduleForm(j.schedule || {});
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function loadCloneTarget() {
+    fetch("/api/clone/target", { credentials: "same-origin" })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to load clone target");
+        var t = j.target || {};
+        if (t.target_host != null) document.getElementById("cloneTargetHost").value = String(t.target_host || "");
+        if (t.target_user != null) document.getElementById("cloneTargetUser").value = String(t.target_user || "root");
+        if (t.target_port != null) document.getElementById("cloneTargetPort").value = Number(t.target_port || 22);
+        if (t.target_dir != null) document.getElementById("cloneTargetDir").value = String(t.target_dir || "");
+        if (t.ssh_key_path != null) document.getElementById("cloneSshKey").value = String(t.ssh_key_path || "");
+        if (t.host_fingerprint != null) document.getElementById("cloneHostFp").value = String(t.host_fingerprint || "");
+        if (t.override_text != null) document.getElementById("cloneOverrideText").value = String(t.override_text || "");
+        saveCloneDraft();
+        updateCloneScheduleSummary();
+      })
+      .catch(function (_) {});
+  }
+
+  function saveCloneTarget() {
+    cloneErr("");
+    var f = readCloneForm();
+    fetch("/api/clone/target", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_host: f.target_host,
+        target_user: f.target_user,
+        target_port: f.target_port,
+        target_dir: f.target_dir,
+        ssh_key_path: f.ssh_key_path,
+        host_fingerprint: f.host_fingerprint,
+        override_text: f.override_text
+      })
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to save clone target");
+        var st = document.getElementById("cloneStatusMeta");
+        st.textContent = "Target saved.";
+        saveCloneDraft();
+        updateCloneScheduleSummary();
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function resetCloneTarget() {
+    cloneErr("");
+    fetch("/api/clone/target", {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to reset clone target");
+        document.getElementById("cloneTargetHost").value = "";
+        document.getElementById("cloneTargetUser").value = "root";
+        document.getElementById("cloneTargetPort").value = 22;
+        document.getElementById("cloneTargetDir").value = "";
+        document.getElementById("cloneSshKey").value = "";
+        document.getElementById("cloneHostFp").value = "";
+        document.getElementById("cloneOverrideText").value = "";
+        var st = document.getElementById("cloneStatusMeta");
+        st.textContent = "Target reset.";
+        saveCloneDraft();
+        updateCloneScheduleSummary();
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function saveCloneSchedule() {
+    cloneErr("");
+    var payload = {
+      enabled: !!document.getElementById("cloneSchedEnabled").checked,
+      hour: Number(document.getElementById("cloneSchedHour").value || 0),
+      minute: Number(document.getElementById("cloneSchedMinute").value || 0),
+      profile: "full",
+      services: [],
+      target_host: (document.getElementById("cloneTargetHost").value || "").trim(),
+      target_user: (document.getElementById("cloneTargetUser").value || "").trim() || "root",
+      target_port: Number(document.getElementById("cloneTargetPort").value || 22),
+      target_dir: (document.getElementById("cloneTargetDir").value || "").trim(),
+      ssh_key_path: (document.getElementById("cloneSshKey").value || "").trim(),
+      host_fingerprint: (document.getElementById("cloneHostFp").value || "").trim(),
+      override_text: (document.getElementById("cloneOverrideText").value || "")
+    };
+    saveCloneDraft();
+    fetch("/api/clone/schedule", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to save clone scheduler");
+        applyCloneScheduleForm(j.schedule || payload);
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function runCloneScheduleNow() {
+    cloneErr("");
+    fetch("/api/clone/schedule/run-now", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to run scheduled clone");
+        renderClone(j.run || null);
+        fetchCloneLatest();
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function startClone() {
+    cloneErr("");
+    var base = readCloneForm();
+    var host = base.target_host;
+    var payload = {
+      target_host: base.target_host,
+      target_user: base.target_user,
+      target_port: base.target_port,
+      target_dir: base.target_dir,
+      ssh_key_path: base.ssh_key_path,
+      host_fingerprint: base.host_fingerprint,
+      confirm_phrase: (document.getElementById("cloneConfirmPhrase").value || "").trim(),
+      dry_run: !!document.getElementById("cloneDryRun").checked,
+      override_text: base.override_text,
+      profile: base.profile,
+      services: base.services
+    };
+    saveCloneDraft();
+    if (!payload.confirm_phrase) payload.confirm_phrase = "CLONE " + host;
+    fetch("/api/clone/start", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to start clone run");
+        renderClone(j.run || null);
+      })
+      .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function bindClick(id, fn) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("click", fn);
+  }
+  function openCloneReqModal() {
+    var m = document.getElementById("cloneReqModal");
+    if (m) { m.classList.add("is-open"); document.body.style.overflow = "hidden"; }
+  }
+  function closeCloneReqModal() {
+    var m = document.getElementById("cloneReqModal");
+    if (m) { m.classList.remove("is-open"); document.body.style.overflow = ""; }
+  }
+  bindClick("cloneReqModalBtn", openCloneReqModal);
+  bindClick("cloneReqModalClose", closeCloneReqModal);
+  (function () {
+    var ov = document.getElementById("cloneReqModal");
+    if (ov) {
+      ov.addEventListener("click", function (ev) {
+        if (ev.target === ov) closeCloneReqModal();
+      });
+    }
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") closeCloneReqModal();
+    });
+  })();
+  bindClick("cloneStartBtn", startClone);
+  bindClick("cloneRefreshBtn", fetchCloneLatest);
+  bindClick("cloneSaveTargetBtn", saveCloneTarget);
+  bindClick("cloneResetTargetBtn", resetCloneTarget);
+  bindClick("cloneSchedSaveBtn", saveCloneSchedule);
+  bindClick("cloneSchedLoadBtn", loadCloneSchedule);
+  bindClick("cloneSchedRunNowBtn", runCloneScheduleNow);
+  function onCloneFormDraft() {
+    saveCloneDraft();
+    updateCloneScheduleSummary();
+  }
+  Array.from(document.querySelectorAll("#cloneTargetHost,#cloneTargetUser,#cloneTargetPort,#cloneTargetDir,#cloneSshKey,#cloneHostFp,#cloneOverrideText,#cloneSchedHour,#cloneSchedMinute,#cloneSchedEnabled")).forEach(function (el) {
+    el.addEventListener("change", onCloneFormDraft);
+    el.addEventListener("input", onCloneFormDraft);
+  });
+  loadCloneDraft();
+  (function syncCloneConfirmPlaceholder() {
+    var th = document.getElementById("cloneTargetHost");
+    var cp = document.getElementById("cloneConfirmPhrase");
+    if (!th || !cp) return;
+    function sync() {
+      var h = (th.value || "").trim();
+      cp.placeholder = h ? ("CLONE " + h) : "CLONE 203.0.113.10";
+    }
+    th.addEventListener("input", sync);
+    th.addEventListener("change", sync);
+    sync();
+  })();
+  loadCloneTarget();
+  fetchCloneLatest();
+  loadCloneSchedule();
+  updateCloneScheduleSummary();
+  setInterval(fetchCloneLatest, 5000);
+
+  function drErr(msg) {
+    var el = document.getElementById("drErr");
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = String(msg || "");
+  }
+  function renderDr(j) {
+    var mode = (j && j.mode) || {};
+    document.getElementById("drModeLine").textContent =
+      "Current role: " + (mode.role || "standby") + (mode.promoted_at ? (" | promoted_at: " + mode.promoted_at) : "");
+    var run = (j && j.latest_run) || null;
+    var log = document.getElementById("drLog");
+    if (!run) { log.textContent = "No promotion run yet."; return; }
+    var lines = (run.events || []).slice(-120).map(function (e) {
+      return "[" + (e.ts || "") + "] " + (e.kind || "log") + " " + (e.message || "");
+    });
+    log.textContent = lines.length ? lines.join("\n") : "No events yet.";
+    log.scrollTop = log.scrollHeight;
+  }
+  function fetchDrStatus() {
+    drErr("");
+    fetch("/api/dr/status", { credentials: "same-origin" })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Failed to load DR status");
+        renderDr(j);
+      })
+      .catch(function (e) { drErr(String(e)); });
+  }
+  function promoteDr() {
+    drErr("");
+    var phrase = (document.getElementById("drConfirmPhrase").value || "").trim();
+    fetch("/api/dr/promote", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm_phrase: phrase || "PROMOTE STANDBY" })
+    })
+      .then(mtrReadJsonResponse)
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.detail || j.error || "Promotion failed");
+        fetchDrStatus();
+      })
+      .catch(function (e) { drErr(String(e)); });
+  }
+  bindClick("drPromoteBtn", promoteDr);
+  bindClick("drRefreshBtn", fetchDrStatus);
+  fetchDrStatus();
+  setInterval(fetchDrStatus, 5000);
+
+</script>
+{% endif %}
+{% endblock %}

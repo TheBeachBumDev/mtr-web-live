@@ -1,0 +1,21 @@
+# Match the venv used by systemd mtr-web.service / uvicorn
+# Web stack (required for Docker image; venv on host may have more)
+fastapi>=0.109,<0.116
+uvicorn[standard]>=0.27,<0.35
+jinja2>=3.1,<4
+python-multipart>=0.0.9
+websockets>=12,<14
+
+# PDF export (lazy-imported in main.py)
+reportlab>=4.0,<4.3
+
+# Push + crypto + SSH (legacy / optional)
+cryptography>=41,<44
+paramiko>=3.4,<4
+pywebpush>=1.14,<2
+psycopg[binary]>=3.2,<4
+qrcode[pil]
+
+# Docker Engine API (unix socket) — compose status + restarts without relying on the docker CLI binary
+docker>=7,<8
+redis>=5,<6

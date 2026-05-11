@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .router-intro { color: var(--muted); margin: 0 0 14px; max-width: 44rem; line-height: 1.45; font-size: 0.95rem; }
+  .router-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card);
+  }
+  .router-form label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .router-form input, .router-form select { width: auto; min-width: 120px; max-width: 100%; }
+  .router-form input#rHost { min-width: 160px; }
+  .router-form input#rUser { min-width: 120px; }
+  .router-form input#rPass { min-width: 160px; }
+  .router-form input#rPort { width: 88px; min-width: 72px; }
+  .router-form select#rLoc { min-width: 220px; max-width: 100%; }
+  .router-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+  .router-card {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--card);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .router-card__loc {
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .router-card__row { font-size: 0.9rem; color: var(--muted); }
+  .router-card__row b { color: var(--fg); font-weight: 600; }
+  .router-card__mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.88rem; word-break: break-all; }
+  .router-card__actions {
+    margin-top: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .router-card__actions button { padding: 6px 10px; font-size: 0.85rem; }
+  .router-test-msg {
+    flex: 1 1 100%;
+    margin: 4px 0 0;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    min-height: 1.2em;
+  }
+  .router-test-msg.ok { color: #15803d; }
+  html[data-theme="dark"] .router-test-msg.ok { color: #86efac; }
+  .router-test-msg.err { color: #b91c1c; }
+  html[data-theme="dark"] .router-test-msg.err { color: #fca5a5; }
+  .router-empty {
+    padding: 20px;
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .router-badge {
+    display: inline-block;
+    font-size: 0.78rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    color: var(--muted);
+  }
+
+  .router-import {
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    background: var(--card);
+  }
+  .router-import > summary {
+    cursor: pointer;
+    font-weight: 650;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+  .router-import > summary::-webkit-details-marker {
+    display: none;
+  }
+  .router-import > summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: 0.45em;
+    height: 0.45em;
+    margin-top: 0.1em;
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg);
+    opacity: 0.85;
+  }
+  .router-import[open] > summary::before {
+    margin-top: -0.05em;
+    transform: rotate(45deg);
+  }
+  .router-import__inner {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .router-import textarea {
+    width: 100%;
+    min-height: 140px;
+    margin-top: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.88rem;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    resize: vertical;
+  }
+  .router-import__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+  }
+</style>
+
+<h1>Routers</h1>
+<p class="router-intro">
+  Register edge routers with SSH access and tie each one to an <strong>IPAM location</strong> (e.g. Oukaapse HS).
+  Passwords are stored <strong>encrypted</strong> in the database and are never shown again in the UI; use them later from server-side automation.
+</p>
+
+<div class="router-form">
+  <div>
+    <label for="rLoc">Location (IPAM)</label>
+    <select id="rLoc"></select>
+  </div>
+  <div>
+    <label for="rHost">Router IP / hostname</label>
+    <input id="rHost" type="text" placeholder="10.0.0.1" autocomplete="off" />
+  </div>
+  <div>
+    <label for="rPort">SSH port</label>
+    <input id="rPort" type="number" min="1" max="65535" step="1" value="22" />
+  </div>
+  <div>
+    <label for="rUser">SSH user</label>
+    <input id="rUser" type="text" autocomplete="off" />
+  </div>
+  <div>
+    <label for="rPass">SSH password</label>
+    <input id="rPass" type="password" autocomplete="new-password" />
+  </div>
+  <div>
+    <button type="button" id="rAddBtn" onclick="addRouter()">Add</button>
+  </div>
+</div>
+
+<details class="router-import" id="rImportDetails">
+  <summary>Import routers from a text file</summary>
+  <div class="router-import__inner">
+    <p class="hint" style="margin:0;">
+      Put the <strong>IPAM location</strong> first on each line (exact name or numeric id) when each router has its own site, or
+      pick a <strong>default location</strong> in the form for every line. <strong>SSH user, password, and port</strong> in the form
+      apply to any column you leave out; you can also set them per line.
+    </p>
+    <label for="rImportText" class="hint" style="display:block; margin-top:10px;">Paste lines or load a <span class="mono">.txt</span> file</label>
+    <textarea id="rImportText" placeholder="Oukaapse HS	10.0.0.1	admin	secret&#10;North Tower	192.168.5.1	root	pass	2222&#10;12	10.1.1.1	user	pass&#10;# comment"></textarea>
+    <div class="router-import__row">
+      <input type="file" id="rImportFile" accept=".txt,.csv,text/plain" />
+      <button type="button" id="rImportBtn">Import</button>
+    </div>
+    <p class="hint" style="margin:0; font-size:0.88rem;">
+      Optional first column(s): <strong>location name</strong> (multi-word names work when separated by tabs or commas) or <strong>numeric location id</strong>.
+      Then: <span class="mono">router_host</span> · <span class="mono">host user</span> · <span class="mono">host user password</span> ·
+      <span class="mono">host user password port</span> — tabs, commas, pipes, or spaces (no spaces inside passwords).
+      If you do <em>not</em> use a location per line, select a default <strong>Location (IPAM)</strong> in the form.
+      Blank lines and <span class="mono">#</span> lines are skipped.
+    </p>
+    <p id="rImportResult" class="hint mono" style="margin-top:10px; white-space:pre-wrap;"></p>
+  </div>
+</details>
+
+<div id="rErr" class="err" style="display:none; margin-bottom:12px;"></div>
+
+<div id="rList" class="router-grid"></div>
+<div id="rEmpty" class="router-empty" style="display:none;">No routers yet — add one above.</div>
+
+<script>
+  let lastLocations = [];
+
+  function setErr(t) {
+    const el = document.getElementById("rErr");
+    if (!t) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = t;
+  }
+
+  function fillLocations(locations) {
+    lastLocations = locations || [];
+    const sel = document.getElementById("rLoc");
+    sel.innerHTML = "";
+    if (!lastLocations.length) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "— No locations — create one in IPAM first";
+      sel.appendChild(o);
+      sel.disabled = true;
+      return;
+    }
+    sel.disabled = false;
+    const ph = document.createElement("option");
+    ph.value = "";
+    ph.textContent = "Select location…";
+    sel.appendChild(ph);
+    lastLocations.forEach(function (loc) {
+      const o = document.createElement("option");
+      o.value = String(loc.id);
+      o.textContent = loc.name || ("Location " + loc.id);
+      sel.appendChild(o);
+    });
+  }
+
+  function render(routers) {
+    const root = document.getElementById("rList");
+    const empty = document.getElementById("rEmpty");
+    root.innerHTML = "";
+    if (!routers || !routers.length) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+
+    routers.forEach(function (r) {
+      const card = document.createElement("div");
+      card.className = "router-card";
+
+      const loc = document.createElement("div");
+      loc.className = "router-card__loc";
+      loc.textContent = r.location_name || ("Location #" + r.location_id);
+
+      const host = document.createElement("div");
+      host.className = "router-card__row";
+      host.innerHTML = "<b>Address</b> <span class=\"router-card__mono\">" + escapeHtml(r.router_host || "") + "</span>";
+
+      const port = document.createElement("div");
+      port.className = "router-card__row";
+      port.innerHTML = "<b>SSH port</b> " + escapeHtml(String(r.ssh_port != null ? r.ssh_port : ""));
+
+      const user = document.createElement("div");
+      user.className = "router-card__row";
+      user.innerHTML = "<b>User</b> <span class=\"router-card__mono\">" + escapeHtml(r.ssh_user || "") + "</span>";
+
+      const pw = document.createElement("div");
+      pw.className = "router-card__row";
+      pw.innerHTML = '<span class="router-badge">Password stored (encrypted)</span>';
+
+      const actions = document.createElement("div");
+      actions.className = "router-card__actions";
+
+      const testBtn = document.createElement("button");
+      testBtn.type = "button";
+      testBtn.textContent = "Test SSH";
+      testBtn.title = "Verify SSH login with stored credentials";
+
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.textContent = "Remove";
+      rm.onclick = function () { removeRouter(r.id, r.router_host); };
+
+      const testMsg = document.createElement("div");
+      testMsg.className = "router-test-msg mono";
+      testMsg.setAttribute("aria-live", "polite");
+
+      testBtn.onclick = function () {
+        runSshTest(r.id, testBtn, testMsg);
+      };
+
+      actions.appendChild(testBtn);
+      actions.appendChild(rm);
+      actions.appendChild(testMsg);
+
+      card.appendChild(loc);
+      card.appendChild(host);
+      card.appendChild(port);
+      card.appendChild(user);
+      card.appendChild(pw);
+      card.appendChild(actions);
+      root.appendChild(card);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  async function refresh() {
+    setErr("");
+    try {
+      const [rr, lr] = await Promise.all([
+        fetch("/api/routers", { credentials: "same-origin" }),
+        fetch("/api/ipam/locations", { credentials: "same-origin" }),
+      ]);
+      const jr = await rr.json().catch(function () { return {}; });
+      const jl = await lr.json().catch(function () { return {}; });
+      if (!rr.ok || !jr.ok) {
+        setErr(jr.detail || jr.error || ("HTTP " + rr.status));
+        return;
+      }
+      if (!lr.ok || !jl.ok) {
+        setErr(jl.detail || "Could not load IPAM locations");
+        return;
+      }
+      fillLocations(jl.locations || []);
+      render(jr.routers || []);
+    } catch (e) {
+      setErr(String(e || "Refresh failed"));
+    }
+  }
+
+  async function addRouter() {
+    setErr("");
+    const location_id = document.getElementById("rLoc").value;
+    const router_host = (document.getElementById("rHost").value || "").trim();
+    const ssh_user = (document.getElementById("rUser").value || "").trim();
+    const ssh_password = document.getElementById("rPass").value || "";
+    const portEl = document.getElementById("rPort");
+    let ssh_port = portEl && portEl.value !== "" ? Number(portEl.value) : 22;
+
+    if (!location_id) {
+      setErr("Select a location.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/routers", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location_id: parseInt(location_id, 10),
+          router_host: router_host,
+          ssh_user: ssh_user,
+          ssh_password: ssh_password,
+          ssh_port: ssh_port,
+        }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      document.getElementById("rHost").value = "";
+      document.getElementById("rUser").value = "";
+      document.getElementById("rPass").value = "";
+      if (portEl) portEl.value = "22";
+      await refresh();
+    } catch (e) {
+      setErr(String(e || "Add failed"));
+    }
+  }
+
+  async function runSshTest(routerId, btn, msgEl) {
+    setErr("");
+    msgEl.textContent = "";
+    msgEl.className = "router-test-msg mono";
+    btn.disabled = true;
+    msgEl.textContent = "Testing SSH…";
+    try {
+      const r = await fetch("/api/routers/" + encodeURIComponent(routerId) + "/test-ssh", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (j.ok) {
+        msgEl.className = "router-test-msg mono ok";
+        msgEl.textContent = j.message || "SSH OK";
+      } else {
+        msgEl.className = "router-test-msg mono err";
+        msgEl.textContent = j.detail || j.message || ("HTTP " + r.status);
+      }
+    } catch (e) {
+      msgEl.className = "router-test-msg mono err";
+      msgEl.textContent = String(e || "SSH test failed");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function removeRouter(id, host) {
+    const ok = confirm("Remove router " + host + "?");
+    if (!ok) return;
+    setErr("");
+    try {
+      const r = await fetch("/api/routers/" + encodeURIComponent(id), {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      await refresh();
+    } catch (e) {
+      setErr(String(e || "Remove failed"));
+    }
+  }
+
+  async function importRoutersBulk() {
+    setErr("");
+    const resultEl = document.getElementById("rImportResult");
+    if (resultEl) resultEl.textContent = "";
+    const location_id = document.getElementById("rLoc").value || "";
+    const text = document.getElementById("rImportText").value || "";
+    if (!String(text).trim()) {
+      setErr("Paste text or choose a file first.");
+      return;
+    }
+    const ssh_user = (document.getElementById("rUser").value || "").trim();
+    const ssh_password = document.getElementById("rPass").value || "";
+    const portEl = document.getElementById("rPort");
+    let ssh_port = null;
+    if (portEl && portEl.value !== "") {
+      const n = Number(portEl.value);
+      if (!Number.isFinite(n)) {
+        setErr("Invalid SSH port in form.");
+        return;
+      }
+      ssh_port = n;
+    }
+    const locLabel = location_id
+      ? ((lastLocations.find(function (l) { return String(l.id) === String(location_id); }) || {}).name ||
+          ("#" + location_id))
+      : "each line";
+    try {
+      const payload = {
+        text: text,
+        ssh_user: ssh_user,
+        ssh_password: ssh_password,
+        ssh_port: ssh_port,
+      };
+      if (location_id) payload.location_id = parseInt(location_id, 10);
+      const r = await fetch("/api/routers/import", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      const imp = j.import || {};
+      const created = imp.created != null ? imp.created : 0;
+      const skipped = imp.skipped_lines != null ? imp.skipped_lines : 0;
+      const errors = imp.errors || [];
+      let msg =
+        "Imported " +
+        created +
+        " router(s)" +
+        (location_id ? " (default location \"" + locLabel + "\")" : " (location from each line)");
+      if (skipped) msg += " · skipped " + skipped + " blank/comment line(s)";
+      if (errors.length) {
+        const cap = 8;
+        const parts = [];
+        for (let i = 0; i < errors.length && i < cap; i++) {
+          const er = errors[i];
+          parts.push("L" + er.line + ": " + (er.detail || "?"));
+        }
+        let errStr = parts.join("; ");
+        if (errors.length > cap) errStr += " (+" + (errors.length - cap) + " more)";
+        msg += ". " + errors.length + " line(s) failed: " + errStr;
+        if (resultEl) resultEl.classList.add("err");
+      } else if (resultEl) {
+        resultEl.classList.remove("err");
+      }
+      if (resultEl) resultEl.textContent = msg;
+      if (created > 0) {
+        document.getElementById("rImportText").value = "";
+        await refresh();
+      }
+    } catch (e) {
+      setErr(String(e || "Import failed"));
+    }
+  }
+
+  (function bindRouterImport() {
+    const btn = document.getElementById("rImportBtn");
+    const file = document.getElementById("rImportFile");
+    if (btn) btn.addEventListener("click", importRoutersBulk);
+    if (file) {
+      file.addEventListener("change", function (ev) {
+        const inp = ev.target;
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = function () {
+          const ta = document.getElementById("rImportText");
+          if (ta) ta.value = String(reader.result || "");
+          const res = document.getElementById("rImportResult");
+          if (res) {
+            res.textContent = "Loaded file: " + f.name;
+            res.classList.remove("err");
+          }
+          try {
+            inp.value = "";
+          } catch (e) {}
+        };
+        reader.onerror = function () {
+          setErr("Could not read file.");
+        };
+        reader.readAsText(f);
+      });
+    }
+  })();
+
+  refresh();
+</script>
+{% endblock %}

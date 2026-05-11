@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .bk-panel { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--card); margin-bottom: 12px; }
+  .bk-panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  .bk-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bk-list { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; max-height: 340px; overflow: auto; }
+  .bk-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .bk-item:last-child { border-bottom: none; }
+  .bk-meta { color: var(--muted); font-size: 0.9rem; }
+</style>
+
+<h1>Backups</h1>
+<p class="hint">Create downloadable backup files for migration/restore. Full bundle includes DB dump + metadata + compose snapshot.</p>
+<div id="bkErr" class="err" style="display:none;margin:10px 0;"></div>
+
+<section class="bk-panel">
+  <h2>Create Backup</h2>
+  <div class="bk-row">
+    <button id="bkFull" type="button">Create Full Bundle</button>
+    <button id="bkDbOnly" type="button">Create DB-only Dump</button>
+    <button id="bkRefresh" type="button">Refresh List</button>
+    <span id="bkStatus" class="hint"></span>
+  </div>
+</section>
+
+<section class="bk-panel">
+  <h2>Available Backups</h2>
+  <div id="bkList" class="bk-list"></div>
+</section>
+
+<script>
+  function bkErr(msg) {
+    var el = document.getElementById("bkErr");
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+  async function api(path, method, body) {
+    var opts = { method: method || "GET", credentials: "same-origin", headers: {} };
+    if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    var r = await fetch(path, opts);
+    var j = await r.json().catch(function(){ return {}; });
+    if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ("HTTP " + r.status));
+    return j;
+  }
+  function setStatus(t) { document.getElementById("bkStatus").textContent = t || ""; }
+  async function refreshBackups() {
+    bkErr(""); setStatus("");
+    try {
+      var j = await api("/api/backups", "GET");
+      var rows = j.files || [];
+      var list = document.getElementById("bkList");
+      if (!rows.length) { list.innerHTML = "<div class='bk-item'><span class='bk-meta'>No backup files yet.</span></div>"; return; }
+      list.innerHTML = rows.map(function (r) {
+        return "<div class='bk-item'>" +
+          "<div><div class='mono'>" + esc(r.name) + "</div><div class='bk-meta'>" + esc(r.size_text || "") + " · " + esc(r.mtime || "") + "</div></div>" +
+          "<a class='tabLink' href='/api/backups/download/" + encodeURIComponent(r.name) + "'>Download</a>" +
+          "</div>";
+      }).join("");
+    } catch (e) { bkErr(String(e)); }
+  }
+  async function create(kind) {
+    bkErr(""); setStatus("Creating " + kind + " backup...");
+    try {
+      var j = await api("/api/backups/" + kind, "POST", {});
+      setStatus("Created: " + (j.file || ""));
+      await refreshBackups();
+    } catch (e) {
+      setStatus("");
+      bkErr(String(e));
+    }
+  }
+  document.getElementById("bkFull").addEventListener("click", function () { create("full"); });
+  document.getElementById("bkDbOnly").addEventListener("click", function () { create("db-only"); });
+  document.getElementById("bkRefresh").addEventListener("click", refreshBackups);
+  refreshBackups();
+</script>
+{% endblock %}

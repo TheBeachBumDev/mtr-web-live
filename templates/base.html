@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/style.css?v=20260505-mobile-nav-v1" />
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('theme');
+          if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+      })();
+    </script>
+    <title>{{ title|default("MTR Web UI", true) }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  </head>
+  <body class="app-body app-body--bottom-nav">
+    {% set active_tab = active_tab|default("", true) %}
+    {% set title = title|default("MTR Web UI", true) %}
+    {% set username = username|default("unknown", true) %}
+    {% set ap = request.state.allowed_pages|default([]) %}
+    {% set is_adm = request.state.is_admin|default(false) %}
+    {% set nav_items = request.state.nav_items|default([]) %}
+    {% set path_norm = (request.url.path|default("/")).rstrip("/") or "/" %}
+    {% set home_active = (path_norm == "/" or path_norm == "") %}
+    {% set at = active_tab|default("", true) %}
+
+    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">🌙</button>
+
+    {% if request.state.standby_banner %}
+    <div class="mtr-standby-banner" role="status">{{ request.state.standby_banner }}</div>
+    {% endif %}
+
+    <div class="app-layout">
+      <main class="app-main">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
+    <div class="nav-sheet-backdrop" id="navSheetBackdrop" aria-hidden="true" hidden></div>
+    <aside class="nav-sheet" id="navSheet" role="dialog" aria-modal="true" aria-labelledby="navSheetTitle" hidden aria-hidden="true">
+      <div class="nav-sheet__handle" aria-hidden="true"></div>
+      <h2 id="navSheetTitle" class="nav-sheet__title">Navigation</h2>
+      <nav class="nav-sheet__tabstrip" aria-label="Apps">
+        <a
+          href="/"
+          class="tabLink nav-sheet__home {% if home_active %}active{% endif %}"
+          data-nav-key="home"
+        >
+          <svg class="nav-sheet__home-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>
+          Home
+        </a>
+        {% for item in nav_items %}
+        {% if item["key"] != "home" %}
+        {% set href_norm = item.href|default("/")|norm_path %}
+        {% set tab_on = (item.key == at) or (at == "download" and item.key == "download_test") or (path_norm == href_norm) %}
+        <a
+          class="tabLink {% if tab_on %}active{% endif %}"
+          href="{{ item.href }}"
+          data-nav-key="{{ item.key }}"
+        >{{ item.label }}</a>
+        {% endif %}
+        {% endfor %}
+      </nav>
+      <div class="nav-sheet__footer">
+        <span class="hint mono nav-sheet__user">Signed in as <b>{{ username|replace("@wibersolutions.co.za", "")|title|e }}</b></span>
+        <button type="button" class="nav-sheet__logout" onclick="logout()">Logout</button>
+      </div>
+    </aside>
+
+    <footer class="bottom-nav-dock" role="presentation">
+      <div
+        class="bottom-nav-dock__bar"
+        id="navDockBar"
+        role="button"
+        tabindex="0"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="navSheet"
+      >
+        <span class="bottom-nav-fab" aria-hidden="true">
+          <svg class="bottom-nav-fab__icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 7h14M5 12h14M5 17h14"/>
+          </svg>
+        </span>
+      </div>
+    </footer>
+
+<script>
+      function logout() {
+        try { window.location.href = "/logout"; } catch (e) {}
+      }
+      (function() {
+        var btn = document.getElementById('themeToggle');
+        if (!btn) return;
+        function syncIcon() {
+          var cur = document.documentElement.getAttribute('data-theme') || 'light';
+          btn.textContent = (cur === 'dark') ? '☀️' : '🌙';
+        }
+        btn.addEventListener('click', function() {
+          var cur = document.documentElement.getAttribute('data-theme') || 'light';
+          var next = (cur === 'dark') ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          try { localStorage.setItem('theme', next); } catch (e) {}
+          syncIcon();
+        });
+        syncIcon();
+      })();
+      (function() {
+        var bar = document.getElementById('navDockBar');
+        var sheet = document.getElementById('navSheet');
+        var backdrop = document.getElementById('navSheetBackdrop');
+        if (!bar || !sheet || !backdrop) return;
+
+        function openSheet() {
+          sheet.hidden = false;
+          backdrop.hidden = false;
+          sheet.removeAttribute('aria-hidden');
+          backdrop.removeAttribute('aria-hidden');
+          sheet.classList.add('is-open');
+          backdrop.classList.add('is-visible');
+          bar.setAttribute('aria-expanded', 'true');
+          bar.setAttribute('aria-label', 'Close navigation menu');
+          document.body.classList.add('nav-sheet-open');
+        }
+        function closeSheet() {
+          sheet.classList.remove('is-open');
+          backdrop.classList.remove('is-visible');
+          bar.setAttribute('aria-expanded', 'false');
+          bar.setAttribute('aria-label', 'Open navigation menu');
+          document.body.classList.remove('nav-sheet-open');
+          sheet.setAttribute('aria-hidden', 'true');
+          backdrop.setAttribute('aria-hidden', 'true');
+          sheet.hidden = true;
+          backdrop.hidden = true;
+        }
+        function toggleSheet() {
+          if (sheet.classList.contains('is-open')) closeSheet();
+          else openSheet();
+        }
+
+        bar.addEventListener('click', toggleSheet);
+        bar.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            toggleSheet();
+          }
+        });
+        backdrop.addEventListener('click', closeSheet);
+        document.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Escape' && sheet.classList.contains('is-open')) closeSheet();
+        });
+      })();
+    </script>
+  </body>
+</html>

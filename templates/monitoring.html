@@ -1,0 +1,1817 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .monitor-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card);
+  }
+  .monitor-form label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .monitor-form input { width: auto; min-width: 140px; max-width: 100%; }
+  .monitor-form input#monName { min-width: 160px; }
+  .monitor-form input#monTarget { min-width: 180px; }
+  .monitor-form input#monWarn { width: 100px; min-width: 80px; }
+  .monitor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .monitor-card {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    background: var(--card);
+    min-height: 88px;
+  }
+  .monitor-led {
+    flex-shrink: 0;
+    min-width: 56px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    user-select: none;
+    cursor: default;
+  }
+  .monitor-led--ok {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+  }
+  html[data-theme="dark"] .monitor-led--ok {
+    background: #14532d;
+    border-color: #22c55e;
+    color: #bbf7d0;
+  }
+  .monitor-led--warn {
+    background: #fef9c3;
+    border-color: #facc15;
+    color: #854d0e;
+  }
+  html[data-theme="dark"] .monitor-led--warn {
+    background: #422006;
+    border-color: #eab308;
+    color: #fef08a;
+  }
+  .monitor-led--down {
+    background: #fee2e2;
+    border-color: #f87171;
+    color: #991b1b;
+  }
+  html[data-theme="dark"] .monitor-led--down {
+    background: #450a0a;
+    border-color: #ef4444;
+    color: #fecaca;
+  }
+  .monitor-led--unknown {
+    background: #f4f4f5;
+    border-color: #d4d4d8;
+    color: #52525b;
+  }
+  html[data-theme="dark"] .monitor-led--unknown {
+    background: #27272a;
+    border-color: #52525b;
+    color: #a1a1aa;
+  }
+  .monitor-card__body { flex: 1; min-width: 0; }
+  .monitor-card__name { font-weight: 700; margin: 0 0 4px; }
+  .monitor-card__target { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.92rem; word-break: break-all; }
+  .monitor-card__meta { margin-top: 6px; font-size: 0.88rem; color: var(--muted); }
+  .monitor-card__remove {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+  }
+  .monitor-card__remove button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 32px;
+    padding: 6px 8px;
+    color: var(--muted);
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+  }
+  .monitor-card__remove button svg {
+    display: block;
+    flex-shrink: 0;
+  }
+  .monitor-card__remove button:hover {
+    color: var(--fg);
+    border-color: var(--border);
+    background: var(--code-bg);
+  }
+  .monitor-card__actions {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .monitor-card__actions button {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .monitor-poll { font-size: 0.88rem; color: var(--muted); margin-top: 14px; }
+  .monitor-empty {
+    padding: 20px;
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .monitor-translog {
+    margin-top: 18px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    background: var(--card);
+  }
+  .monitor-translog h2 { margin: 0 0 4px 0; font-size: 1.05rem; }
+  .monitor-translog__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .monitor-translog__head h2 {
+    margin: 0;
+  }
+  .monitor-translog__sub {
+    margin: 14px 0 6px 0;
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .monitor-translog__sub:first-of-type {
+    margin-top: 10px;
+  }
+  .monitor-translog__list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  #monTransDownWrap .monitor-translog__list {
+    max-height: min(40vh, 320px);
+  }
+  #monTransLog.monitor-translog__list {
+    max-height: min(22.5vh, 190px);
+  }
+  .monitor-translog__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    font-size: 0.92rem;
+  }
+  .monitor-translog__row--down {
+    background: #fee2e2;
+    border-color: #f87171;
+    color: #7f1d1d;
+  }
+  html[data-theme="dark"] .monitor-translog__row--down {
+    background: #450a0a;
+    border-color: #ef4444;
+    color: #fecaca;
+  }
+  .monitor-translog__meta { font-weight: 650; min-width: 0; }
+  .monitor-translog__when { flex-shrink: 0; font-variant-numeric: tabular-nums; opacity: 0.92; font-size: 0.88rem; }
+
+  .monitor-import {
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px 14px;
+    background: var(--card);
+  }
+  .monitor-import > summary {
+    cursor: pointer;
+    font-weight: 650;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+  .monitor-import > summary::-webkit-details-marker {
+    display: none;
+  }
+  .monitor-import > summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: 0.45em;
+    height: 0.45em;
+    margin-top: 0.1em;
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg);
+    opacity: 0.85;
+  }
+  .monitor-import[open] > summary::before {
+    margin-top: -0.05em;
+    transform: rotate(45deg);
+  }
+  .monitor-import__inner {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .monitor-import textarea {
+    width: 100%;
+    min-height: 140px;
+    margin-top: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.88rem;
+    box-sizing: border-box;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    resize: vertical;
+  }
+  .monitor-import__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+  }
+
+  .monitor-tabstrip-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .monitor-tab-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .monitor-tab {
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--fg);
+    font: inherit;
+    cursor: pointer;
+  }
+  .monitor-tab.is-active {
+    border-color: var(--input-border);
+    font-weight: 650;
+    background: var(--code-bg);
+  }
+  .monitor-tab-add {
+    min-width: 42px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--fg);
+    font-size: 1.15rem;
+    font-weight: 650;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .monitor-tab-add:hover {
+    border-color: var(--input-border);
+    background: var(--code-bg);
+  }
+  .monitor-loading {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .monitor-loading.is-visible {
+    display: inline-flex;
+  }
+  .monitor-loading__spinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--muted) 35%, transparent 65%);
+    border-top-color: var(--fg);
+    animation: monitorSpin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes monitorSpin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* History modal */
+  .hist-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+  .hist-modal.is-open { display: flex; }
+  .hist-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(2px);
+    cursor: pointer;
+  }
+  html[data-theme="dark"] .hist-modal__backdrop {
+    background: rgba(0,0,0,0.65);
+  }
+  .hist-modal__panel {
+    position: relative;
+    width: min(920px, 100%);
+    max-height: min(86vh, 900px);
+    overflow: auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px 20px;
+    box-shadow: 0 24px 48px var(--shadow);
+  }
+  .hist-modal__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .hist-modal__head h2 { margin: 0; font-size: 1.15rem; }
+  .hist-modal__sub { margin: 4px 0 0; font-size: 0.88rem; color: var(--muted); }
+  .hist-modal__close {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+  .hist-modal__canvas-wrap {
+    position: relative;
+    height: min(420px, 58vh);
+    margin-top: 8px;
+  }
+  .hist-modal__canvas-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .hist-modal__empty {
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .outage-modal__list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: min(62vh, 560px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .outage-modal__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--code-bg);
+    font-size: 0.92rem;
+  }
+  .outage-modal__meta {
+    font-weight: 650;
+    min-width: 0;
+  }
+  .outage-modal__when {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.88rem;
+  }
+</style>
+
+<div id="monSamplingPausedBanner" class="hint" style="display:none; margin-bottom:14px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:color-mix(in srgb, var(--card) 90%, #eab308 15%);">
+  <strong>ICMP sampling paused</strong> — Standby clone: the grid shows the last stored snapshot only (no live pings to edge targets). Use <strong>Promote Standby</strong> on this server to resume active monitoring.
+</div>
+
+<h1>Monitoring</h1>
+
+<div class="monitor-tabstrip-wrap">
+  <div id="monitorTabBar" class="monitor-tab-row"></div>
+  <button type="button" class="monitor-tab-add" id="monitorTabAdd" title="Add tab">+</button>
+</div>
+
+<div class="monitor-form">
+  <div>
+    <label for="monName">Name</label>
+    <input id="monName" type="text" placeholder="e.g. Core router" autocomplete="off" />
+  </div>
+  <div>
+    <label for="monTarget">IP or hostname</label>
+    <input id="monTarget" type="text" placeholder="8.8.8.8" autocomplete="off" />
+  </div>
+  <div>
+    <label for="monWarn">Warn if &gt; (ms)</label>
+    <input id="monWarn" type="number" min="1" max="60000" step="1" value="{{ default_warn_ms }}" />
+  </div>
+  <div>
+    <button type="button" id="monAddBtn" onclick="addDevice()">Add</button>
+  </div>
+</div>
+
+<details class="monitor-import" id="monImportDetails">
+  <summary>Import devices from a text file</summary>
+  <div class="monitor-import__inner">
+    <p class="hint" style="margin:0;">
+      New rows are added to the <strong>currently selected tab</strong> above (for example switch to <span class="mono">Power Monitoring</span>, then import).
+      Default “warn if &gt;” uses the same threshold as the single-row form unless you add a third column per line.
+    </p>
+    <label for="monImportText" class="hint" style="display:block; margin-top:10px;">Paste lines below or choose a <span class="mono">.txt</span> file</label>
+    <textarea id="monImportText" placeholder="WN-TEST-1 10.10.10.1 50&#10;WN-TEST-2 10.10.10.2 50&#10;8.8.8.8&#10;Core router,10.0.0.1&#10;# comment"></textarea>
+    <div class="monitor-import__row">
+      <input type="file" id="monImportFile" accept=".txt,.csv,text/plain" />
+      <button type="button" id="monImportBtn">Import</button>
+    </div>
+    <p class="hint" style="margin:0; font-size:0.88rem;">
+      One target per line: <span class="mono">Name IP warn_ms</span> (spaces; <span class="mono">50</span> = warn if &gt; 50&nbsp;ms),
+      IP-only (<span class="mono">8.8.8.8</span>), <span class="mono">Name, IP</span>, <span class="mono">Name&lt;TAB&gt;IP</span>, <span class="mono">Name | IP</span>.
+      Two-token <span class="mono">10.0.0.1 50</span> means that IP with a 50&nbsp;ms threshold. Blank / <span class="mono">#</span> lines skipped.
+    </p>
+    <p id="monImportResult" class="hint mono" style="margin-top:10px; white-space:pre-wrap;"></p>
+  </div>
+</details>
+
+<section class="monitor-translog" aria-labelledby="monTransHeading">
+  <div class="monitor-translog__head">
+    <h2 id="monTransHeading">Status log</h2>
+    <button type="button" id="monOutageLogBtn">Outage Log</button>
+  </div>
+  <p id="monTransHint" class="hint" style="margin:4px 0 0 0;">
+    Targets that are <strong>down</strong> stay at the top. When a target recovers, that change appears in the rolling list below (last 10 events). A device is marked down only after <span class="mono">{{ down_after_fails|int }}</span> consecutive failed checks.
+  </p>
+  <div id="monTransDownWrap" style="display:none;">
+    <h3 class="monitor-translog__sub" id="monDownHeading">Currently down</h3>
+    <div id="monTransDown" class="monitor-translog__list" role="list"></div>
+  </div>
+  <h3 class="monitor-translog__sub" id="monRecentHeading">Recent changes <span class="mono">(10)</span></h3>
+  <div id="monTransLog" class="monitor-translog__list" role="list"></div>
+</section>
+
+<div id="monErr" class="err" style="display:none; margin-bottom:12px;"></div>
+<div id="monLoading" class="monitor-loading" role="status" aria-live="polite" aria-busy="true">
+  <span class="monitor-loading__spinner" aria-hidden="true"></span>
+  <span id="monLoadingText">Loading monitoring data…</span>
+</div>
+
+<div id="monList" class="monitor-grid"></div>
+<div id="monEmpty" class="monitor-empty" style="display:none;">No devices yet — add a name and target above.</div>
+
+<p class="hint" id="monWebPushRow" style="margin:10px 0 0 0; display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;">
+  <span id="monWebPushStatus" style="flex:1; min-width:220px;"></span>
+  <span style="display:inline-flex; gap:8px; flex-wrap:wrap;">
+    <button type="button" class="btn" id="monWebPushEnable" style="font-size:0.88rem;padding:6px 12px;">Enable background push</button>
+    <button type="button" class="btn" id="monWebPushDisable" style="display:none;font-size:0.88rem;padding:6px 12px;">Stop background push</button>
+    <button type="button" class="btn" id="monWebPushTest" style="font-size:0.88rem;padding:6px 12px;">Send test push</button>
+  </span>
+</p>
+<p class="hint mono" id="monPushHealth" style="margin:6px 0 0 0;">Push health: checking...</p>
+{% if can_manage_push_tests %}
+<div class="hint" id="monPushAdminPanel" style="margin:10px 0 0 0; border:2px solid var(--line); border-radius:12px; padding:10px 12px; background:color-mix(in srgb, var(--card) 90%, var(--line) 10%); box-shadow:0 0 0 1px color-mix(in srgb, var(--line) 60%, transparent 40%) inset;">
+  <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+    <b>Admin push test</b>
+    <select id="monPushUserSelect" style="min-width:220px;"></select>
+    <button type="button" class="btn" id="monPushUserTestBtn" style="font-size:0.86rem;padding:5px 10px;">Send selected user test</button>
+    <button type="button" class="btn" id="monPushUserRefreshBtn" style="font-size:0.86rem;padding:5px 10px;">Refresh user status</button>
+  </div>
+  <div id="monPushUserStatus" class="mono" style="margin-top:6px;"></div>
+</div>
+{% endif %}
+<p class="monitor-poll mono" id="monPollHint">Refreshing every 5s…</p>
+
+<div id="histModal" class="hist-modal" aria-hidden="true">
+  <div class="hist-modal__backdrop" id="histBackdrop"></div>
+  <div class="hist-modal__panel" role="dialog" aria-modal="true" aria-labelledby="histTitle">
+    <div class="hist-modal__head">
+      <div>
+        <h2 id="histTitle">12-hour history</h2>
+        <p class="hist-modal__sub mono" id="histSub"></p>
+      </div>
+      <button type="button" class="hist-modal__close" id="histCloseBtn">Close</button>
+    </div>
+    <div id="histEmpty" class="hist-modal__empty" style="display:none;">No samples recorded yet — history fills as the server collects periodic checks.</div>
+    <div class="hist-modal__canvas-wrap" id="histCanvasWrap">
+      <canvas id="histCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<div id="outageModal" class="hist-modal" aria-hidden="true">
+  <div class="hist-modal__backdrop" id="outageBackdrop"></div>
+  <div class="hist-modal__panel" role="dialog" aria-modal="true" aria-labelledby="outageTitle">
+    <div class="hist-modal__head">
+      <div>
+        <h2 id="outageTitle">Outage log</h2>
+        <p class="hist-modal__sub">Recovered outages only (down → back online)</p>
+      </div>
+      <button type="button" class="hist-modal__close" id="outageCloseBtn">Close</button>
+    </div>
+    <div id="outageEmpty" class="hist-modal__empty" style="display:none;">No recovered outages yet.</div>
+    <div id="outageList" class="outage-modal__list" role="list"></div>
+  </div>
+</div>
+
+<script>
+  const DEFAULT_WARN = {{ default_warn_ms|int }};
+  const IS_ADMIN = {{ is_admin | tojson }};
+  const CAN_MANAGE_PUSH_TESTS = {{ can_manage_push_tests | tojson }};
+  const LS_ACTIVE_TAB = "mtr_monitoring_active_tab_id";
+  let histChartInst = null;
+  let lastTabs = [];
+  let lastDevicesAll = [];
+  let lastOutages = [];
+  let activeTabId = null;
+  let monPushLastTestResult = "not run";
+  let monPushLastTestAt = "";
+
+  function chartStroke() {
+    try {
+      const m = getComputedStyle(document.documentElement).getPropertyValue("--fg").trim();
+      return m || "#111111";
+    } catch (e) {
+      return "#111111";
+    }
+  }
+
+  function chartFillAlpha() {
+    try {
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      return dark ? "rgba(248,250,252,0.08)" : "rgba(17,17,17,0.06)";
+    } catch (e) {
+      return "rgba(17,17,17,0.06)";
+    }
+  }
+
+  /**
+   * Horizontal red bands on the latency=0 baseline for each contiguous outage run (12h modal).
+   * `intervals` entries: { start: ms, end: ms } inclusive of first/last down sample in the run.
+   */
+  function createHistOutageIntervalBandsPlugin(intervals) {
+    const dark =
+      typeof document !== "undefined" &&
+      document.documentElement.getAttribute("data-theme") === "dark";
+    const fill = dark ? "rgba(239, 68, 68, 0.42)" : "rgba(220, 38, 38, 0.38)";
+    const edge = dark ? "rgba(248, 113, 113, 0.55)" : "rgba(185, 28, 28, 0.45)";
+    return {
+      id: "monitoringHistOutageBands",
+      beforeDatasetsDraw: function (chart) {
+        const bands = intervals || [];
+        if (!bands.length) return;
+        const scales = chart.scales;
+        if (!scales || !scales.x || !scales.y) return;
+        const xScale = scales.x;
+        const yScale = scales.y;
+        const area = chart.chartArea;
+        if (!area) return;
+        const ctx = chart.ctx;
+        const y0 = yScale.getPixelForValue(0);
+        const span = Math.max(1, area.bottom - area.top);
+        const h = Math.min(16, Math.max(9, span * 0.048));
+        ctx.save();
+        for (let i = 0; i < bands.length; i++) {
+          const b = bands[i];
+          if (!b || b.start == null || b.end == null) continue;
+          let xL = xScale.getPixelForValue(b.start);
+          let xR = xScale.getPixelForValue(b.end);
+          if (xL > xR) {
+            const t = xL;
+            xL = xR;
+            xR = t;
+          }
+          if (xR < area.left || xL > area.right) continue;
+          xL = Math.max(xL, area.left);
+          xR = Math.min(xR, area.right);
+          if (xR - xL < 3) {
+            const mid = (xL + xR) / 2;
+            xL = mid - 1.5;
+            xR = mid + 1.5;
+          }
+          const top = y0 - h;
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = edge;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.rect(xL, top, xR - xL, h);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      },
+    };
+  }
+
+  /** Contiguous runs of down / no-response samples → { start, end } in epoch ms. */
+  function computeOutageIntervalsMs(pts) {
+    const out = [];
+    let runStart = null;
+    let runEnd = null;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const ms = Date.parse(p.ts);
+      if (Number.isNaN(ms)) continue;
+      if (isHistoryPointDown(p)) {
+        if (runStart === null) {
+          runStart = ms;
+          runEnd = ms;
+        } else {
+          runEnd = ms;
+        }
+      } else {
+        if (runStart !== null) {
+          out.push({ start: runStart, end: runEnd });
+          runStart = null;
+          runEnd = null;
+        }
+      }
+    }
+    if (runStart !== null) {
+      out.push({ start: runStart, end: runEnd });
+    }
+    return out;
+  }
+
+  function isHistoryPointDown(p) {
+    const lv = String(p.level || "").toLowerCase();
+    if (lv === "down") return true;
+    if (p.latency_ms === null || p.latency_ms === undefined) return true;
+    const n = Number(p.latency_ms);
+    return !Number.isFinite(n);
+  }
+
+  function setErr(t) {
+    const el = document.getElementById("monErr");
+    if (!t) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = t;
+  }
+
+  function setMonLoading(on, message) {
+    const box = document.getElementById("monLoading");
+    const txt = document.getElementById("monLoadingText");
+    if (!box || !txt) return;
+    if (message) txt.textContent = String(message);
+    box.classList.toggle("is-visible", !!on);
+  }
+
+  function setPushHealth(parts) {
+    const el = document.getElementById("monPushHealth");
+    if (!el) return;
+    el.textContent = "Push health: " + (Array.isArray(parts) ? parts.join(" | ") : String(parts || "unknown"));
+  }
+
+  function nowLocalStamp() {
+    try {
+      return new Date().toLocaleString();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function ledClass(level) {
+    if (level === "warn") return "monitor-led monitor-led--warn";
+    if (level === "ok") return "monitor-led monitor-led--ok";
+    if (level === "unknown") return "monitor-led monitor-led--unknown";
+    return "monitor-led monitor-led--down";
+  }
+
+  function ledLabel(level) {
+    if (level === "warn") return "SLOW";
+    if (level === "ok") return "OK";
+    if (level === "unknown") return "N/A";
+    return "DOWN";
+  }
+
+  function destroyHistChart() {
+    if (histChartInst) {
+      try { histChartInst.destroy(); } catch (e) {}
+      histChartInst = null;
+    }
+  }
+
+  function closeHistModal() {
+    const modal = document.getElementById("histModal");
+    modal.classList.remove("is-open");
+    modal.setAttribute("aria-hidden", "true");
+    destroyHistChart();
+    document.body.style.overflow = "";
+  }
+
+  function openHistModal() {
+    const modal = document.getElementById("histModal");
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  async function showHistory(deviceId, displayName, target) {
+    setErr("");
+    destroyHistChart();
+    document.getElementById("histTitle").textContent = displayName || "Monitor";
+    document.getElementById("histSub").textContent = target ? target : "";
+    document.getElementById("histEmpty").style.display = "none";
+    document.getElementById("histCanvasWrap").style.display = "block";
+    openHistModal();
+
+    try {
+      const r = await fetch("/api/monitoring/history/" + encodeURIComponent(deviceId) + "?hours=12", {
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        closeHistModal();
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      const pts = j.points || [];
+      if (!pts.length) {
+        document.getElementById("histEmpty").style.display = "block";
+        document.getElementById("histCanvasWrap").style.display = "none";
+        return;
+      }
+
+      const stroke = chartStroke();
+      const fill = chartFillAlpha();
+      const outageIntervals = computeOutageIntervalsMs(pts);
+      const dataPairs = pts.map(function (p) {
+        const ms = Date.parse(p.ts);
+        let y = null;
+        if (p.latency_ms !== null && p.latency_ms !== undefined && !Number.isNaN(Number(p.latency_ms))) {
+          y = Number(p.latency_ms);
+        }
+        return { x: ms, y: y };
+      }).filter(function (pt) { return !Number.isNaN(pt.x); });
+
+      const present = dataPairs.map(function (p) { return p.y; }).filter(function (v) { return v != null; });
+      const maxMs = present.length ? Math.max.apply(null, present) : 10;
+      const ySuggested = Math.max(10, Math.ceil(maxMs * 1.15));
+
+      const ctx = document.getElementById("histCanvas").getContext("2d");
+      histChartInst = new Chart(ctx, {
+        plugins: [createHistOutageIntervalBandsPlugin(outageIntervals)],
+        type: "line",
+        data: {
+          datasets: [{
+            label: "RTT (ms)",
+            data: dataPairs,
+            borderColor: stroke,
+            backgroundColor: fill,
+            borderWidth: 2,
+            tension: 0.15,
+            fill: true,
+            spanGaps: false,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          parsing: false,
+          scales: {
+            x: {
+              type: "linear",
+              title: { display: true, text: "Time (local)" },
+              ticks: {
+                maxTicksLimit: 10,
+                callback: function (val) {
+                  try {
+                    return new Date(val).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                  } catch (e) {
+                    return val;
+                  }
+                },
+              },
+            },
+            y: {
+              title: { display: true, text: "Latency (ms)" },
+              beginAtZero: true,
+              suggestedMax: ySuggested,
+            },
+          },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              callbacks: {
+                title: function (items) {
+                  const raw = items && items[0] && items[0].parsed && items[0].parsed.x;
+                  if (raw == null) return "";
+                  try {
+                    return new Date(raw).toLocaleString();
+                  } catch (e) {
+                    return String(raw);
+                  }
+                },
+                label: function (ctx) {
+                  const y = ctx.parsed.y;
+                  if (y == null || Number.isNaN(y)) return "RTT: — (down)";
+                  return "RTT: " + y.toFixed(1) + " ms";
+                },
+              },
+            },
+          },
+        },
+      });
+    } catch (e) {
+      closeHistModal();
+      setErr(String(e || "History failed"));
+    }
+  }
+
+  (function bindHistModal() {
+    document.getElementById("histCloseBtn").addEventListener("click", closeHistModal);
+    document.getElementById("histBackdrop").addEventListener("click", closeHistModal);
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") {
+        const m = document.getElementById("histModal");
+        if (m.classList.contains("is-open")) closeHistModal();
+      }
+    });
+  })();
+
+  (function bindOutageModal() {
+    document.getElementById("monOutageLogBtn").addEventListener("click", function () {
+      renderOutageLog(lastOutages);
+      openOutageModal();
+    });
+    document.getElementById("outageCloseBtn").addEventListener("click", closeOutageModal);
+    document.getElementById("outageBackdrop").addEventListener("click", closeOutageModal);
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") {
+        const m = document.getElementById("outageModal");
+        if (m.classList.contains("is-open")) closeOutageModal();
+      }
+    });
+  })();
+
+  function monitorTabLabel(tabId) {
+    const t = lastTabs.find(function (x) {
+      return Number(x.id) === Number(tabId);
+    });
+    return t ? String(t.name || "").trim() || "Tab " + tabId : "";
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var rawData = window.atob(base64);
+    var buffer = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; i++) buffer[i] = rawData.charCodeAt(i);
+    return buffer;
+  }
+
+  async function refreshWebPushControls() {
+    var st = document.getElementById("monWebPushStatus");
+    var en = document.getElementById("monWebPushEnable");
+    var dis = document.getElementById("monWebPushDisable");
+    if (!st || !en || !dis) return;
+    const health = [];
+    health.push("Browser=" + ((("serviceWorker" in navigator) && ("PushManager" in window)) ? "ok" : "unsupported"));
+    health.push("Permission=" + String((window.Notification && Notification.permission) || "unknown"));
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      st.textContent =
+        "Background push needs a modern browser (Chrome or Edge on Windows).";
+      en.style.display = "none";
+      dis.style.display = "none";
+      health.push("ServiceWorker=no");
+      health.push("Subscription=unknown");
+      health.push("Server=unknown");
+      health.push("LastTest=" + monPushLastTestResult);
+      setPushHealth(health);
+      return;
+    }
+    en.style.display = "";
+    try {
+      const r = await fetch("/api/push/vapid-public-key", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok || !j.public_key) {
+        var msg =
+          j.detail ||
+          "Background push is unavailable (install pywebpush on the server and restart).";
+        if (j.python_executable) {
+          msg += " Server Python: " + j.python_executable;
+        }
+        st.textContent = msg;
+        en.style.display = "none";
+        dis.style.display = "none";
+        health.push("Server=not_ready");
+        health.push("ServiceWorker=unknown");
+        health.push("Subscription=unknown");
+        health.push("LastTest=" + monPushLastTestResult);
+        setPushHealth(health);
+        return;
+      }
+      window.__mtrVapidReady = j.public_key;
+      health.push("Server=ready");
+      var reg = await navigator.serviceWorker.getRegistration();
+      var sub = reg ? await reg.pushManager.getSubscription() : null;
+      health.push("ServiceWorker=" + (reg ? "registered" : "missing"));
+      health.push("Subscription=" + (sub ? "active" : "none"));
+      health.push("LastTest=" + monPushLastTestResult + (monPushLastTestAt ? ("@" + monPushLastTestAt) : ""));
+      if (sub) {
+        st.textContent =
+          "Background push is on — you’ll get Windows notifications even when this browser is closed (same PC).";
+        en.style.display = "none";
+        dis.style.display = "";
+      } else {
+        st.textContent =
+          "Background push uses the service worker so alerts still fire when Chrome/Edge is closed.";
+        dis.style.display = "none";
+        en.style.display = "";
+      }
+      setPushHealth(health);
+    } catch (e) {
+      st.textContent = "Could not check push setup.";
+      health.push("Server=error");
+      health.push("ServiceWorker=unknown");
+      health.push("Subscription=unknown");
+      health.push("LastTest=" + monPushLastTestResult);
+      setPushHealth(health);
+    }
+  }
+
+  async function monWebPushEnableClick() {
+    setErr("");
+    if (!window.__mtrVapidReady) {
+      await refreshWebPushControls();
+    }
+    var key = window.__mtrVapidReady;
+    if (!key) {
+      setErr("Server did not provide a VAPID key.");
+      return;
+    }
+    try {
+      var perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setErr("Notifications were not allowed.");
+        await refreshWebPushControls();
+        return;
+      }
+      await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      var reg = await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+      var r = await fetch("/api/push/subscribe", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("Subscribe failed HTTP " + r.status));
+        return;
+      }
+      await refreshWebPushControls();
+    } catch (e) {
+      setErr(String(e || "Push subscribe failed"));
+    }
+  }
+
+  async function monWebPushDisableClick() {
+    setErr("");
+    try {
+      var reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) {
+        await refreshWebPushControls();
+        return;
+      }
+      var sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      await refreshWebPushControls();
+    } catch (e) {
+      setErr(String(e || "Unsubscribe failed"));
+    }
+  }
+
+  async function monWebPushTestClick() {
+    setErr("");
+    try {
+      const r = await fetch("/api/push/test-self", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("Push test failed HTTP " + r.status));
+        monPushLastTestResult = "failed";
+        monPushLastTestAt = nowLocalStamp();
+        await refreshWebPushControls();
+        return;
+      }
+      setErr("Test push sent. If push is enabled, you should see a notification.", false);
+      monPushLastTestResult = "sent";
+      monPushLastTestAt = nowLocalStamp();
+      await refreshWebPushControls();
+    } catch (e) {
+      setErr(String(e || "Push test failed"));
+      monPushLastTestResult = "error";
+      monPushLastTestAt = nowLocalStamp();
+      await refreshWebPushControls();
+    }
+  }
+
+  function renderPushUserStatus(users) {
+    const el = document.getElementById("monPushUserStatus");
+    const sel = document.getElementById("monPushUserSelect");
+    if (!el || !sel) return;
+    const list = Array.isArray(users) ? users : [];
+    if (!list.length) {
+      sel.innerHTML = '<option value="">No users found</option>';
+      el.textContent = "No users found to test. Click Refresh user status.";
+      return;
+    }
+    sel.innerHTML = list
+      .map(function (u) {
+        const name = String(u.username || "");
+        const count = Number(u.subscription_count || 0);
+        const suffix = count > 0 ? " - push enabled" : " - no push";
+        return '<option value="' + name.replace(/"/g, "&quot;") + '">' + name + suffix + "</option>";
+      })
+      .join("");
+    const enabled = list.filter(function (u) { return Number(u.subscription_count || 0) > 0; }).length;
+    el.textContent = "Users with push subscription: " + enabled + "/" + list.length;
+  }
+
+  async function refreshPushUserStatus() {
+    if (!CAN_MANAGE_PUSH_TESTS) return;
+    try {
+      const r = await fetch("/api/push/subscriptions/status", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("Push user status failed HTTP " + r.status));
+        return;
+      }
+      renderPushUserStatus(j.users || []);
+    } catch (e) {
+      setErr(String(e || "Push user status failed"));
+    }
+  }
+
+  async function sendSelectedUserPushTest() {
+    if (!CAN_MANAGE_PUSH_TESTS) return;
+    const sel = document.getElementById("monPushUserSelect");
+    if (!sel || !sel.value) {
+      setErr("Select a user first.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/push/test-user", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: String(sel.value || "") }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("Push user test failed HTTP " + r.status));
+        return;
+      }
+      setErr("Test push sent to " + String(j.username || "selected user"));
+    } catch (e) {
+      setErr(String(e || "Push user test failed"));
+    }
+  }
+
+  function formatTransTs(ts) {
+    try {
+      const d = ts ? new Date(ts) : null;
+      if (d && !Number.isNaN(d.getTime())) {
+        return d.toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      }
+      return ts || "";
+    } catch (e) {
+      return ts || "";
+    }
+  }
+
+  function cleanDisplayName(raw) {
+    const base = String(raw || "")
+      .replace(/@wibersolutions\.co\.za/ig, "")
+      .trim();
+    if (!base) return "";
+    return base
+      .split(/\s+/)
+      .map(function (part) {
+        if (!part) return "";
+        return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+      })
+      .join(" ");
+  }
+
+  function formatAckClock(ts) {
+    try {
+      const d = ts ? new Date(ts) : null;
+      if (!d || Number.isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s/g, "").toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function formatOutageDuration(seconds, fallbackText) {
+    if (seconds != null && Number.isFinite(Number(seconds))) {
+      const total = Math.max(0, Math.round(Number(seconds)));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      if (h > 0) return h + "h " + m + "m " + s + "s";
+      if (m > 0) return m + "m " + s + "s";
+      return s + "s";
+    }
+    return fallbackText || "—";
+  }
+
+  function openOutageModal() {
+    const m = document.getElementById("outageModal");
+    m.classList.add("is-open");
+    m.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeOutageModal() {
+    const m = document.getElementById("outageModal");
+    m.classList.remove("is-open");
+    m.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function renderOutageLog(items) {
+    const root = document.getElementById("outageList");
+    const empty = document.getElementById("outageEmpty");
+    if (!root || !empty) return;
+    root.innerHTML = "";
+    const rows = Array.isArray(items) ? items.slice() : [];
+    if (!rows.length) {
+      empty.style.display = "block";
+      root.style.display = "none";
+      return;
+    }
+    empty.style.display = "none";
+    root.style.display = "";
+    rows.forEach(function (ev) {
+      const row = document.createElement("div");
+      row.className = "outage-modal__row mono";
+      row.setAttribute("role", "listitem");
+      const tabLab = monitorTabLabel(ev.tab_id);
+      const left = document.createElement("div");
+      left.className = "outage-modal__meta";
+      const dur = formatOutageDuration(ev.duration_seconds, ev.duration_text);
+      const bits = [];
+      if (tabLab) bits.push("[" + tabLab + "]");
+      bits.push((ev.name || "?") + " · " + (ev.target || ""));
+      bits.push("down for " + dur);
+      if (ev.acked_by) {
+        const ackDur = formatOutageDuration(ev.ack_delay_seconds, "");
+        const ackWho = cleanDisplayName(ev.acked_by) || String(ev.acked_by || "");
+        bits.push("ack by " + ackWho + (ackDur ? (" after " + ackDur) : ""));
+      }
+      left.textContent = bits.join(" — ");
+      const right = document.createElement("span");
+      right.className = "outage-modal__when";
+      const downTxt = "Down " + formatTransTs(ev.down_since || ev.ts);
+      const recoveredTxt = "Recovered " + formatTransTs(ev.recovered_at || ev.ts);
+      const ackTxt = ev.acked_at ? (" | Ack " + formatTransTs(ev.acked_at)) : "";
+      right.textContent = downTxt + " | " + recoveredTxt + ackTxt;
+      row.appendChild(left);
+      row.appendChild(right);
+      root.appendChild(row);
+    });
+  }
+
+  function renderCurrentlyDown(allDevices) {
+    const wrap = document.getElementById("monTransDownWrap");
+    const root = document.getElementById("monTransDown");
+    if (!wrap || !root) return;
+    const downs = (allDevices || []).filter(function (d) {
+      return d.level === "down";
+    });
+    function byName(a, b) {
+      const an = (a.name || "").toLowerCase();
+      const bn = (b.name || "").toLowerCase();
+      if (an < bn) return -1;
+      if (an > bn) return 1;
+      return (Number(a.id) || 0) - (Number(b.id) || 0);
+    }
+    downs.sort(byName);
+    if (!downs.length) {
+      wrap.style.display = "none";
+      root.innerHTML = "";
+      return;
+    }
+    wrap.style.display = "";
+    root.innerHTML = "";
+    downs.forEach(function (d) {
+      const row = document.createElement("div");
+      row.className =
+        "monitor-translog__row mono monitor-translog__row--down";
+      row.setAttribute("role", "listitem");
+      const tabLab = monitorTabLabel(d.tab_id);
+      const left = document.createElement("div");
+      left.className = "monitor-translog__meta";
+      const bits = [];
+      if (tabLab) bits.push("[" + tabLab + "]");
+      bits.push((d.name || "?") + " · " + (d.target || ""));
+      bits.push("down");
+      left.textContent = bits.join(" — ");
+      const right = document.createElement("span");
+      right.className = "monitor-translog__when";
+      right.textContent = "Since " + (d.down_since ? formatTransTs(d.down_since) : "—");
+      const ackBtn = document.createElement("button");
+      ackBtn.type = "button";
+      ackBtn.style.marginLeft = "8px";
+      ackBtn.style.padding = "4px 8px";
+      ackBtn.style.fontSize = "12px";
+      ackBtn.setAttribute("data-ack-down", String(d.id || ""));
+      if (d.acknowledged_by) {
+        const ackWho = cleanDisplayName(d.acknowledged_by) || String(d.acknowledged_by || "");
+        const ackClock = formatAckClock(d.acknowledged_at);
+        ackBtn.disabled = true;
+        ackBtn.textContent = ackClock
+          ? (ackWho + " acknowledged at " + ackClock)
+          : ("Acknowledged by " + ackWho);
+        ackBtn.title = d.acknowledged_at ? ("Ack at " + formatTransTs(d.acknowledged_at)) : "";
+      } else {
+        ackBtn.textContent = "Acknowledge";
+      }
+      ackBtn.onclick = function (ev) {
+        try { ev.stopPropagation(); } catch (_) {}
+        const did = Number(d.id || 0);
+        if (!did) return;
+        acknowledgeDownDevice(did);
+      };
+      row.appendChild(left);
+      row.appendChild(right);
+      row.appendChild(ackBtn);
+      root.appendChild(row);
+    });
+  }
+
+  async function acknowledgeDownDevice(deviceId) {
+    setErr("");
+    var btn = document.querySelector("[data-ack-down='" + String(deviceId) + "']");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Acknowledging...";
+    }
+    try {
+      const r = await fetch("/api/monitoring/devices/" + encodeURIComponent(deviceId) + "/ack", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || j.ok === false) {
+        setErr(j.detail || ("Acknowledge failed HTTP " + r.status));
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Acknowledge";
+        }
+        return;
+      }
+      const who = String(j.acknowledged_by || "");
+      const whoClean = cleanDisplayName(who) || who;
+      const ackClock = formatAckClock(j.acknowledged_at);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = whoClean
+          ? (ackClock ? (whoClean + " acknowledged at " + ackClock) : ("Acknowledged by " + whoClean))
+          : "Acknowledged";
+      }
+      if (j.acked) {
+        setErr("Outage acknowledged.", false);
+      } else {
+        setErr("Already acknowledged by " + String(whoClean || "another user") + ".", false);
+      }
+      window.setTimeout(function () { refresh(); }, 150);
+    } catch (e) {
+      setErr(String(e || "Acknowledge failed"));
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Acknowledge";
+      }
+    }
+  }
+
+  function renderTransitionLog(items) {
+    const root = document.getElementById("monTransLog");
+    if (!root) return;
+    root.innerHTML = "";
+    if (!items || !items.length) {
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.style.margin = "6px 0 0 0";
+      p.textContent =
+        "No entries yet — recoveries and other changes (not ↓down) appear here and roll off after 10.";
+      root.appendChild(p);
+      return;
+    }
+    items.forEach(function (ev) {
+      const row = document.createElement("div");
+      const toDown = ev.new_level === "down";
+      row.className =
+        "monitor-translog__row mono" +
+        (toDown ? " monitor-translog__row--down" : "");
+      row.setAttribute("role", "listitem");
+      const tabLab = monitorTabLabel(ev.tab_id);
+      const left = document.createElement("div");
+      left.className = "monitor-translog__meta";
+      const bits = [];
+      if (tabLab) bits.push("[" + tabLab + "]");
+      bits.push((ev.name || "?") + " · " + (ev.target || ""));
+      bits.push(
+        (ev.old_level || "?") +
+          " " +
+          String.fromCharCode(8594) +
+          " " +
+          (ev.new_level || "?")
+      );
+      left.textContent = bits.join(" — ");
+      const right = document.createElement("span");
+      right.className = "monitor-translog__when";
+      right.textContent = formatTransTs(ev.ts);
+      row.appendChild(left);
+      row.appendChild(right);
+      root.appendChild(row);
+    });
+  }
+
+  function sortDevicesPriority(list) {
+    const down = list.filter(function (d) { return d.level === "down"; });
+    const rest = list.filter(function (d) { return d.level !== "down"; });
+    function byName(a, b) {
+      const an = (a.name || "").toLowerCase();
+      const bn = (b.name || "").toLowerCase();
+      if (an < bn) return -1;
+      if (an > bn) return 1;
+      return (Number(a.id) || 0) - (Number(b.id) || 0);
+    }
+    down.sort(byName);
+    rest.sort(byName);
+    return down.concat(rest);
+  }
+
+  function ensureActiveTab() {
+    if (!lastTabs.length) {
+      activeTabId = null;
+      return;
+    }
+    const ids = lastTabs.map(function (t) { return Number(t.id); });
+    let want = null;
+    try {
+      want = localStorage.getItem(LS_ACTIVE_TAB);
+    } catch (e) {}
+    let wid = want ? parseInt(want, 10) : NaN;
+    if (!ids.includes(wid)) {
+      wid = ids[0];
+    }
+    activeTabId = wid;
+    try {
+      localStorage.setItem(LS_ACTIVE_TAB, String(activeTabId));
+    } catch (e) {}
+  }
+
+  function renderTabs() {
+    const bar = document.getElementById("monitorTabBar");
+    bar.innerHTML = "";
+    lastTabs.forEach(function (t) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "monitor-tab" + (Number(t.id) === Number(activeTabId) ? " is-active" : "");
+      btn.textContent = t.name || ("Tab " + t.id);
+      btn.onclick = function () {
+        activeTabId = Number(t.id);
+        try {
+          localStorage.setItem(LS_ACTIVE_TAB, String(activeTabId));
+        } catch (e) {}
+        renderTabs();
+        renderFiltered();
+      };
+      bar.appendChild(btn);
+    });
+  }
+
+  function renderFiltered() {
+    const empty = document.getElementById("monEmpty");
+    if (!lastTabs.length || activeTabId == null) {
+      empty.style.display = "block";
+      empty.textContent = "Loading tabs…";
+      document.getElementById("monList").innerHTML = "";
+      return;
+    }
+    const filtered = sortDevicesPriority(
+      lastDevicesAll.filter(function (d) {
+        return Number(d.tab_id) === Number(activeTabId);
+      })
+    );
+    empty.style.display = filtered.length ? "none" : "block";
+    empty.textContent =
+      lastDevicesAll.length === 0
+        ? "No devices yet — add a name and target above."
+        : "No devices on this tab yet — add below.";
+    render(filtered);
+  }
+
+  function render(devices) {
+    const root = document.getElementById("monList");
+    root.innerHTML = "";
+    if (!devices || !devices.length) {
+      return;
+    }
+
+    devices.forEach(function (d) {
+      const card = document.createElement("div");
+      card.className = "monitor-card";
+
+      const led = document.createElement("div");
+      led.className = ledClass(d.level);
+      led.setAttribute("role", "status");
+      led.title = d.level === "ok" ? "Under threshold" : (d.level === "warn" ? "Over latency threshold" : "No reply");
+      led.textContent = ledLabel(d.level);
+
+      const body = document.createElement("div");
+      body.className = "monitor-card__body";
+      const h = document.createElement("div");
+      h.className = "monitor-card__name";
+      h.textContent = d.name || "";
+      const tgt = document.createElement("div");
+      tgt.className = "monitor-card__target mono";
+      tgt.textContent = d.target || "";
+      const meta = document.createElement("div");
+      meta.className = "monitor-card__meta";
+      if (d.level === "down") {
+        meta.textContent = "No ICMP reply (or host unknown)";
+      } else {
+        const th = Number(d.warn_latency_ms) || DEFAULT_WARN;
+        meta.textContent = "RTT " + (d.latency_ms != null ? d.latency_ms.toFixed(1) + " ms" : "—")
+          + " · warn if > " + th + " ms";
+      }
+      body.appendChild(h);
+      body.appendChild(tgt);
+      body.appendChild(meta);
+
+      const removeRow = document.createElement("div");
+      removeRow.className = "monitor-card__remove";
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.setAttribute("aria-label", "Remove device");
+      rm.title = "Remove from this tab";
+      rm.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
+      rm.onclick = function () { removeDevice(d.id, d.name); };
+      removeRow.appendChild(rm);
+      body.appendChild(removeRow);
+
+      const actions = document.createElement("div");
+      actions.className = "monitor-card__actions";
+
+      const hBtn = document.createElement("button");
+      hBtn.type = "button";
+      hBtn.textContent = "12H";
+      hBtn.title = "Last 12 hours RTT";
+      hBtn.onclick = function () {
+        showHistory(d.id, d.name || "", d.target || "");
+      };
+
+      actions.appendChild(hBtn);
+
+      card.appendChild(led);
+      card.appendChild(body);
+      card.appendChild(actions);
+      root.appendChild(card);
+    });
+  }
+
+  async function refresh(showLoader) {
+    setErr("");
+    if (showLoader) setMonLoading(true, "Loading monitoring data…");
+    try {
+      const r = await fetch("/api/monitoring/status", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      var pausedBanner = document.getElementById("monSamplingPausedBanner");
+      if (pausedBanner) {
+        pausedBanner.style.display = j.sampling_enabled === false ? "block" : "none";
+      }
+      const nextDevices = j.devices || [];
+      lastTabs = j.tabs || [];
+      lastDevicesAll = nextDevices;
+      lastOutages = j.outages || [];
+      renderCurrentlyDown(lastDevicesAll);
+      renderTransitionLog(j.transitions || []);
+      const outageModal = document.getElementById("outageModal");
+      if (outageModal && outageModal.classList.contains("is-open")) {
+        renderOutageLog(lastOutages);
+      }
+      ensureActiveTab();
+      renderTabs();
+      renderFiltered();
+      const hint = document.getElementById("monPollHint");
+      const ts = new Date().toLocaleTimeString();
+      if (j.sampling_enabled === false) {
+        hint.textContent = "Standby view " + ts + " · ICMP paused (no edge load) · refresh in 5s";
+      } else {
+        hint.textContent = "Last update " + ts + " · next refresh in 5s";
+      }
+    } catch (e) {
+      setErr(String(e || "Refresh failed"));
+    } finally {
+      if (showLoader) setMonLoading(false);
+    }
+  }
+
+  async function createTab() {
+    const name = prompt("New tab name:");
+    if (name == null) return;
+    const trimmed = String(name).trim();
+    if (!trimmed) return;
+    setErr("");
+    try {
+      const r = await fetch("/api/monitoring/tabs", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      activeTabId = j.id;
+      try {
+        localStorage.setItem(LS_ACTIVE_TAB, String(activeTabId));
+      } catch (e) {}
+      await refresh(false);
+    } catch (e) {
+      setErr(String(e || "Could not create tab"));
+    }
+  }
+
+  document.getElementById("monitorTabAdd").addEventListener("click", createTab);
+
+  async function addDevice() {
+    setErr("");
+    const name = (document.getElementById("monName").value || "").trim();
+    const target = (document.getElementById("monTarget").value || "").trim();
+    const warnEl = document.getElementById("monWarn");
+    let warn_latency_ms = null;
+    if (warnEl && warnEl.value !== "") {
+      const n = Number(warnEl.value);
+      if (!Number.isFinite(n)) {
+        setErr("Invalid threshold");
+        return;
+      }
+      warn_latency_ms = n;
+    }
+    if (activeTabId == null) {
+      setErr("Select a tab first.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/monitoring/devices", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          target: target,
+          warn_latency_ms: warn_latency_ms,
+          tab_id: activeTabId,
+        }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      document.getElementById("monName").value = "";
+      document.getElementById("monTarget").value = "";
+      await refresh(false);
+    } catch (e) {
+      setErr(String(e || "Add failed"));
+    }
+  }
+
+  async function importDevicesBulk() {
+    setErr("");
+    const resultEl = document.getElementById("monImportResult");
+    if (resultEl) resultEl.textContent = "";
+    if (activeTabId == null) {
+      setErr("Select a tab first.");
+      return;
+    }
+    const text = document.getElementById("monImportText").value || "";
+    if (!String(text).trim()) {
+      setErr("Paste text or choose a file first.");
+      return;
+    }
+    const warnEl = document.getElementById("monWarn");
+    let warn_latency_ms = null;
+    if (warnEl && warnEl.value !== "") {
+      const n = Number(warnEl.value);
+      if (!Number.isFinite(n)) {
+        setErr("Invalid threshold");
+        return;
+      }
+      warn_latency_ms = n;
+    }
+    const tabLabel =
+      (lastTabs.find(function (t) { return Number(t.id) === Number(activeTabId); }) || {}).name ||
+      String(activeTabId);
+    try {
+      const r = await fetch("/api/monitoring/devices/import", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tab_id: activeTabId,
+          text: text,
+          warn_latency_ms: warn_latency_ms,
+        }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      const imp = j.import || {};
+      const created = imp.created != null ? imp.created : 0;
+      const skipped = imp.skipped_lines != null ? imp.skipped_lines : 0;
+      const errors = imp.errors || [];
+      let msg =
+        "Imported " +
+        created +
+        " device(s) into tab \"" +
+        tabLabel +
+        "\"";
+      if (skipped) msg += " · skipped " + skipped + " blank/comment line(s)";
+      if (errors.length) {
+        const cap = 8;
+        const parts = [];
+        for (let i = 0; i < errors.length && i < cap; i++) {
+          const er = errors[i];
+          parts.push("L" + er.line + ": " + (er.detail || "?"));
+        }
+        let errStr = parts.join("; ");
+        if (errors.length > cap) {
+          errStr += " (+" + (errors.length - cap) + " more)";
+        }
+        msg += ". " + errors.length + " line(s) failed: " + errStr;
+        if (resultEl) resultEl.classList.add("err");
+      } else if (resultEl) {
+        resultEl.classList.remove("err");
+      }
+      if (resultEl) resultEl.textContent = msg;
+      if (created > 0) {
+        await refresh(false);
+      }
+    } catch (e) {
+      setErr(String(e || "Import failed"));
+    }
+  }
+
+  (function bindImportPanel() {
+    const btn = document.getElementById("monImportBtn");
+    const file = document.getElementById("monImportFile");
+    if (btn) btn.addEventListener("click", importDevicesBulk);
+    if (file) {
+      file.addEventListener("change", function (ev) {
+        const inp = ev.target;
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = function () {
+          const ta = document.getElementById("monImportText");
+          if (ta) ta.value = String(reader.result || "");
+          const res = document.getElementById("monImportResult");
+          if (res) {
+            res.textContent = "Loaded file: " + f.name;
+            res.style.color = "";
+          }
+          try {
+            inp.value = "";
+          } catch (e) {}
+        };
+        reader.onerror = function () {
+          setErr("Could not read file.");
+        };
+        reader.readAsText(f);
+      });
+    }
+  })();
+
+  async function removeDevice(id, name) {
+    const ok = confirm("Remove \"" + name + "\" from monitoring?");
+    if (!ok) return;
+    setErr("");
+    try {
+      const r = await fetch("/api/monitoring/devices/" + encodeURIComponent(id), {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      await refresh(false);
+    } catch (e) {
+      setErr(String(e || "Remove failed"));
+    }
+  }
+
+  document.getElementById("monWebPushEnable").addEventListener("click", monWebPushEnableClick);
+  document.getElementById("monWebPushDisable").addEventListener("click", monWebPushDisableClick);
+  document.getElementById("monWebPushTest").addEventListener("click", monWebPushTestClick);
+  if (CAN_MANAGE_PUSH_TESTS) {
+    document.getElementById("monPushUserTestBtn").addEventListener("click", sendSelectedUserPushTest);
+    document.getElementById("monPushUserRefreshBtn").addEventListener("click", refreshPushUserStatus);
+    refreshPushUserStatus();
+  }
+  refreshWebPushControls();
+
+  refresh(true);
+  setInterval(function () { refresh(false); }, 5000);
+</script>
+{% endblock %}

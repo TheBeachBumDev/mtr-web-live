@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Field Tech Customer Information</h1>
+<div class="panel">
+<div class="row" style="align-items:flex-end;">
+<div style="flex: 1 1 260px; min-width: 220px;">
+<label class="hint mono" for="customerId">Customer ID</label><br/>
+<input id="customerId" placeholder="e.g. 12345" style="width:100%; max-width: 320px;" type="text"/>
+</div>
+<div class="row" style="gap:10px;">
+<button id="lookupBtn" type="button">Lookup</button>
+<button id="clearBtn" type="button">Clear</button>
+</div>
+</div>
+<div class="hint mono" id="statusText" style="margin-top:10px;"></div>
+<div class="grid" style="margin-top:14px;">
+<div class="card">
+<div class="hint mono">Customer ID</div>
+<div class="row" style="justify-content:space-between; gap:10px; margin-top:6px;">
+<div class="mono" id="outCustomerId" style="font-weight:700;">—</div>
+<button class="btn" data-copy="outCustomerId" type="button">Copy</button>
+</div>
+</div>
+<div class="card">
+<div class="hint mono">Customer Name</div>
+<div class="row" style="justify-content:space-between; gap:10px; margin-top:6px;">
+<div class="mono" id="outCustomerName" style="font-weight:700;">—</div>
+<button class="btn" data-copy="outCustomerName" type="button">Copy</button>
+</div>
+</div>
+<div class="card">
+<div class="hint mono">PPPoE Username</div>
+<div class="row" style="justify-content:space-between; gap:10px; margin-top:6px;">
+<div class="mono" id="outPppoeUser" style="font-weight:700;">—</div>
+<button class="btn" data-copy="outPppoeUser" type="button">Copy</button>
+</div>
+</div>
+<div class="card">
+<div class="hint mono">PPPoE Password</div>
+<div class="row" style="justify-content:space-between; gap:10px; margin-top:6px;">
+<div class="mono" id="outPppoePass" style="font-weight:700;">—</div>
+<button class="btn" data-copy="outPppoePass" type="button">Copy</button>
+</div>
+<div class="hint mono" id="passwordHint" style="margin-top:10px;"></div>
+</div>
+<div class="card">
+<div class="hint mono">Antenna IP (Local IPAM)</div>
+<div class="row" style="justify-content:space-between; gap:10px; margin-top:6px; align-items:center;">
+<div style="flex:1;">
+<div class="mono" id="outAntennaIp" style="font-size:18px; font-weight:700;">—</div>
+<div class="hint mono" id="outAntennaIpHint" style="margin-top:6px;">If empty, select a Location and click Assign IP to assign the next free IP (gateway .1 reserved).</div>
+</div>
+</div>
+<div id="ipamAssignArea" style="margin-top:12px;">
+<div class="row" style="gap:10px; align-items:center;">
+<select id="ipamLocation" style="flex:1;"></select>
+<button class="btn" id="btnIpamRefresh" type="button">Refresh</button>
+</div>
+<div class="row" style="gap:10px; align-items:center; margin-top:10px;">
+<div style="flex:1;">
+<div class="hint mono">Next available IP</div>
+<div class="mono" id="outNextIp" style="font-size:18px; font-weight:700;">—</div>
+<div class="hint mono" id="outNextNet" style="margin-top:4px;">—</div>
+</div>
+<button class="btn" id="btnUseIp" type="button">Assign IP</button>
+</div>
+<div class="hint mono" id="ipamMsg" style="margin-top:8px;">—</div>
+</div>
+</div>
+</div>
+</div>
+
+<script src="/static/fieldtech.js"></script>
+{% endblock %}

@@ -1,0 +1,31 @@
+# Secrets and local env (never commit)
+.env
+.env.*
+!.env.compose.example
+
+# Runtime and local data
+data/
+logs/
+backups/
+.deploy-state/
+.clone-transfer-*/
+
+# Python / tooling
+venv/
+.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor
+.cursor/
+.idea/
+.vscode/
+
+# Node / misc
+node_modules/
+*.log
+*.bak

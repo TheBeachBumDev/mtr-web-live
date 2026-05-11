@@ -1,0 +1,1207 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .sm-head { margin-bottom: 12px; }
+  .sm-head p { margin: 6px 0 0; }
+  .sm-section { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-top: 14px; background: var(--card); }
+  .sm-suppliers, .sm-vendors, .sm-products, .sm-items { margin-top: 10px; display: grid; gap: 8px; }
+  .sm-supplier, .sm-vendor, .sm-product { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--card); }
+  .sm-items .sm-item { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; background: var(--code-bg); }
+  .sm-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .sm-lookup-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+  .sm-lookup-row input { flex: 1 1 auto; min-width: 0; }
+  .sm-lookup-row button { flex: 0 0 auto; white-space: nowrap; }
+  .sm-toggle { width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; font-weight: 650; }
+  .sm-body { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .sm-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 80; padding: 20px; }
+  .sm-modal { width: min(1200px, 97vw); max-height: 92vh; overflow: auto; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+  .sm-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); }
+  .sm-grid > label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .sm-grid input, .sm-grid select, .sm-grid textarea { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .sm-items-table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+  .sm-items-table th, .sm-items-table td { border: 1px solid var(--border); padding: 6px; vertical-align: top; }
+  .sm-items-table input, .sm-items-table textarea, .sm-items-table select { width: 100%; }
+  .sm-taglist { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sm-tag { border: 1px solid var(--border); border-radius: 999px; padding: 3px 8px; font-size: 12px; }
+  .sm-actions { display: flex; justify-content: space-between; margin-top: 10px; gap: 8px; flex-wrap: wrap; }
+  .sm-inline-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .sm-badge { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+  .sm-badge.new { border-color: #2563eb; color: #1d4ed8; }
+  .sm-badge.returned { border-color: #ca8a04; color: #a16207; }
+  .sm-assigned-vendors { margin-top: 10px; display: grid; gap: 8px; }
+  .sm-section-title { margin: 0; font-size: 16px; line-height: 1.2; }
+  .sm-scrap-log { margin-top: 10px; display: grid; gap: 8px; }
+  .sm-lots { margin-top: 8px; display: grid; gap: 6px; }
+  .sm-assigned-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--card) 78%, #d1d5db 22%);
+  }
+  .sm-subitem { margin-top: 6px; }
+  .sm-item-returned { border-style: dashed; opacity: 0.95; }
+</style>
+
+<div class="sm-head">
+  <h1 class="title" style="margin-top:0">Stock Management</h1>
+  <p class="hint">Suppliers, vendors, products, and serialised items. Rename actions are admin-only.</p>
+</div>
+
+<div class="sm-section">
+    <div class="title" style="gap:10px; flex-wrap:wrap;">
+      <h4 class="sm-section-title">Suppliers</h4>
+      <input id="smProductsSearch" type="text" placeholder="Search suppliers, vendors, products, SN, invoice..." style="min-width:280px; flex:1 1 360px;">
+      <button type="button" id="smAddSupplierBtn">+ Supplier</button>
+  </div>
+  <div id="smErr" class="err" style="display:none;margin-top:10px;"></div>
+  <div id="smSuppliers" class="sm-suppliers"></div>
+</div>
+
+<div class="sm-section">
+  <div class="title">
+    <h4 class="sm-section-title">Misc Products (All Suppliers)</h4>
+  </div>
+  <div id="smMiscGlobal" class="sm-suppliers"></div>
+</div>
+
+<div class="sm-section">
+  <div class="title" style="gap:10px; flex-wrap:wrap;">
+    <h4 class="sm-section-title">Assigned Stock</h4>
+    <input id="smAssignedSearch" type="text" placeholder="Search customer, invoice, product, SN..." style="min-width:260px; flex:1 1 320px;">
+    <button type="button" id="smAddMiscAssignBtn">Add Misc. Items</button>
+  </div>
+  <p class="hint" style="margin:8px 0 0;">Lines are grouped by customer ID and customer invoice number: the same customer with a different invoice appears as a separate block. Multiple serialised lines on one invoice list in order signed out (oldest first).</p>
+  <div id="smAssignedMeta" class="hint" style="margin-top:8px;"></div>
+  <div id="smAssignedVendors" class="sm-assigned-vendors"></div>
+</div>
+
+<div class="sm-section">
+  <div class="title">
+    <h4 class="sm-section-title">Scrapped Log</h4>
+  </div>
+  <div id="smScrapLog" class="sm-scrap-log"></div>
+</div>
+
+<div id="smEntryModalWrap" class="sm-modal-backdrop">
+  <div class="sm-modal">
+    <div class="sm-head-row">
+      <h3 id="smEntryTitle" style="margin:0;">New Stock Entry</h3>
+      <button type="button" id="smCloseModalBtn">Close</button>
+    </div>
+    <div class="sm-grid" style="margin-top:10px;">
+      <label>Invoice Number (applies to all lines)
+        <input id="smInvoiceNumber" type="text" placeholder="INV-12345">
+      </label>
+      <label>Date in Stock
+        <input id="smDateInStock" type="text" readonly>
+      </label>
+      <label>Value ex VAT (applies to all lines)
+        <input id="smValueExVat" type="number" min="0" step="0.01" placeholder="0.00">
+      </label>
+    </div>
+    <table class="sm-items-table">
+      <thead>
+        <tr>
+          <th style="width:30%">Serial Number</th>
+          <th style="width:50%">Comment</th>
+          <th style="width:20%">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="smEntryRows"></tbody>
+    </table>
+    <div class="sm-actions">
+      <div>
+        <button type="button" id="smAddRowBtn">+ Line</button>
+      </div>
+      <div>
+        <button type="button" id="smSaveEntryBtn">Save Stock Entry</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="smMiscModalWrap" class="sm-modal-backdrop">
+  <div class="sm-modal">
+    <div class="sm-head-row">
+      <h3 id="smMiscTitle" style="margin:0;">New Miscellaneous Stock Entry</h3>
+      <button type="button" id="smMiscCloseBtn">Close</button>
+    </div>
+    <div class="sm-grid" style="margin-top:10px;">
+      <label>Invoice Number
+        <input id="smMiscInvoiceNumber" type="text" placeholder="INV-12345">
+      </label>
+      <label>Date in Stock
+        <input id="smMiscDateInStock" type="text" readonly>
+      </label>
+      <label>Quantity
+        <input id="smMiscQuantity" type="number" min="0.0001" step="0.0001" placeholder="0">
+      </label>
+      <label>Value ex VAT (per unit)
+        <input id="smMiscValueExVat" type="number" min="0" step="0.01" placeholder="0.00">
+      </label>
+    </div>
+    <div class="sm-actions">
+      <div></div>
+      <div><button type="button" id="smMiscSaveBtn">Save Quantity</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="smAssignModalWrap" class="sm-modal-backdrop">
+  <div class="sm-modal">
+    <div class="sm-head-row">
+      <h3 style="margin:0;">Assign Stock</h3>
+      <button type="button" id="smAssignCloseBtn">Close</button>
+    </div>
+    <div class="sm-grid" style="margin-top:10px;">
+      <label>Serial Number
+        <input id="smAssignSerial" type="text" readonly>
+      </label>
+      <label>Assign To
+        <select id="smAssignTargetType">
+          <option value="customer">Customer</option>
+          <option value="high_site">High Site</option>
+        </select>
+      </label>
+      <label id="smAssignCustomerIdWrap">Customer ID
+        <div class="sm-lookup-row">
+          <input id="smAssignCustomerId" type="number" min="1" placeholder="Customer ID">
+          <button type="button" id="smAssignLookupBtn">Find</button>
+        </div>
+        <div id="smAssignLookupMsg" style="display:none; margin-top:4px; color:#ef4444; font-size:12px;"></div>
+      </label>
+      <label id="smAssignCustomerNameWrap">Customer Name
+        <input id="smAssignCustomerName" type="text" readonly>
+      </label>
+      <label id="smAssignCustomerAddressWrap">Address
+        <input id="smAssignCustomerAddress" type="text" readonly>
+      </label>
+      <label id="smAssignHighSiteWrap" style="display:none;">High Site
+        <select id="smAssignHighSiteLocation"></select>
+      </label>
+      <label>Customer Invoice Number
+        <input id="smAssignCustomerInvoiceNo" type="text" placeholder="Enter customer invoice number">
+      </label>
+    </div>
+    <div class="sm-actions">
+      <div></div>
+      <div><button type="button" id="smAssignSaveBtn">Assign</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="smMiscAssignModalWrap" class="sm-modal-backdrop">
+  <div class="sm-modal">
+    <div class="sm-head-row">
+      <h3 style="margin:0;">Assign Misc. Items</h3>
+      <button type="button" id="smMiscAssignCloseBtn">Close</button>
+    </div>
+    <div class="sm-grid" style="margin-top:10px;">
+      <label>Misc Product
+        <select id="smMiscAssignProduct"></select>
+      </label>
+      <label>Quantity
+        <input id="smMiscAssignQty" type="number" min="0.0001" step="0.0001" placeholder="0">
+      </label>
+      <label>Assign To
+        <select id="smMiscAssignTargetType">
+          <option value="customer">Customer</option>
+          <option value="high_site">High Site</option>
+        </select>
+      </label>
+      <label id="smMiscAssignCustomerIdWrap">Customer ID
+        <div class="sm-lookup-row">
+          <input id="smMiscAssignCustomerId" type="number" min="1" placeholder="Customer ID">
+          <button type="button" id="smMiscAssignLookupBtn">Find</button>
+        </div>
+        <div id="smMiscAssignLookupMsg" style="display:none; margin-top:4px; color:#ef4444; font-size:12px;"></div>
+      </label>
+      <label id="smMiscAssignCustomerNameWrap">Customer Name
+        <input id="smMiscAssignCustomerName" type="text" readonly>
+      </label>
+      <label id="smMiscAssignCustomerAddressWrap">Address
+        <input id="smMiscAssignCustomerAddress" type="text" readonly>
+      </label>
+      <label id="smMiscAssignHighSiteWrap" style="display:none;">High Site
+        <select id="smMiscAssignHighSiteLocation"></select>
+      </label>
+      <label>Customer Invoice Number
+        <input id="smMiscAssignCustomerInvoiceNo" type="text" placeholder="Enter customer invoice number">
+      </label>
+      <label>Comment
+        <input id="smMiscAssignComment" type="text" placeholder="Optional comment">
+      </label>
+    </div>
+    <div class="sm-actions">
+      <div></div>
+      <div><button type="button" id="smMiscAssignSaveBtn">Assign Misc. Items</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var IS_ADMIN = {{ is_admin | tojson }};
+    var currentProductId = 0;
+    var currentProductName = "";
+    var currentAssignItemId = 0;
+    var currentMiscProductId = 0;
+    var currentMiscProductName = "";
+    var miscAssignable = [];
+    var ipamLocations = [];
+    var ipamLocationsLoadErr = "";
+    var suppliersCache = [];
+    var assignedCache = [];
+    function byId(id) { return document.getElementById(id); }
+    function showErr(msg) {
+      var el = byId("smErr");
+      if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+      el.style.display = "block";
+      el.textContent = msg;
+    }
+    function fillLocationSelect(el, selectedId) {
+      if (!el) return;
+      el.innerHTML = "";
+      var p = document.createElement("option");
+      p.value = "";
+      p.textContent = ipamLocations.length
+        ? "Select High Site location"
+        : (ipamLocationsLoadErr ? "Could not load IPAM locations" : "No IPAM locations found");
+      p.disabled = !ipamLocations.length;
+      p.selected = true;
+      el.appendChild(p);
+      (ipamLocations || []).forEach(function (loc) {
+        var opt = document.createElement("option");
+        opt.value = String(loc.id);
+        opt.textContent = String(loc.name || "") + " (#" + String(loc.id) + ")";
+        if (selectedId != null && Number(selectedId) === Number(loc.id)) opt.selected = true;
+        el.appendChild(opt);
+      });
+    }
+    function syncAssignTargetUi() {
+      var t = (byId("smAssignTargetType").value || "customer").trim();
+      var isHighSite = t === "high_site";
+      byId("smAssignCustomerIdWrap").style.display = isHighSite ? "none" : "";
+      byId("smAssignCustomerNameWrap").style.display = isHighSite ? "none" : "";
+      byId("smAssignCustomerAddressWrap").style.display = isHighSite ? "none" : "";
+      byId("smAssignHighSiteWrap").style.display = isHighSite ? "" : "none";
+      setAssignLookupMsg("");
+      if (isHighSite) {
+        byId("smAssignCustomerId").value = "";
+        byId("smAssignCustomerName").value = "";
+        byId("smAssignCustomerAddress").value = "";
+        fillLocationSelect(byId("smAssignHighSiteLocation"));
+        if (ipamLocationsLoadErr) setAssignLookupMsg("IPAM locations unavailable: " + ipamLocationsLoadErr);
+      } else {
+        byId("smAssignHighSiteLocation").value = "";
+      }
+    }
+    function syncMiscAssignTargetUi() {
+      var t = (byId("smMiscAssignTargetType").value || "customer").trim();
+      var isHighSite = t === "high_site";
+      byId("smMiscAssignCustomerIdWrap").style.display = isHighSite ? "none" : "";
+      byId("smMiscAssignCustomerNameWrap").style.display = isHighSite ? "none" : "";
+      byId("smMiscAssignCustomerAddressWrap").style.display = isHighSite ? "none" : "";
+      byId("smMiscAssignHighSiteWrap").style.display = isHighSite ? "" : "none";
+      setMiscAssignLookupMsg("");
+      if (isHighSite) {
+        byId("smMiscAssignCustomerId").value = "";
+        byId("smMiscAssignCustomerName").value = "";
+        byId("smMiscAssignCustomerAddress").value = "";
+        fillLocationSelect(byId("smMiscAssignHighSiteLocation"));
+        if (ipamLocationsLoadErr) setMiscAssignLookupMsg("IPAM locations unavailable: " + ipamLocationsLoadErr);
+      } else {
+        byId("smMiscAssignHighSiteLocation").value = "";
+      }
+    }
+    async function loadIpamLocationsForStock() {
+      ipamLocationsLoadErr = "";
+      try {
+        var stockRes = await api("/api/stock/ipam-locations");
+        return (stockRes && stockRes.locations) || [];
+      } catch (e1) {
+        try {
+          var ipamRes = await api("/api/ipam/locations");
+          return (ipamRes && ipamRes.locations) || [];
+        } catch (e2) {
+          ipamLocationsLoadErr = String(e2 || e1 || "Failed to load IPAM locations");
+          return [];
+        }
+      }
+    }
+    async function api(url, method, body) {
+      var r = await fetch(url, {
+        method: method || "GET",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) throw new Error(j.detail || j.error || ("HTTP " + r.status));
+      return j;
+    }
+    function e(txt) { return String(txt == null ? "" : txt).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function todayIso() {
+      var d = new Date();
+      var mm = String(d.getMonth() + 1).padStart(2, "0");
+      var dd = String(d.getDate()).padStart(2, "0");
+      return d.getFullYear() + "-" + mm + "-" + dd;
+    }
+
+    function renderSuppliers(rows) {
+      var root = byId("smSuppliers");
+      root.innerHTML = "";
+      var q = String((byId("smProductsSearch") && byId("smProductsSearch").value) || "").trim().toLowerCase();
+      (rows || []).forEach(function (s) {
+        if (q) {
+          var supplierText = String(s.name || "").toLowerCase();
+          var hasMatch = supplierText.indexOf(q) >= 0;
+          if (!hasMatch) {
+            (s.vendors || []).forEach(function (v) {
+              if (hasMatch) return;
+              if (String(v.name || "").toLowerCase().indexOf(q) >= 0) hasMatch = true;
+              (v.products || []).forEach(function (p) {
+                if (hasMatch) return;
+                if (String(p.name || "").toLowerCase().indexOf(q) >= 0) hasMatch = true;
+                (p.items || []).forEach(function (it) {
+                  if (hasMatch) return;
+                  var t = [
+                    it.serial_number, it.batch_invoice_number, it.comment, it.date_in_stock
+                  ].join(" ").toLowerCase();
+                  if (t.indexOf(q) >= 0) hasMatch = true;
+                });
+                (p.lots || []).forEach(function (lt) {
+                  if (hasMatch) return;
+                  var ltText = [lt.invoice_number, lt.date_in_stock, lt.quantity_in, lt.quantity_remaining].join(" ").toLowerCase();
+                  if (ltText.indexOf(q) >= 0) hasMatch = true;
+                });
+              });
+            });
+          }
+          if (!hasMatch) return;
+        }
+        var sBox = document.createElement("div");
+        sBox.className = "sm-supplier";
+        var allVendors = (s.vendors || []);
+        var normalVendors = allVendors.filter(function (v) { return !v.is_misc; });
+        var miscVendors = allVendors.filter(function (v) { return !!v.is_misc; });
+        var renderVendorBlock = function (v) {
+          var productsHtml = (v.products || []).map(function (p) {
+            var isMisc = !!v.is_misc || !!p.is_misc;
+            var filteredItems = (p.items || []).filter(function (it) {
+              if (!q) return true;
+              var t = [
+                it.serial_number, it.batch_invoice_number, it.comment, it.date_in_stock, p.name, v.name
+              ].join(" ").toLowerCase();
+              return t.indexOf(q) >= 0;
+            });
+            var filteredLots = (p.lots || []).filter(function (lt) {
+              if (!q) return true;
+              var ltText = [lt.invoice_number, lt.date_in_stock, lt.quantity_in, lt.quantity_remaining, lt.value_ex_vat, p.name, v.name].join(" ").toLowerCase();
+              return ltText.indexOf(q) >= 0;
+            });
+            if (q) {
+              var productText = [p.name, v.name].join(" ").toLowerCase();
+              var productMatches = productText.indexOf(q) >= 0;
+              if (!productMatches && !filteredItems.length && !filteredLots.length) return "";
+            }
+            var itemsHtml = filteredItems.map(function (it) {
+              return "<div class='sm-item sm-head-row'>" +
+                "<span>SN: " + e(it.serial_number) +
+                (it.batch_invoice_number ? " | Invoice: " + e(it.batch_invoice_number) : "") +
+                (it.date_in_stock ? " | Date in Stock: " + e(it.date_in_stock) : "") +
+                (it.value_ex_vat != null ? " | Value ex VAT: " + e(it.value_ex_vat) : "") +
+                (it.comment ? " | Comment: " + e(it.comment) : "") +
+                " | <span class='sm-badge " + e(it.lifecycle_status || "new") + "'>" + e(it.lifecycle_status || "new") + "</span></span>" +
+                "<div class='sm-inline-actions'>" +
+                "<button type='button' data-act='assign-customer' data-item-id='" + it.id + "' data-item-sn='" + e(it.serial_number) + "'>Assign to Customer</button>" +
+                (IS_ADMIN ? "<button type='button' data-edit-item='" + it.id + "' data-item-sn='" + e(it.serial_number) + "'>Edit</button>" : "") +
+                "</div>" +
+                "</div>";
+            }).join("");
+            var lotsHtml = filteredLots.map(function (lt) {
+              var ext = "";
+              if (lt.value_ex_vat != null && lt.quantity_remaining != null) {
+                ext = " | Line value ex VAT (remaining qty): " + e(Number(lt.value_ex_vat) * Number(lt.quantity_remaining));
+              }
+              return "<div class='sm-item'>" +
+                "Invoice: " + e(lt.invoice_number || "-") +
+                " | Qty In: " + e(lt.quantity_in) +
+                " | Qty Remaining: " + e(lt.quantity_remaining) +
+                (lt.value_ex_vat != null ? " | Value ex VAT/unit: " + e(lt.value_ex_vat) : "") +
+                ext +
+                (lt.date_in_stock ? " | Date in Stock: " + e(lt.date_in_stock) : "") +
+                "</div>";
+            }).join("");
+            return "<div class='sm-product'>" +
+              "<div class='sm-head-row'><strong>" + e(p.name) + "</strong><span class='small'>" + (isMisc ? ("Qty: " + e(p.quantity_available == null ? 0 : p.quantity_available)) : ("Stock: " + (p.stock_level || 0))) + "</span></div>" +
+              "<div class='sm-head-row' style='margin-top:8px;'><button type='button' " + (isMisc ? ("data-add-misc-lot='" + p.id + "'") : ("data-add-item='" + p.id + "'")) + " data-product-name='" + e(p.name) + "'>" + (isMisc ? "+ Quantity Entry" : "+ Stock Entry") + "</button>" +
+              (IS_ADMIN ? "<button type='button' data-edit-product='" + p.id + "' data-product-name='" + e(p.name) + "'>Edit Product</button>" : "") + "</div>" +
+              (isMisc ? ("<div class='sm-lots'>" + (lotsHtml || "<div class='muted'>No quantity lots yet.</div>") + "</div>") : ("<div class='sm-items'>" + itemsHtml + "</div>")) +
+              "</div>";
+          }).filter(function (x) { return !!x; }).join("");
+          if (q && !productsHtml) return "";
+          return "<div class='sm-vendor'>" +
+            "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-vendor='" + v.id + "'><span>" + e(v.name) + "</span><span class='mono'>" + (q ? "▼" : "▶") + "</span></button>" +
+            (IS_ADMIN ? "<button type='button' data-edit-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'>Edit</button>" : "") + "</div>" +
+            "<div class='sm-body' data-vendor-body='" + v.id + "' style='display:" + (q ? "block" : "none") + ";'>" +
+            "<div class='sm-head-row'><button type='button' data-add-product='" + v.id + "'>+ Product</button></div>" +
+            "<div class='sm-products'>" + productsHtml + "</div></div></div>";
+        };
+        var vendorsHtml = normalVendors.map(renderVendorBlock).filter(function (x) { return !!x; }).join("");
+        var miscVendorsHtml = miscVendors.map(renderVendorBlock).filter(function (x) { return !!x; }).join("");
+        sBox.innerHTML =
+          "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-supplier='" + s.id + "'><span>" + e(s.name) + "</span><span class='mono'>" + (q ? "▼" : "▶") + "</span></button>" +
+          (IS_ADMIN ? "<button type='button' data-edit-supplier='" + s.id + "' data-supplier-name='" + e(s.name) + "'>Edit</button>" : "") + "</div>" +
+          "<div class='sm-body' data-supplier-body='" + s.id + "' style='display:" + (q ? "block" : "none") + ";'>" +
+          "<div class='sm-head-row'><button type='button' data-add-vendor='" + s.id + "'>+ Vendor</button><button type='button' data-add-misc-vendor='" + s.id + "'>+ Miscellaneous</button></div>" +
+          "<div class='sm-vendors'>" +
+          "<div class='hint' style='margin-top:2px;'><b>Vendors</b></div>" +
+          (vendorsHtml || "<div class='muted'>No vendors yet.</div>") +
+          "<div class='hint' style='margin-top:10px;'><b>Misc Products</b></div>" +
+          (miscVendorsHtml || "<div class='muted'>No miscellaneous vendors yet.</div>") +
+          "</div></div>";
+        root.appendChild(sBox);
+      });
+      if (!root.innerHTML) root.innerHTML = "<div class='muted'>No products matched your search.</div>";
+    }
+    function renderGlobalMisc(rows) {
+      var root = byId("smMiscGlobal");
+      root.innerHTML = "";
+      var map = {};
+      (rows || []).forEach(function (s) {
+        (s.vendors || []).forEach(function (v) {
+          if (!v.is_misc) return;
+          (v.products || []).forEach(function (p) {
+            var key = String(p.name || "").trim().toLowerCase();
+            if (!key) return;
+            if (!map[key]) {
+              map[key] = {
+                product_name: String(p.name || ""),
+                quantity_available: 0,
+                lots: []
+              };
+            }
+            map[key].quantity_available += Number(p.quantity_available || 0);
+            (p.lots || []).forEach(function (lt) {
+              map[key].lots.push({
+                supplier: String(s.name || ""),
+                invoice_number: String(lt.invoice_number || "-"),
+                quantity_remaining: Number(lt.quantity_remaining || 0),
+                date_in_stock: String(lt.date_in_stock || ""),
+                value_ex_vat: lt.value_ex_vat == null ? null : lt.value_ex_vat
+              });
+            });
+          });
+        });
+      });
+      var items = Object.keys(map).map(function (k) { return map[k]; })
+        .sort(function (a, b) { return String(a.product_name).localeCompare(String(b.product_name)); });
+      items.forEach(function (it) {
+        var box = document.createElement("div");
+        box.className = "sm-product";
+        var lotsHtml = (it.lots || []).map(function (lt) {
+          var ext = "";
+          if (lt.value_ex_vat != null && lt.quantity_remaining != null) {
+            ext = " | Line value ex VAT (remaining qty): " + e(Number(lt.value_ex_vat) * Number(lt.quantity_remaining));
+          }
+          return "<div class='sm-item'>" +
+            "Supplier: " + e(lt.supplier) +
+            " | Invoice: " + e(lt.invoice_number) +
+            " | Qty Remaining: " + e(lt.quantity_remaining) +
+            (lt.value_ex_vat != null ? " | Value ex VAT/unit: " + e(lt.value_ex_vat) : "") +
+            ext +
+            (lt.date_in_stock ? " | Date in Stock: " + e(lt.date_in_stock) : "") +
+            "</div>";
+        }).join("");
+        box.innerHTML =
+          "<div class='sm-head-row'><strong>" + e(it.product_name) + "</strong><span class='small'>Qty: " + e(it.quantity_available) + "</span></div>" +
+          "<div class='sm-lots'>" + (lotsHtml || "<div class='muted'>No lots yet.</div>") + "</div>";
+        root.appendChild(box);
+      });
+      if (!root.innerHTML) {
+        root.innerHTML = "<div class='muted'>No miscellaneous products yet. Use + Miscellaneous -> + Product -> + Quantity Entry.</div>";
+      }
+    }
+    function deriveMiscAssignableFromSuppliers(rows) {
+      var map = {};
+      (rows || []).forEach(function (s) {
+        (s.vendors || []).forEach(function (v) {
+          if (!v.is_misc) return;
+          (v.products || []).forEach(function (p) {
+            var name = String(p.name || "").trim();
+            if (!name) return;
+            var key = name.toLowerCase();
+            if (!map[key]) {
+              map[key] = { product_name: name, quantity_available: 0 };
+            }
+            map[key].quantity_available += Number(p.quantity_available || 0);
+          });
+        });
+      });
+      return Object.keys(map).map(function (k) { return map[k]; })
+        .sort(function (a, b) { return String(a.product_name).localeCompare(String(b.product_name)); });
+    }
+
+    function renderAssignedVendors(vendors) {
+      var root = byId("smAssignedVendors");
+      var meta = byId("smAssignedMeta");
+      root.innerHTML = "";
+      if (meta) meta.textContent = "";
+      function inferAssignmentTarget(it) {
+        var explicitTarget = String(it.assignment_target || "").trim().toLowerCase();
+        if (explicitTarget === "high_site" || explicitTarget === "customer") return explicitTarget;
+        // Backward compatibility: older backend payloads may not include assignment_target.
+        // If address is blank and customer name looks like a location label, treat as High Site.
+        var cname = String(it.customer_name || "").trim();
+        var caddr = String(it.customer_address || "").trim();
+        if (!caddr && cname) {
+          if (/high\s*site/i.test(cname) || /\(#\d+\)/.test(cname)) return "high_site";
+        }
+        return "customer";
+      }
+      var groups = {};
+      (vendors || []).forEach(function (it) {
+        var targetType = inferAssignmentTarget(it);
+        var keyBase = targetType === "high_site"
+          ? ("hs:" + String(it.location_id == null ? "" : it.location_id))
+          : ("cu:" + String(it.customer_id == null ? "" : it.customer_id));
+        var key = keyBase + "|" + String(it.customer_invoice_number || "");
+        if (!groups[key]) {
+          groups[key] = {
+            assignment_target: targetType,
+            customer_id: it.customer_id,
+            customer_name: it.customer_name || "",
+            customer_address: it.customer_address || "",
+            location_id: it.location_id,
+            location_name: it.location_name || "",
+            customer_invoice_number: it.customer_invoice_number || "",
+            signed_out_at: it.signed_out_at || "",
+            items: []
+          };
+        }
+        if (String(it.signed_out_at || "") > String(groups[key].signed_out_at || "")) {
+          groups[key].signed_out_at = it.signed_out_at || "";
+        }
+        groups[key].items.push(it);
+      });
+      var blocks = Object.keys(groups).map(function (k) { return groups[k]; })
+        .sort(function (a, b) { return String(b.signed_out_at || "").localeCompare(String(a.signed_out_at || "")); });
+      var q = String((byId("smAssignedSearch") && byId("smAssignedSearch").value) || "").trim().toLowerCase();
+      if (q) {
+        blocks = blocks.filter(function (g) {
+          var head = [g.customer_id, g.customer_name, g.customer_invoice_number, g.customer_address, g.signed_out_at].join(" ").toLowerCase();
+          if (head.indexOf(q) >= 0) return true;
+          return (g.items || []).some(function (it) {
+            var t = [
+              it.product_name, it.serial_number, it.quantity, it.source_invoice_number, it.customer_invoice_number,
+              it.lifecycle_status, it.returned_at
+            ].join(" ").toLowerCase();
+            if (t.indexOf(q) >= 0) return true;
+            return (it.lot_usage || []).some(function (u) {
+              return [u.invoice_number, u.quantity_used, u.value_ex_vat].join(" ").toLowerCase().indexOf(q) >= 0;
+            });
+          });
+        });
+      }
+      var totalMatched = blocks.length;
+      blocks = blocks.slice(0, 10);
+      if (meta) {
+        meta.textContent = "Showing " + blocks.length + " of " + totalMatched + " matched assigned invoice blocks (max 10 shown).";
+      }
+      blocks.forEach(function (g) {
+        var box = document.createElement("div");
+        box.className = "sm-assigned-card";
+        var toggleKey = String(g.assignment_target || "customer") + "-" +
+          String(g.assignment_target === "high_site" ? (g.location_id || 0) : (g.customer_id || 0)) +
+          "-" + String(g.customer_invoice_number || "").replace(/'/g, "");
+        var sortedItems = (g.items || []).slice().sort(function (a, b) {
+          var ak = a.kind === "serialized" ? 0 : 1;
+          var bk = b.kind === "serialized" ? 0 : 1;
+          if (ak !== bk) return ak - bk;
+          var ta = String(a.signed_out_at || "");
+          var tb = String(b.signed_out_at || "");
+          if (ta !== tb) return ta.localeCompare(tb);
+          return String(a.product_name || "").localeCompare(String(b.product_name || ""));
+        });
+        var rowsHtml = sortedItems.map(function (it) {
+          var invoiceTrace = "";
+          if (it.kind === "misc") {
+            var lu = (it.lot_usage || []).map(function (u) {
+              var vu = "";
+              if (u.value_ex_vat != null) {
+                vu = " @ " + e(u.value_ex_vat) + "/unit ex VAT";
+                var lineTot = Number(u.quantity_used || 0) * Number(u.value_ex_vat);
+                if (Number.isFinite(lineTot)) vu += " (line " + e(lineTot) + " ex VAT)";
+              }
+              return e(u.invoice_number || "-") + ": " + e(u.quantity_used) + vu;
+            }).join(", ");
+            if (lu) invoiceTrace = " | Source Invoices: " + lu;
+          }
+          var isReturned = it.kind === "serialized" && String(it.lifecycle_status || "") === "returned";
+          var returnedBadge = isReturned
+            ? (" <span class='sm-badge returned'>Returned</span>" + (it.returned_at ? (" <span class='muted'>(" + e(it.returned_at) + ")</span>") : ""))
+            : "";
+          var rowAct = it.kind === "serialized" && !isReturned;
+          return "<div class='sm-item sm-head-row sm-subitem" + (isReturned ? " sm-item-returned" : "") + "'>" +
+            "<span><b>" + e(it.product_name || "-") + "</b>" +
+            (it.kind === "serialized"
+              ? (" | SN: " + e(it.serial_number || "-") + (it.source_invoice_number ? (" | Source Invoice: " + e(it.source_invoice_number)) : ""))
+              : (" | Qty: " + e(it.quantity || 0))) +
+            returnedBadge +
+            invoiceTrace +
+            "</span>" +
+            "<div class='sm-inline-actions'>" +
+            (rowAct ? ("<button type='button' data-act='return-item' data-item-id='" + it.item_id + "'>Return</button>" +
+            "<button type='button' data-act='scrap-item' data-item-id='" + it.item_id + "'>Scrap</button>" +
+            "<button type='button' data-act='rma-item' data-item-id='" + it.item_id + "'>RMA</button>") : "") +
+            "</div></div>";
+        }).join("");
+        box.innerHTML =
+          "<div class='sm-head-row'>" +
+          "<button type='button' class='sm-toggle' data-toggle-assigned='" + e(toggleKey) + "'>" +
+          "<span>" +
+          (g.assignment_target === "high_site"
+            ? ("High Site: " + e(g.location_name || g.customer_name || "-") + (g.location_id != null ? (" (#" + e(g.location_id) + ")") : ""))
+            : ("Customer ID: " + e(g.customer_id == null ? "-" : g.customer_id))) +
+          (g.customer_invoice_number ? " | Customer Invoice: " + e(g.customer_invoice_number) : "") +
+          (g.signed_out_at ? " | Signed Out: " + e(g.signed_out_at) : "") +
+          "</span><span class='mono'>▶</span></button>" +
+          "<span class='sm-inline-actions'>" +
+          "<button type='button' data-act='add-misc-for-target' data-target-type='" + e(g.assignment_target || "customer") + "' data-customer-id='" + e(g.customer_id == null ? "" : g.customer_id) + "' data-customer-name='" + e(g.customer_name || "") + "' data-customer-address='" + e(g.customer_address || "") + "' data-customer-invoice='" + e(g.customer_invoice_number || "") + "' data-location-id='" + e(g.location_id == null ? "" : g.location_id) + "' data-location-name='" + e(g.location_name || "") + "'>Add Misc. Items</button>" +
+          "</span></div>" +
+          "<div class='sm-body' data-assigned-body='" + e(toggleKey) + "' style='display:none;'>" +
+          rowsHtml +
+          "</div>";
+        root.appendChild(box);
+      });
+      if (!root.innerHTML) root.innerHTML = "<div class='muted'>No assigned stock matched your search.</div>";
+    }
+    function normalizeAssignedPayload(payload) {
+      var p = payload || {};
+      if (Array.isArray(p.items)) return p.items;
+      if (Array.isArray(p.vendors)) {
+        var flat = [];
+        p.vendors.forEach(function (v) {
+          (v.items || []).forEach(function (it) {
+            flat.push({
+              kind: "serialized",
+              item_id: it.item_id,
+              product_name: it.product_name,
+              serial_number: it.serial_number,
+              signed_out_at: it.assigned_at || "",
+              customer_id: it.customer_id,
+              customer_name: it.customer_name,
+              customer_address: it.customer_address,
+              customer_invoice_number: it.customer_invoice_number || "",
+              lifecycle_status: it.lifecycle_status,
+              returned_at: it.returned_at || ""
+            });
+          });
+        });
+        return flat;
+      }
+      return [];
+    }
+
+    function renderScrapLog(items) {
+      var root = byId("smScrapLog");
+      root.innerHTML = "";
+      (items || []).forEach(function (it) {
+        var row = document.createElement("div");
+        row.className = "sm-item";
+        row.innerHTML = "<b>" + e(it.vendor_name || "-") + "</b> | " + e(it.product_name || "-") +
+          " | SN: " + e(it.serial_number || "-") +
+          (it.customer_id != null ? " | Cust ID: " + e(it.customer_id) : "") +
+          (it.customer_name ? " | " + e(it.customer_name) : "") +
+          (it.reason ? " | Reason: " + e(it.reason) : "") +
+          (it.created_at ? " | " + e(it.created_at) : "");
+        root.appendChild(row);
+      });
+      if (!root.innerHTML) root.innerHTML = "<div class='muted'>No scrapped items.</div>";
+    }
+
+    async function refresh() {
+      showErr("");
+      try {
+        var rs = await Promise.all([
+          api("/api/stock/suppliers"),
+          api("/api/stock/assigned"),
+          api("/api/stock/scrapped?limit=200"),
+          api("/api/stock/misc-assignable").catch(function () { return { ok: true, items: [] }; }),
+          loadIpamLocationsForStock()
+        ]);
+        var suppliers = (rs[0] && rs[0].suppliers) || [];
+        suppliersCache = suppliers;
+        assignedCache = normalizeAssignedPayload(rs[1]);
+        renderSuppliers(suppliersCache);
+        renderGlobalMisc(suppliersCache);
+        renderAssignedVendors(assignedCache);
+        renderScrapLog((rs[2] && rs[2].items) || []);
+        miscAssignable = (rs[3] && rs[3].items) || [];
+        if (!miscAssignable.length) {
+          miscAssignable = deriveMiscAssignableFromSuppliers(suppliers);
+        }
+        ipamLocations = Array.isArray(rs[4]) ? rs[4] : [];
+      } catch (e) { showErr(String(e)); }
+    }
+    async function addSupplier() {
+      var name = prompt("New supplier name:");
+      if (!name) return;
+      await api("/api/stock/suppliers", "POST", { name: String(name).trim() });
+      await refresh();
+    }
+    async function addVendor(sid) {
+      var name = prompt("New vendor name:");
+      if (!name) return;
+      await api("/api/stock/suppliers/" + encodeURIComponent(sid) + "/vendors", "POST", { name: String(name).trim() });
+      await refresh();
+    }
+    async function addMiscVendor(sid) {
+      var name = prompt("New miscellaneous vendor name:");
+      if (!name) return;
+      await api("/api/stock/suppliers/" + encodeURIComponent(sid) + "/vendors", "POST", {
+        name: String(name).trim(),
+        is_misc: true
+      });
+      await refresh();
+    }
+    async function addProduct(vid) {
+      var name = prompt("New product name:");
+      if (!name) return;
+      await api("/api/stock/vendors/" + encodeURIComponent(vid) + "/products", "POST", { name: String(name).trim() });
+      await refresh();
+    }
+    function addEntryRow() {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td><input data-fld='serial_number' type='text' placeholder='Scan serial'></td>" +
+        "<td><input data-fld='comment' type='text' placeholder='Comment'></td>" +
+        "<td><div class='sm-inline-actions'><button type='button' data-act='remove-row'>Remove</button></div></td>";
+      byId("smEntryRows").appendChild(tr);
+    }
+    function openEntryModal(pid, productName) {
+      currentProductId = Number(pid || 0);
+      currentProductName = String(productName || "");
+      byId("smEntryTitle").textContent = "New Stock Entry - " + currentProductName;
+      byId("smInvoiceNumber").value = "";
+      byId("smDateInStock").value = todayIso();
+      byId("smValueExVat").value = "";
+      byId("smEntryRows").innerHTML = "";
+      addEntryRow();
+      byId("smEntryModalWrap").style.display = "flex";
+    }
+    function closeEntryModal() {
+      byId("smEntryModalWrap").style.display = "none";
+      currentProductId = 0;
+      currentProductName = "";
+    }
+    function openMiscModal(pid, productName) {
+      currentMiscProductId = Number(pid || 0);
+      currentMiscProductName = String(productName || "");
+      byId("smMiscTitle").textContent = "New Miscellaneous Quantity Entry - " + currentMiscProductName;
+      byId("smMiscInvoiceNumber").value = "";
+      byId("smMiscDateInStock").value = todayIso();
+      byId("smMiscQuantity").value = "";
+      byId("smMiscValueExVat").value = "";
+      byId("smMiscModalWrap").style.display = "flex";
+    }
+    function closeMiscModal() {
+      byId("smMiscModalWrap").style.display = "none";
+      currentMiscProductId = 0;
+      currentMiscProductName = "";
+    }
+    async function saveMiscModal() {
+      if (!currentMiscProductId) throw new Error("No product selected");
+      var qtyRaw = (byId("smMiscQuantity").value || "").trim();
+      if (!qtyRaw) throw new Error("Quantity is required");
+      var qty = Number(qtyRaw);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be > 0");
+      var valRaw = (byId("smMiscValueExVat").value || "").trim();
+      if (valRaw === "") throw new Error("Value ex VAT per unit is required");
+      var valNum = Number(valRaw);
+      if (!Number.isFinite(valNum) || valNum < 0) throw new Error("Value ex VAT must be a number ≥ 0");
+      await api("/api/stock/products/" + encodeURIComponent(currentMiscProductId) + "/misc-lots", "POST", {
+        invoice_number: (byId("smMiscInvoiceNumber").value || "").trim(),
+        date_in_stock: (byId("smMiscDateInStock").value || "").trim(),
+        quantity: qty,
+        value_ex_vat: valNum
+      });
+      closeMiscModal();
+      await refresh();
+    }
+    function openAssignModal(itemId, serialNumber) {
+      currentAssignItemId = Number(itemId || 0);
+      byId("smAssignSerial").value = String(serialNumber || "");
+      byId("smAssignCustomerId").value = "";
+      byId("smAssignCustomerName").value = "";
+      byId("smAssignCustomerAddress").value = "";
+      byId("smAssignCustomerInvoiceNo").value = "";
+      byId("smAssignTargetType").value = "customer";
+      fillLocationSelect(byId("smAssignHighSiteLocation"));
+      syncAssignTargetUi();
+      setAssignLookupMsg("");
+      byId("smAssignModalWrap").style.display = "flex";
+    }
+    function closeAssignModal() {
+      byId("smAssignModalWrap").style.display = "none";
+      currentAssignItemId = 0;
+    }
+    function setMiscAssignLookupMsg(msg) {
+      var el = byId("smMiscAssignLookupMsg");
+      if (!el) return;
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.textContent = String(msg);
+    }
+    function openMiscAssignModal() {
+      var sel = byId("smMiscAssignProduct");
+      sel.innerHTML = "";
+      (miscAssignable || []).forEach(function (m) {
+        var opt = document.createElement("option");
+        opt.value = String(m.product_name || "");
+        opt.textContent = String(m.product_name || "") + " (Available: " + String(m.quantity_available == null ? 0 : m.quantity_available) + ")";
+        if (Number(m.quantity_available || 0) <= 0) opt.disabled = true;
+        sel.appendChild(opt);
+      });
+      if (!sel.options.length) {
+        var emptyOpt = document.createElement("option");
+        emptyOpt.value = "";
+        emptyOpt.textContent = "No misc products available";
+        emptyOpt.disabled = true;
+        emptyOpt.selected = true;
+        sel.appendChild(emptyOpt);
+      }
+      byId("smMiscAssignQty").value = "";
+      byId("smMiscAssignCustomerId").value = "";
+      byId("smMiscAssignCustomerName").value = "";
+      byId("smMiscAssignCustomerAddress").value = "";
+      byId("smMiscAssignCustomerInvoiceNo").value = "";
+      byId("smMiscAssignComment").value = "";
+      byId("smMiscAssignTargetType").value = "customer";
+      fillLocationSelect(byId("smMiscAssignHighSiteLocation"));
+      syncMiscAssignTargetUi();
+      setMiscAssignLookupMsg("");
+      byId("smMiscAssignModalWrap").style.display = "flex";
+    }
+    function closeMiscAssignModal() {
+      byId("smMiscAssignModalWrap").style.display = "none";
+    }
+    function openMiscAssignModalForTarget(targetType, customerId, customerName, customerAddress, customerInvoiceNumber, locationId, locationName) {
+      openMiscAssignModal();
+      var tt = String(targetType || "customer").trim();
+      byId("smMiscAssignTargetType").value = (tt === "high_site") ? "high_site" : "customer";
+      byId("smMiscAssignCustomerId").value = String(customerId || "");
+      byId("smMiscAssignCustomerName").value = String(customerName || "");
+      byId("smMiscAssignCustomerAddress").value = String(customerAddress || "");
+      byId("smMiscAssignCustomerInvoiceNo").value = String(customerInvoiceNumber || "");
+      syncMiscAssignTargetUi();
+      if (tt === "high_site") {
+        var locSel = byId("smMiscAssignHighSiteLocation");
+        var lid = String(locationId || "").trim();
+        if (locSel && lid) {
+          locSel.value = lid;
+          if (!locSel.value) {
+            var opt = document.createElement("option");
+            opt.value = lid;
+            opt.textContent = String(locationName || customerName || ("High Site #" + lid));
+            locSel.appendChild(opt);
+            locSel.value = lid;
+          }
+        }
+      }
+      setMiscAssignLookupMsg("");
+    }
+    function setAssignLookupMsg(msg) {
+      var el = byId("smAssignLookupMsg");
+      if (!el) return;
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.textContent = String(msg);
+    }
+    async function lookupAssignCustomer() {
+      var cid = (byId("smAssignCustomerId").value || "").trim();
+      if (!cid) throw new Error("Enter customer ID");
+      setAssignLookupMsg("");
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
+      try {
+        var res = await fetch("/api/stock/customer/" + encodeURIComponent(cid), {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal
+        });
+        var r = await res.json().catch(function () { return {}; });
+        if (!res.ok || !r.ok) throw new Error(r.detail || r.error || ("HTTP " + res.status));
+        var c = (r && r.customer) || {};
+        byId("smAssignCustomerName").value = String(c.name || "");
+        byId("smAssignCustomerAddress").value = String(c.address || "");
+        setAssignLookupMsg("");
+      } catch (e) {
+        var msg = String(e || "");
+        var lower = msg.toLowerCase();
+        if (lower.indexOf("abort") >= 0 || lower.indexOf("timeout") >= 0) {
+          byId("smAssignCustomerName").value = "";
+          byId("smAssignCustomerAddress").value = "";
+          setAssignLookupMsg("Lookup timed out. Please try again.");
+          return;
+        }
+        if (lower.indexOf("not found") >= 0 || lower.indexOf("http 404") >= 0) {
+          byId("smAssignCustomerName").value = "";
+          byId("smAssignCustomerAddress").value = "";
+          setAssignLookupMsg("Customer ID " + cid + " not found.");
+          return;
+        }
+        throw e;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    async function lookupMiscAssignCustomer() {
+      var cid = (byId("smMiscAssignCustomerId").value || "").trim();
+      if (!cid) throw new Error("Enter customer ID");
+      setMiscAssignLookupMsg("");
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
+      try {
+        var res = await fetch("/api/stock/customer/" + encodeURIComponent(cid), {
+          method: "GET",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal
+        });
+        var r = await res.json().catch(function () { return {}; });
+        if (!res.ok || !r.ok) throw new Error(r.detail || r.error || ("HTTP " + res.status));
+        var c = (r && r.customer) || {};
+        byId("smMiscAssignCustomerName").value = String(c.name || "");
+        byId("smMiscAssignCustomerAddress").value = String(c.address || "");
+      } catch (e) {
+        var msg = String(e || "");
+        var lower = msg.toLowerCase();
+        if (lower.indexOf("abort") >= 0 || lower.indexOf("timeout") >= 0) {
+          setMiscAssignLookupMsg("Lookup timed out. Please try again.");
+          return;
+        }
+        if (lower.indexOf("not found") >= 0 || lower.indexOf("http 404") >= 0) {
+          setMiscAssignLookupMsg("Customer ID " + cid + " not found.");
+          return;
+        }
+        throw e;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    async function saveAssign() {
+      if (!currentAssignItemId) throw new Error("No stock item selected");
+      var targetType = (byId("smAssignTargetType").value || "customer").trim();
+      var cid = (byId("smAssignCustomerId").value || "").trim();
+      var cname = (byId("smAssignCustomerName").value || "").trim();
+      var caddr = (byId("smAssignCustomerAddress").value || "").trim();
+      var locId = (byId("smAssignHighSiteLocation").value || "").trim();
+      var cinv = (byId("smAssignCustomerInvoiceNo").value || "").trim();
+      var payload = {
+        assignment_target: targetType,
+        customer_invoice_number: cinv
+      };
+      if (targetType === "high_site") {
+        if (!locId) throw new Error("Select High Site location");
+        var locSel = byId("smAssignHighSiteLocation");
+        var locName = "";
+        if (locSel && locSel.selectedIndex >= 0 && locSel.options[locSel.selectedIndex]) {
+          locName = String(locSel.options[locSel.selectedIndex].text || "").trim();
+        }
+        payload.location_id = Number(locId);
+        // Backward compatibility for older backend instances that still validate customer fields only.
+        payload.customer_id = Number(locId);
+        payload.customer_name = locName || ("High Site #" + String(locId));
+        payload.customer_address = "";
+      } else {
+        if (!cid) throw new Error("Customer ID required");
+        if (!cname) throw new Error("Lookup customer first");
+        payload.customer_id = Number(cid);
+        payload.customer_name = cname;
+        payload.customer_address = caddr;
+      }
+      await api("/api/stock/items/" + encodeURIComponent(currentAssignItemId) + "/assign", "POST", payload);
+      closeAssignModal();
+      await refresh();
+    }
+    async function saveMiscAssign() {
+      var productName = (byId("smMiscAssignProduct").value || "").trim();
+      var qtyRaw = (byId("smMiscAssignQty").value || "").trim();
+      var targetType = (byId("smMiscAssignTargetType").value || "customer").trim();
+      var cid = (byId("smMiscAssignCustomerId").value || "").trim();
+      var cname = (byId("smMiscAssignCustomerName").value || "").trim();
+      var caddr = (byId("smMiscAssignCustomerAddress").value || "").trim();
+      var locId = (byId("smMiscAssignHighSiteLocation").value || "").trim();
+      if (!productName) throw new Error("Select a misc product");
+      if (!qtyRaw) throw new Error("Quantity is required");
+      var qty = Number(qtyRaw);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error("Quantity must be > 0");
+      var payload = {
+        product_name: productName,
+        quantity: qty,
+        assignment_target: targetType,
+        customer_invoice_number: (byId("smMiscAssignCustomerInvoiceNo").value || "").trim(),
+        comment: (byId("smMiscAssignComment").value || "").trim()
+      };
+      if (targetType === "high_site") {
+        if (!locId) throw new Error("Select High Site location");
+        var miscLocSel = byId("smMiscAssignHighSiteLocation");
+        var miscLocName = "";
+        if (miscLocSel && miscLocSel.selectedIndex >= 0 && miscLocSel.options[miscLocSel.selectedIndex]) {
+          miscLocName = String(miscLocSel.options[miscLocSel.selectedIndex].text || "").trim();
+        }
+        payload.location_id = Number(locId);
+        // Backward compatibility for older backend instances that still validate customer fields only.
+        payload.customer_id = Number(locId);
+        payload.customer_name = miscLocName || ("High Site #" + String(locId));
+        payload.customer_address = "";
+      } else {
+        if (!cid) throw new Error("Customer ID required");
+        if (!cname) throw new Error("Lookup customer first");
+        payload.customer_id = Number(cid);
+        payload.customer_name = cname;
+        payload.customer_address = caddr;
+      }
+      await api("/api/stock/misc/assign", "POST", payload);
+      closeMiscAssignModal();
+      await refresh();
+    }
+    async function saveEntryModal() {
+      if (!currentProductId) throw new Error("No product selected");
+      var rows = Array.prototype.slice.call(byId("smEntryRows").querySelectorAll("tr"));
+      if (!rows.length) throw new Error("Add at least one line item");
+      var valueExVat = (byId("smValueExVat").value || "").trim();
+      var items = rows.map(function (tr) {
+        return {
+          serial_number: (tr.querySelector("[data-fld='serial_number']").value || "").trim(),
+          value_ex_vat: valueExVat,
+          date_issued: "",
+          quotation_no: "",
+          invoice_no: "",
+          client_customer_id: null,
+          client_name: "",
+          address: "",
+          technician_user_ids: [],
+          technician_names: [],
+          comment: (tr.querySelector("[data-fld='comment']").value || "").trim()
+        };
+      });
+      await api("/api/stock/products/" + encodeURIComponent(currentProductId) + "/items/batch", "POST", {
+        invoice_number: (byId("smInvoiceNumber").value || "").trim(),
+        items: items
+      });
+      closeEntryModal();
+      await refresh();
+    }
+    async function editSupplier(sid, oldName) {
+      var name = prompt("Rename supplier:", oldName || "");
+      if (!name) return;
+      await api("/api/stock/suppliers/" + encodeURIComponent(sid), "PATCH", { name: String(name).trim() });
+      await refresh();
+    }
+    async function editVendor(vid, oldName) {
+      var name = prompt("Rename vendor:", oldName || "");
+      if (!name) return;
+      await api("/api/stock/vendors/" + encodeURIComponent(vid), "PATCH", { name: String(name).trim() });
+      await refresh();
+    }
+    async function editProduct(pid, oldName) {
+      var name = prompt("Rename product:", oldName || "");
+      if (!name) return;
+      await api("/api/stock/products/" + encodeURIComponent(pid), "PATCH", { name: String(name).trim() });
+      await refresh();
+    }
+    async function editItem(iid, oldSn) {
+      var sn = prompt("Edit serial number:", oldSn || "");
+      if (!sn) return;
+      await api("/api/stock/items/" + encodeURIComponent(iid), "PATCH", { serial_number: String(sn).trim() });
+      await refresh();
+    }
+    function toggleBody(sel, btn) {
+      var body = document.querySelector(sel);
+      if (!body) return;
+      var hidden = body.style.display === "none";
+      body.style.display = hidden ? "block" : "none";
+      var icon = btn.querySelector(".mono");
+      if (icon) icon.textContent = hidden ? "▼" : "▶";
+    }
+
+    byId("smAddSupplierBtn").addEventListener("click", function () { addSupplier().catch(function (e) { showErr(String(e)); }); });
+    byId("smAddRowBtn").addEventListener("click", function () { addEntryRow(); });
+    byId("smCloseModalBtn").addEventListener("click", function () { closeEntryModal(); });
+    byId("smSaveEntryBtn").addEventListener("click", function () { saveEntryModal().catch(function (e) { showErr(String(e)); }); });
+    byId("smMiscCloseBtn").addEventListener("click", function () { closeMiscModal(); });
+    byId("smMiscSaveBtn").addEventListener("click", function () { saveMiscModal().catch(function (e) { showErr(String(e)); }); });
+    byId("smAssignCloseBtn").addEventListener("click", function () { closeAssignModal(); });
+    byId("smAssignLookupBtn").addEventListener("click", function () { lookupAssignCustomer().catch(function (e) { showErr(String(e)); }); });
+    byId("smAssignTargetType").addEventListener("change", syncAssignTargetUi);
+    byId("smAssignSaveBtn").addEventListener("click", function () { saveAssign().catch(function (e) { showErr(String(e)); }); });
+    byId("smProductsSearch").addEventListener("input", function () { renderSuppliers(suppliersCache); });
+    byId("smAssignedSearch").addEventListener("input", function () { renderAssignedVendors(assignedCache); });
+    byId("smAddMiscAssignBtn").addEventListener("click", function () { openMiscAssignModal(); });
+    byId("smMiscAssignCloseBtn").addEventListener("click", function () { closeMiscAssignModal(); });
+    byId("smMiscAssignLookupBtn").addEventListener("click", function () { lookupMiscAssignCustomer().catch(function (e) { showErr(String(e)); }); });
+    byId("smMiscAssignTargetType").addEventListener("change", syncMiscAssignTargetUi);
+    byId("smMiscAssignSaveBtn").addEventListener("click", function () { saveMiscAssign().catch(function (e) { showErr(String(e)); }); });
+    document.addEventListener("click", function (ev) {
+      var t = ev.target && ev.target.closest ? ev.target.closest("[data-toggle-supplier],[data-toggle-vendor],[data-toggle-assigned],[data-add-vendor],[data-add-misc-vendor],[data-add-product],[data-add-item],[data-add-misc-lot],[data-edit-supplier],[data-edit-vendor],[data-edit-product],[data-edit-item],[data-act]") : null;
+      if (!t) return;
+      var v;
+      v = t.getAttribute("data-toggle-supplier"); if (v) return toggleBody("[data-supplier-body='" + v + "']", t);
+      v = t.getAttribute("data-toggle-vendor"); if (v) return toggleBody("[data-vendor-body='" + v + "']", t);
+      v = t.getAttribute("data-toggle-assigned"); if (v) return toggleBody("[data-assigned-body='" + v + "']", t);
+      v = t.getAttribute("data-add-vendor"); if (v) return addVendor(v).catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-add-misc-vendor"); if (v) return addMiscVendor(v).catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-add-product"); if (v) return addProduct(v).catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-add-item"); if (v) return openEntryModal(v, t.getAttribute("data-product-name") || "");
+      v = t.getAttribute("data-add-misc-lot"); if (v) return openMiscModal(v, t.getAttribute("data-product-name") || "");
+      var act = t.getAttribute("data-act");
+      if (act === "remove-row") { var tr = t.closest("tr"); if (tr) tr.remove(); return; }
+      if (act === "assign-customer") return openAssignModal(t.getAttribute("data-item-id"), t.getAttribute("data-item-sn"));
+      if (act === "add-misc-for-target") return openMiscAssignModalForTarget(
+        t.getAttribute("data-target-type") || "customer",
+        t.getAttribute("data-customer-id") || "",
+        t.getAttribute("data-customer-name") || "",
+        t.getAttribute("data-customer-address") || "",
+        t.getAttribute("data-customer-invoice") || "",
+        t.getAttribute("data-location-id") || "",
+        t.getAttribute("data-location-name") || ""
+      );
+      if (act === "return-item") return api("/api/stock/items/" + encodeURIComponent(t.getAttribute("data-item-id")) + "/return", "POST")
+        .then(function () { return refresh(); })
+        .catch(function (e) { showErr(String(e)); });
+      if (act === "scrap-item") {
+        var iid = t.getAttribute("data-item-id");
+        var why = prompt("Scrap reason (optional):", "") || "";
+        return api("/api/stock/items/" + encodeURIComponent(iid) + "/scrap", "POST", { reason: why })
+          .then(function () { return refresh(); })
+          .catch(function (e) { showErr(String(e)); });
+      }
+      if (act === "rma-item") {
+        var iid2 = t.getAttribute("data-item-id");
+        return api("/api/stock/items/" + encodeURIComponent(iid2) + "/rma", "POST")
+          .then(function () { showErr(""); })
+          .catch(function (e) { showErr(String(e)); });
+      }
+      if (!IS_ADMIN) return;
+      v = t.getAttribute("data-edit-supplier"); if (v) return editSupplier(v, t.getAttribute("data-supplier-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-edit-vendor"); if (v) return editVendor(v, t.getAttribute("data-vendor-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-edit-product"); if (v) return editProduct(v, t.getAttribute("data-product-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-edit-item"); if (v) return editItem(v, t.getAttribute("data-item-sn") || "").catch(function (e) { showErr(String(e)); });
+    });
+
+    refresh();
+  })();
+</script>
+{% endblock %}

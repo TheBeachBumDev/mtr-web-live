@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Download Test</h1>
+    <p class="hint">Downlink throughput test: stream a large file from this server to your client (auth protected).</p>
+
+    <div class="row">
+      <label class="hint mono">Size</label>
+      <select id="sizeMb">
+        <option value="50">50 MB</option>
+        <option value="100">100 MB</option>
+        <option value="200" selected>200 MB</option>
+        <option value="500">500 MB</option>
+        <option value="1024">1024 MB</option>
+      </select>
+      <button onclick="startMeasure()">Test Download (measure)</button>
+<span id="status" class="hint mono"></span>
+    </div>
+    <div id="error" class="hint err"></div>
+
+    <div class="panel">
+      <div class="hint mono">Throughput (Mbps) over time</div>
+      <div class="chart-box">
+        <canvas id="mbpsChart"></canvas>
+      </div>
+      <div class="hint mono" id="chartMeta" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="panel">
+      <div class="hint mono">Endpoint: <code>/api/traffic/download</code></div>
+      <div class="hint mono">Tip: For consistent results, keep the client stationary and repeat tests.</div>
+    </div>
+
+    <script>
+      function setStatus(t){ document.getElementById("status").textContent = t || ""; }
+      function setError(t){ document.getElementById("error").textContent = t || ""; }
+
+      function logout() { window.location.href = "/logout"; }
+
+      async function startMeasure() {
+        setError("");
+        const mb = parseInt(document.getElementById("sizeMb").value || "200", 10);
+        const url = `/api/traffic/download?size_mb=${encodeURIComponent(mb)}`;
+
+        // ---- Chart init/reset ----
+        const canvas = document.getElementById("mbpsChart");
+        if (!canvas) { setError("Chart canvas missing."); return; }
+        const ctx = canvas.getContext("2d");
+        if (!window._mbpsChart) {
+          window._mbpsChart = new Chart(ctx, {
+            type: "line",
+            data: { labels: [], datasets: [{ label: "Mbps", data: [], tension: 0.35, pointRadius: 0, pointHoverRadius: 3, pointHitRadius: 12, fill: true, spanGaps: false, borderColor: "rgb(255,140,0)", backgroundColor: "rgba(255,140,0,0.25)" }] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              plugins: { legend: { display: false }, tooltip: { enabled: true } },
+              interaction: { mode: "nearest", intersect: false },
+              scales: {
+                x: { display: true, title: { display: true, text: "Seconds" } },
+                y: { display: true, beginAtZero: true, title: { display: true, text: "Mbps" } }
+              }
+            }
+          });
+        } else {
+          window._mbpsChart.data.labels = [];
+          window._mbpsChart.data.datasets[0].data = [];
+          window._mbpsChart.update();
+        }
+
+        const metaEl = document.getElementById("chartMeta");
+        if (metaEl) metaEl.textContent = `size=${mb} MB`;
+
+        setStatus("Downloading…");
+
+        const start = performance.now();
+        let bytes = 0;
+
+        // Sample ~4 times/sec for a smooth chart
+        let lastSampleAt = start;
+        let lastBytesAt = 0;
+
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok || !res.body) throw new Error("download failed");
+
+          const reader = res.body.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) bytes += value.byteLength;
+
+            const now = performance.now();
+            const secTotal = (now - start) / 1000.0;
+
+            if (now - lastSampleAt >= 250) {
+              const winSec = (now - lastSampleAt) / 1000.0;
+              const winBytes = bytes - lastBytesAt;
+              const instMbps = winSec > 0 ? (winBytes * 8) / (winSec * 1e6) : 0;
+
+              setStatus(`Downloading… ${instMbps.toFixed(1)} Mbps`);
+
+              window._mbpsChart.data.labels.push(secTotal.toFixed(1));
+              window._mbpsChart.data.datasets[0].data.push(Number(instMbps.toFixed(2)));
+
+              if (window._mbpsChart.data.labels.length > 300) {
+                window._mbpsChart.data.labels.shift();
+                window._mbpsChart.data.datasets[0].data.shift();
+              }
+              window._mbpsChart.update();
+
+              lastSampleAt = now;
+              lastBytesAt = bytes;
+            }
+          }
+
+          const end = performance.now();
+          const sec = (end - start) / 1000.0;
+          const avgMbps = (bytes * 8) / (sec * 1e6);
+          setStatus(`Done: ${(bytes/1e6).toFixed(1)} MB in ${sec.toFixed(2)}s → ${avgMbps.toFixed(1)} Mbps`);
+          if (metaEl) metaEl.textContent = `size=${mb} MB · avg=${avgMbps.toFixed(1)} Mbps · duration=${sec.toFixed(2)}s`;
+        } catch (e) {
+          setError("Failed to download. Check auth / nginx / backend logs.");
+          setStatus("");
+          if (metaEl) metaEl.textContent = `size=${mb} MB · failed`;
+        }
+      }
+    </script>
+{% endblock %}

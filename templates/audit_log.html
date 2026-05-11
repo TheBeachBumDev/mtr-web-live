@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .al-head { margin-bottom: 12px; }
+  .al-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+  .al-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .al-filters input { min-width: 160px; padding: 6px 8px; }
+  /* Horizontal + vertical scroll; wide natural table (do not use overflow-wrap:anywhere or fixed % widths — they collapse columns to one character per line). */
+  .al-tablewrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-height: min(70vh, 720px);
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Override .app-main td { white-space: nowrap } from style.css */
+  .app-main table.al-t {
+    width: max-content;
+    min-width: min(100%, 1200px);
+    max-width: none;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+  }
+  .app-main table.al-t th,
+  .app-main table.al-t td {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+  .app-main table.al-t th {
+    position: sticky;
+    top: 0;
+    background: var(--code-bg);
+    z-index: 1;
+  }
+  .app-main table.al-t td.al-path {
+    max-width: 22rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.84rem;
+  }
+  .app-main table.al-t td.al-detail {
+    max-width: 28rem;
+    max-height: 13rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+  .al-ok { color: #15803d; }
+  .al-fail { color: #b91c1c; }
+</style>
+
+<div class="al-head">
+  <h1 class="title" style="margin-top:0">Audit log</h1>
+  <p class="hint">Security and change history (logins, user admin actions, stock changes, clone runs). Passwords are never stored.</p>
+</div>
+
+<div class="al-filters">
+  <label>Event type prefix <input id="alEvt" type="text" placeholder="e.g. auth." /></label>
+  <label>Actor username <input id="alActor" type="text" placeholder="optional" /></label>
+  <label>Limit <input id="alLim" type="number" value="150" min="1" max="500" /></label>
+  <button type="button" id="alRefresh">Refresh</button>
+</div>
+
+<div id="alErr" class="err" style="display:none;"></div>
+
+<div class="al-tablewrap">
+  <table class="al-t">
+    <thead>
+      <tr>
+        <th>Time (UTC)</th>
+        <th>Event</th>
+        <th>Actor</th>
+        <th>OK</th>
+        <th>IP</th>
+        <th>Path</th>
+        <th>Target</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody id="alBody"></tbody>
+  </table>
+</div>
+
+<script>
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  async function loadAl() {
+    el("alErr").style.display = "none";
+    var lim = parseInt(el("alLim").value, 10) || 150;
+    var ev = (el("alEvt").value || "").trim();
+    var ac = (el("alActor").value || "").trim();
+    var q = "limit=" + encodeURIComponent(lim) + "&offset=0";
+    if (ev) q += "&event_type=" + encodeURIComponent(ev);
+    if (ac) q += "&actor=" + encodeURIComponent(ac);
+    var res = await fetch("/api/audit/events?" + q, { credentials: "same-origin" });
+    var j = await res.json().catch(function () { return {}; });
+    if (!res.ok || !j.ok) {
+      el("alErr").textContent = (j && j.detail) ? String(j.detail) : ("HTTP " + res.status);
+      el("alErr").style.display = "block";
+      return;
+    }
+    var rows = (j.events || []);
+    el("alBody").innerHTML = rows.map(function (r) {
+      var ok = r.success ? "<span class='al-ok'>yes</span>" : "<span class='al-fail'>no</span>";
+      var tgt = [r.target_type, r.target_id].filter(Boolean).join(" ");
+      var dj = "";
+      try { dj = JSON.stringify(r.detail || {}, null, 0); } catch (e) { dj = String(r.detail); }
+      return "<tr>" +
+        "<td class='mono'>" + esc(r.created_at) + "</td>" +
+        "<td class='mono'>" + esc(r.event_type) + "</td>" +
+        "<td>" + esc(r.actor_username) + (r.actor_user_id != null ? (" <span class='muted'>#" + esc(r.actor_user_id) + "</span>") : "") + "</td>" +
+        "<td>" + ok + "</td>" +
+        "<td class='mono'>" + esc(r.client_ip) + "</td>" +
+        "<td class='al-path'>" + esc(r.request_path) + "</td>" +
+        "<td>" + esc(tgt) + "</td>" +
+        "<td class='al-detail'>" + esc(dj) + "</td>" +
+        "</tr>";
+    }).join("");
+    if (!rows.length) {
+      el("alBody").innerHTML = "<tr><td colspan='8' class='muted'>No rows.</td></tr>";
+    }
+  }
+  el("alRefresh").addEventListener("click", function () { loadAl().catch(function (e) { el("alErr").textContent = String(e); el("alErr").style.display = "block"; }); });
+  loadAl().catch(function (e) { el("alErr").textContent = String(e); el("alErr").style.display = "block"; });
+</script>
+{% endblock %}

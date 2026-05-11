@@ -1,0 +1,1897 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .po-page { width: 100%; max-width: 100%; box-sizing: border-box; }
+  .po-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 0; flex-wrap: wrap; }
+  .po-list-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    margin-bottom: 12px;
+  }
+  .po-list-controls .po-field { flex: 1; min-width: 200px; max-width: min(480px, 100%); margin: 0; }
+  .po-list-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .po-list-pagination button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .po-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+  }
+  .po-card > h3,
+  .po-card > h4 {
+    margin: 0 0 12px 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .po-admin-intro {
+    margin: 0 0 14px 0;
+    max-width: 52rem;
+    line-height: 1.45;
+    font-size: 0.95rem;
+  }
+  /* Responsive label+control grids (modal + admin) */
+  .po-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px 14px;
+    align-items: start;
+    margin-bottom: 14px;
+  }
+  .po-modal .po-form-grid { margin-bottom: 14px; }
+  .po-card > .po-form-grid:last-child { margin-bottom: 0; }
+  .po-form-grid--narrow {
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  }
+  .po-form-grid--timing {
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+    align-items: end;
+    gap: 12px;
+  }
+  .po-form-grid--timing .po-field > label { white-space: nowrap; }
+  .po-form-grid__action {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding-bottom: 3px;
+    align-self: end;
+  }
+  .po-field--max-md {
+    max-width: 420px;
+  }
+  .po-field--full {
+    grid-column: 1 / -1;
+  }
+  .po-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .po-field > label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.25;
+  }
+  .po-field > input,
+  .po-field > select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .po-field__hint {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--muted);
+    margin: 0;
+    max-width: 36rem;
+  }
+  .po-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .po-row:last-child { margin-bottom: 0; }
+  .po-row > label { white-space: nowrap; min-width: 82px; font-size: 12px; color: var(--muted); }
+  .po-row > input,
+  .po-row > select {
+    max-width: 100%;
+    width: min(320px, 100%);
+    box-sizing: border-box;
+  }
+  .po-row--items-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .po-row--items-head > .po-items-table,
+  .po-row--items-head > .po-items-wrap,
+  .po-row--items-head > table {
+    width: 100%;
+    max-width: 100%;
+  }
+  .po-row--items-head > button {
+    align-self: flex-start;
+  }
+  .po-row--items-head > label.wide {
+    width: 100%;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  /* Customer-only fields: participate in parent grid when visible */
+  .po-customer-fields {
+    display: none;
+  }
+  .po-customer-fields.is-visible {
+    display: contents;
+  }
+  .po-totals-row {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    align-items: center;
+    gap: 8px 10px;
+    margin-top: 8px;
+  }
+  .po-totals-row .lbl { color: var(--muted); font-size: 12px; }
+  .po-totals-row .val { font-weight: 600; text-align: left; justify-self: start; }
+  .po-items-table { width: 100%; table-layout: fixed; }
+  .po-items-table th, .po-items-table td { padding: 6px; font-size: 12px; }
+  .po-items-table input { width: 100%; min-width: 0; }
+  /* Override global .app-body input width (360px) for PO line-item controls. */
+  .po-items-table .po-item-desc,
+  .po-items-table .po-item-qty,
+  .po-items-table .po-item-unit {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+  .po-col-resize { min-width: 0; max-width: 100%; }
+  .po-items { width: 100%; overflow: hidden; margin-top: 6px; }
+  .po-items table { min-width: 0; width: 100%; }
+  .po-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .po-list table.po-stack-table { min-width: 980px; }
+
+  /* Row “cards” on all viewports (thin border + radius per row) */
+  table.po-stack-table {
+    border-collapse: separate;
+    border-spacing: 0 10px;
+    width: 100%;
+  }
+  table.po-stack-table thead th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    border-bottom: 2px solid var(--border);
+    padding: 8px 6px;
+    vertical-align: bottom;
+    background: transparent;
+  }
+  table.po-stack-table tbody td {
+    text-align: left;
+    background: var(--card);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 6px;
+    font-size: 12px;
+    vertical-align: top;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  }
+  html[data-theme="dark"] table.po-stack-table tbody td {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  table.po-stack-table tbody td:first-child {
+    border-left: 1px solid var(--border);
+    border-radius: 10px 0 0 10px;
+  }
+  table.po-stack-table tbody td:last-child {
+    border-right: 1px solid var(--border);
+    border-radius: 0 10px 10px 0;
+  }
+  table.po-stack-table tbody td:only-child {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  table.po-stack-table tbody td[colspan]:first-child:last-child {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .po-notif-table.po-stack-table tbody td,
+  .po-rule-grid.po-stack-table tbody td {
+    vertical-align: middle;
+  }
+  .po-table-scroll {
+    overflow-x: auto;
+    margin-top: 8px;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+  .po-form-grid--after-intro {
+    margin-bottom: 16px;
+  }
+  .po-log { max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .po-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
+  .po-modal .po-actions {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .po-step-track { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .po-step {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 4px 10px;
+    font-size: 11px;
+    background: color-mix(in srgb, var(--card) 85%, var(--line) 15%);
+    color: var(--text);
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .po-step.current {
+    border-color: #3b82f6;
+    background: color-mix(in srgb, #3b82f6 12%, var(--card) 88%);
+    color: color-mix(in srgb, #1d4ed8 70%, var(--text) 30%);
+  }
+  .po-step.approved {
+    border-color: #16a34a;
+    background: color-mix(in srgb, #16a34a 18%, var(--card) 82%);
+    color: color-mix(in srgb, #166534 75%, var(--text) 25%);
+  }
+  .po-step.na { opacity: .6; }
+  .po-step-arrow { opacity: .7; color: var(--text); }
+  .po-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1200;
+    padding: 20px;
+  }
+  .po-modal.is-open { display: flex; }
+  .po-modal__panel {
+    width: min(980px, 96vw);
+    max-height: 92vh;
+    overflow: auto;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .po-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .po-badge {
+    display: inline-block;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text);
+    background: color-mix(in srgb, var(--card) 88%, var(--line) 12%);
+  }
+  .po-badge.po-badge--declined {
+    border-color: #dc2626;
+    background: color-mix(in srgb, #fee2e2 82%, var(--card) 18%);
+    color: #991b1b;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] .po-badge.po-badge--declined {
+    border-color: #f87171;
+    background: color-mix(in srgb, #450a0a 78%, var(--card) 22%);
+    color: #fecaca;
+  }
+  .po-step.po-step--declined {
+    border-color: #dc2626;
+    background: color-mix(in srgb, #fee2e2 55%, var(--card) 45%);
+    color: #991b1b;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] .po-step.po-step--declined {
+    border-color: #f87171;
+    background: color-mix(in srgb, #450a0a 55%, var(--card) 45%);
+    color: #fecaca;
+  }
+  .po-badge.po-badge--postponed {
+    border-color: #ca8a04;
+    background: color-mix(in srgb, #fef9c3 82%, var(--card) 18%);
+    color: #854d0e;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] .po-badge.po-badge--postponed {
+    border-color: #facc15;
+    background: color-mix(in srgb, #422006 78%, var(--card) 22%);
+    color: #fef08a;
+  }
+  .po-step.po-step--postponed {
+    border-color: #ca8a04;
+    background: color-mix(in srgb, #fef9c3 55%, var(--card) 45%);
+    color: #854d0e;
+    font-weight: 700;
+  }
+  html[data-theme="dark"] .po-step.po-step--postponed {
+    border-color: #facc15;
+    background: color-mix(in srgb, #422006 55%, var(--card) 45%);
+    color: #fef08a;
+  }
+  .po-kv {
+    display: grid;
+    grid-template-columns: minmax(120px, 140px) 1fr;
+    gap: 8px 12px;
+    font-size: 12px;
+    align-items: baseline;
+  }
+  @media (max-width: 767px) {
+    .po-kv {
+      grid-template-columns: 1fr;
+    }
+    .po-kv b {
+      display: block;
+      margin-bottom: 2px;
+    }
+  }
+  .po-kv b { color: var(--muted); font-weight: 600; }
+  .po-rule-grid.po-stack-table { min-width: 820px; }
+  .po-role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .po-role-box {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    background: color-mix(in srgb, var(--card) 92%, var(--line) 8%);
+  }
+  .po-role-box__title {
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+    letter-spacing: 0.02em;
+  }
+  .po-role-box label {
+    display: block;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+  .po-role-box select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .po-notif-table.po-stack-table { min-width: 980px; }
+  .po-notif-table input[type="text"] { width: min(220px, 100%); box-sizing: border-box; }
+
+  /* --- Mobile-first: card-style tables (no sideways scroll for primary flows) --- */
+  @media (max-width: 767px) {
+    .po-row--items-head {
+      align-items: stretch;
+    }
+    .po-toolbar {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .po-toolbar button {
+      width: 100%;
+    }
+    .po-list-controls .po-field {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .po-list-pagination {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .po-list-pagination button {
+      width: 100%;
+    }
+    .po-stack-table-wrap {
+      overflow-x: visible;
+      -webkit-overflow-scrolling: auto;
+    }
+    .po-stack-table-wrap .po-stack-table,
+    .po-table-scroll .po-stack-table {
+      min-width: 0 !important;
+      width: 100%;
+    }
+    .po-stack-table-wrap .po-stack-table thead,
+    .po-table-scroll .po-stack-table thead {
+      display: none;
+    }
+    .po-stack-table-wrap .po-stack-table tbody tr,
+    .po-table-scroll .po-stack-table tbody tr {
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      background: var(--card);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    }
+    html[data-theme="dark"] .po-stack-table-wrap .po-stack-table tbody tr,
+    html[data-theme="dark"] .po-table-scroll .po-stack-table tbody tr {
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .po-stack-table-wrap .po-stack-table tbody tr:last-child,
+    .po-table-scroll .po-stack-table tbody tr:last-child {
+      margin-bottom: 0;
+    }
+    .po-stack-table-wrap .po-stack-table tbody td,
+    .po-table-scroll .po-stack-table tbody td {
+      display: grid;
+      grid-template-columns: minmax(100px, 38%) 1fr;
+      gap: 8px 10px;
+      align-items: start;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 0;
+      text-align: left;
+      font-size: 13px;
+    }
+    .po-stack-table-wrap .po-stack-table tbody td:last-child,
+    .po-table-scroll .po-stack-table tbody td:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .po-stack-table-wrap .po-stack-table tbody td::before,
+    .po-table-scroll .po-stack-table tbody td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      line-height: 1.3;
+      padding-top: 2px;
+    }
+    /* Actions / wide control columns: label on top, controls full width */
+    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide,
+    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide {
+      grid-template-columns: 1fr;
+    }
+    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide::before,
+    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide::before {
+      margin-bottom: 4px;
+    }
+    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide > *,
+    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide > * {
+      min-width: 0;
+    }
+    .po-stack-table-wrap .po-stack-table button,
+    .po-table-scroll .po-stack-table button {
+      margin-top: 4px;
+      margin-right: 6px;
+    }
+    .po-notif-table input[type="checkbox"] {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    .po-modal {
+      z-index: 3000 !important;
+      padding: 12px;
+      align-items: center;
+    }
+    .po-modal__panel {
+      max-height: min(92dvh, 100%);
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    .po-items-wrap {
+      overflow-x: visible;
+      width: 100%;
+      max-width: 100%;
+    }
+    .po-items-table,
+    .po-items-table tbody,
+    .po-items-table tbody tr,
+    .po-items-table tbody td {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box;
+    }
+    .po-items-table {
+      table-layout: auto;
+    }
+    .po-items-table tbody td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .po-items-table thead {
+      display: none;
+    }
+    .po-items-table tbody tr {
+      display: block;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      background: var(--card);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    }
+    html[data-theme="dark"] .po-items-table tbody tr {
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .po-items-table tbody td {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      border-bottom: 1px dashed var(--line);
+      padding: 8px 0;
+    }
+    .po-items-table tbody td > .po-col-resize,
+    .po-items-table tbody td input,
+    .po-items-table tbody td .po-item-line-total {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      display: block;
+    }
+    .po-items-table tbody td::before {
+      display: block;
+      margin-bottom: 2px;
+    }
+    .po-items-table tbody td:last-child {
+      border-bottom: none;
+    }
+    .po-items-table tbody td.po-item-actions {
+      grid-template-columns: 1fr;
+    }
+    .po-items-table tbody td.po-item-actions::before {
+      content: attr(data-label);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+  }
+
+  @media (max-width: 860px) {
+    .po-modal__panel { width: 100%; }
+    .po-totals-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .po-form-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 767px) {
+    .po-totals-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+
+<div class="po-page">
+  <section class="po-card">
+    <div class="po-toolbar">
+      <button id="poOpenCreateBtn" type="button">Create PO</button>
+      <button id="poRefreshBtn" type="button">Refresh</button>
+      {% if is_admin %}
+      <button id="poDispatchBtn" type="button">Dispatch Notifications</button>
+      {% endif %}
+      <span id="poMsg" class="hint" style="margin-left:4px;"></span>
+    </div>
+  </section>
+
+  <section class="po-card po-list po-stack-table-wrap">
+    <h3>Purchase Orders</h3>
+    <div class="po-list-controls">
+      <div class="po-field po-field--full">
+        <label for="poListSearch">Search</label>
+        <input id="poListSearch" type="search" placeholder="ID, PO #, status, supplier, department, requester…" autocomplete="off" />
+      </div>
+      <div class="po-form-grid__action">
+        <button type="button" id="poListSearchBtn">Search</button>
+      </div>
+    </div>
+    <table class="po-stack-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>PO #</th>
+          <th>Status</th>
+          <th>Approval Flow</th>
+          <th>Total</th>
+          <th>Supplier</th>
+          <th>Department</th>
+          <th>By</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="poRows"></tbody>
+    </table>
+    <div class="po-list-pagination" id="poListPagination">
+      <button type="button" id="poListPrev">Previous</button>
+      <span id="poListPageInfo"></span>
+      <button type="button" id="poListNext">Next</button>
+    </div>
+  </section>
+
+  <section class="po-card">
+    <h4>Selected PO Detail</h4>
+    <div id="poDetailSummary" class="po-kv"></div>
+    <h4>Status / Audit Timeline</h4>
+    <div id="poLog" class="po-log"></div>
+  </section>
+
+  {% if is_admin %}
+  <section class="po-card">
+    <h4>Notification Settings (Admin)</h4>
+    <p class="hint po-admin-intro" style="margin-top:0;">
+      <strong>In-app</strong> alerts use browser push. Each user must open <a href="/monitoring">Monitoring</a>,
+      allow notifications, and click <strong>Enable</strong> under Background push (once per browser).
+      PO tests only reach users who have done that; otherwise the server has nowhere to send the push.
+    </p>
+    <div class="po-form-grid po-form-grid--timing">
+      <div class="po-field">
+        <label for="poNt4">Reminder delay (sec)</label>
+        <input id="poNt4" type="number" min="60" step="60" />
+      </div>
+      <div class="po-field">
+        <label for="poNt24">Escalation delay (sec)</label>
+        <input id="poNt24" type="number" min="60" step="60" />
+      </div>
+      <div class="po-field">
+        <label for="poNt48">Backup escalation (sec)</label>
+        <input id="poNt48" type="number" min="60" step="60" />
+      </div>
+      <div class="po-form-grid__action">
+        <button id="poNtSaveTimingBtn" type="button">Save Timing</button>
+      </div>
+    </div>
+    <div class="po-table-scroll po-stack-table-wrap">
+      <table class="po-notif-table po-stack-table">
+        <thead><tr><th>User</th><th>In-app</th><th>Email</th><th>WhatsApp</th><th>Email Address</th><th>Mobile/WhatsApp</th><th></th></tr></thead>
+        <tbody id="poNtRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="po-card">
+    <h4>Approval Role Assignments (Admin)</h4>
+    <p class="hint po-admin-intro">
+      Choose a <strong>department</strong>, then set who acts as <strong>Manager</strong>, <strong>Finance</strong>, and <strong>Director</strong> for purchase orders that use that department.
+      Primary approvers receive approval tasks; backup approvers are used when the primary is unavailable.
+    </p>
+    <div class="po-form-grid po-form-grid--after-intro">
+      <div class="po-field po-field--max-md">
+        <label for="poRoleDepartment">Department</label>
+        <select id="poRoleDepartment" aria-describedby="poRoleDepartmentHint"></select>
+        <p id="poRoleDepartmentHint" class="po-field__hint">Only POs linked to this department use these people (unless rules override approvers).</p>
+      </div>
+    </div>
+    <div class="po-role-grid">
+      <div class="po-role-box">
+        <p class="po-role-box__title">Manager role</p>
+        <label for="poRoleManager">Primary approver</label><select id="poRoleManager"></select>
+        <label for="poRoleManagerBackup">Backup approver</label><select id="poRoleManagerBackup"></select>
+      </div>
+      <div class="po-role-box">
+        <p class="po-role-box__title">Finance role</p>
+        <label for="poRoleFinance">Primary approver</label><select id="poRoleFinance"></select>
+        <label for="poRoleFinanceBackup">Backup approver</label><select id="poRoleFinanceBackup"></select>
+      </div>
+      <div class="po-role-box">
+        <p class="po-role-box__title">Director role</p>
+        <label for="poRoleDirector">Primary approver</label><select id="poRoleDirector"></select>
+        <label for="poRoleDirectorBackup">Backup approver</label><select id="poRoleDirectorBackup"></select>
+      </div>
+    </div>
+    <div class="po-actions">
+      <button id="poRoleSaveBtn" type="button">Save Role Assignments</button>
+    </div>
+  </section>
+
+  <section class="po-card">
+    <h4>Approval Rules (Admin)</h4>
+    <p class="hint po-admin-intro">
+      Rules decide <strong>who must approve</strong> and in <strong>what order</strong>. Each rule applies when the PO <strong>total</strong> falls in the min/max range (ZAR), and optionally when <strong>department</strong> and <strong>category</strong> match.
+      Use <strong>step number</strong> 1 for the first approval, 2 for the next, and so on. <strong>Step role</strong> must match Manager / Finance / Director so the engine knows which approval slot this is.
+    </p>
+    <div class="po-form-grid po-form-grid--narrow">
+      <div class="po-field">
+        <label for="poRuleName">Rule name</label>
+        <input id="poRuleName" placeholder="e.g. Under R5k — Manager only" />
+      </div>
+      <div class="po-field">
+        <label for="poRuleMin">Minimum PO total (ZAR)</label>
+        <input id="poRuleMin" type="number" min="0" step="0.01" placeholder="0" />
+      </div>
+      <div class="po-field">
+        <label for="poRuleMax">Maximum PO total (ZAR)</label>
+        <input id="poRuleMax" type="number" min="0" step="0.01" placeholder="Leave blank = no max" />
+      </div>
+      <div class="po-field">
+        <label for="poRuleDepartment">Department filter</label>
+        <select id="poRuleDepartment" aria-describedby="poRuleDeptHint"></select>
+        <p id="poRuleDeptHint" class="po-field__hint">“All departments” = rule applies everywhere. Pick one department to limit the rule to POs in that department only.</p>
+      </div>
+      <div class="po-field">
+        <label for="poRuleCategory">Category filter</label>
+        <input id="poRuleCategory" placeholder="Optional — exact match" />
+      </div>
+    </div>
+    <div class="po-form-grid po-form-grid--narrow">
+      <div class="po-field">
+        <label for="poRuleStepNo">Step number</label>
+        <input id="poRuleStepNo" type="number" min="1" step="1" value="1" />
+      </div>
+      <div class="po-field">
+        <label for="poRuleStepName">Step role</label>
+        <select id="poRuleStepName" aria-describedby="poRuleStepHint">
+          <option value="Manager">Manager</option>
+          <option value="Finance">Finance</option>
+          <option value="Director">Director</option>
+        </select>
+        <p id="poRuleStepHint" class="po-field__hint">Must align with Manager / Finance / Director assignments above.</p>
+      </div>
+      <div class="po-field">
+        <label for="poRuleApprover">Primary approver</label>
+        <select id="poRuleApprover" aria-describedby="poRuleApprHint"></select>
+        <p id="poRuleApprHint" class="po-field__hint">User who approves at this step for POs matching this rule.</p>
+      </div>
+      <div class="po-field">
+        <label for="poRuleBackup">Backup approver</label>
+        <select id="poRuleBackup" aria-describedby="poRuleBkHint"></select>
+        <p id="poRuleBkHint" class="po-field__hint">Used if the primary cannot approve (optional).</p>
+      </div>
+      <div class="po-form-grid__action">
+        <button id="poRuleAddBtn" type="button">+ Add Rule</button>
+      </div>
+    </div>
+    <div class="po-table-scroll po-stack-table-wrap">
+      <table class="po-rule-grid po-stack-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Total range (ZAR)</th><th>Department</th><th>Category</th><th>Step # / role</th><th>Primary approver</th><th>Backup approver</th><th></th></tr></thead>
+        <tbody id="poRuleRows"></tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+<div id="poCreateModal" class="po-modal" aria-hidden="true">
+  <div class="po-modal__panel">
+    <div class="po-modal__head">
+      <h3 style="margin:0">Create / Edit PO</h3>
+      <button id="poCloseCreateBtn" type="button">Close</button>
+    </div>
+    <div class="po-form-grid">
+      <div class="po-field">
+        <label for="poSupplier">Supplier</label>
+        <select id="poSupplier"></select>
+      </div>
+      <div class="po-field">
+        <label for="poDepartment">Department *</label>
+        <select id="poDepartment"></select>
+      </div>
+      {% if is_admin %}
+      <div class="po-field">
+        <label for="poDepartmentNew">New department</label>
+        <input id="poDepartmentNew" placeholder="Name to add" />
+      </div>
+      <div class="po-form-grid__action">
+        <button id="poDepartmentAddBtn" type="button">+ Add</button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="po-form-grid">
+      <div class="po-field">
+        <label for="poCategory">Category</label>
+        <input id="poCategory" placeholder="General" />
+      </div>
+      <div class="po-field">
+        <label for="poDateRequired">Date required</label>
+        <input id="poDateRequired" type="date" />
+      </div>
+      <div class="po-field">
+        <label for="poUrgency">Urgency</label>
+        <select id="poUrgency">
+          <option value="urgent">URGENT</option>
+          <option value="asap">ASAP</option>
+          <option value="standard" selected>Standard</option>
+        </select>
+      </div>
+    </div>
+    <div class="po-form-grid">
+      <div class="po-field">
+        <label for="poRequestType">Request type</label>
+        <select id="poRequestType">
+          <option value="stock_item">Stock Item</option>
+          <option value="customer_item">Customer Item</option>
+          <option value="reserve_stock_hs">Reserve Stock (HS)</option>
+        </select>
+      </div>
+      <div id="poCustomerFields" class="po-customer-fields">
+        <div class="po-field">
+          <label for="poCustomerId">Customer ID</label>
+          <input id="poCustomerId" type="number" min="1" placeholder="Customer ID" />
+        </div>
+        <div class="po-field">
+          <label for="poPaymentStatus">Paid / unpaid</label>
+          <select id="poPaymentStatus">
+            <option value="">-- Select --</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="po-form-grid">
+      <div class="po-field po-field--full">
+        <label for="poNotes">Notes</label>
+        <input id="poNotes" placeholder="Optional notes" />
+      </div>
+    </div>
+    <div class="po-row po-row--items-head po-items po-items-wrap">
+      <span class="wide">Line items</span>
+      <datalist id="poItemDescOptions"></datalist>
+      <table class="po-items-table po-stack-table">
+        <thead>
+          <tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th></th></tr>
+        </thead>
+        <tbody id="poItemsBody"></tbody>
+      </table>
+      <button id="poAddItemBtn" type="button">+ Add Item</button>
+    </div>
+    <div class="po-totals-row">
+      <span class="lbl">Tax Rate</span>
+      <span class="val">15%</span>
+      <span class="lbl">Subtotal</span>
+      <span id="poSubtotal" class="val">R 0.00</span>
+      <span class="lbl">Tax</span>
+      <span id="poTaxAmount" class="val">R 0.00</span>
+      <span class="lbl">Total</span>
+      <span id="poGrandTotal" class="val"><b>R 0.00</b></span>
+    </div>
+    <div class="po-actions">
+      <button id="poCreateBtn" type="button">Create Draft</button>
+      <button id="poUpdateBtn" type="button">Update Draft</button>
+      <button id="poSubmitBtn" type="button">Submit</button>
+      {% if is_admin %}
+      <button id="poApproveBtn" type="button">Approve</button>
+      <button id="poPlaceOrderBtn" type="button" style="display:none;">Place Order</button>
+      <button id="poChangesBtn" type="button">Request Changes</button>
+      <button id="poPostponeBtn" type="button">Postpone</button>
+      <button id="poRejectBtn" type="button">Reject</button>
+      <button id="poCancelBtn" type="button">Cancel (Admin)</button>
+      {% endif %}
+      <button id="poViewPdfBtn" type="button" style="display:none;">View PDF</button>
+      <button id="poDownloadPdfBtn" type="button" style="display:none;">Download PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="poPostponeModal" class="po-modal" style="z-index:1300;">
+  <div class="po-modal__panel" style="width:min(520px,94vw);">
+    <div class="po-modal__head">
+      <h3 style="margin:0;">Postpone purchase order</h3>
+      <button type="button" id="poPostponeModalClose">Close</button>
+    </div>
+    <p class="hint" style="margin:0 0 10px 0;">Approvals pause until the resume date. The PO returns to the same approval step automatically on that date.</p>
+    <div class="po-field po-field--full">
+      <label for="poPostponeComment">Comment (required)</label>
+      <textarea id="poPostponeComment" rows="3" style="width:100%;box-sizing:border-box;"></textarea>
+    </div>
+    <div class="po-field" style="margin-top:10px;">
+      <label for="poPostponeResumeDate">Resume approvals on (required)</label>
+      <input id="poPostponeResumeDate" type="date" style="width:100%;max-width:280px;box-sizing:border-box;" />
+    </div>
+    <div class="po-actions" style="margin-top:14px;">
+      <button type="button" id="poPostponeModalCancel">Cancel</button>
+      <button type="button" id="poPostponeModalSave">Postpone</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  let selectedPoId = 0;
+  let postponeTargetPoId = 0;
+  const PO_PAGE_SIZE = 10;
+  let poListPage = 1;
+  /** True after "Create PO" until an existing PO is selected or a new draft is saved. Prevents Submit from using a stale id. */
+  let poComposingNew = false;
+  let poEventSource = null;
+  let poRefreshTimer = null;
+  let poListRenderVersion = 0;
+  let supplierProductSuggestions = [];
+  let supplierProductCatalog = [];
+  let supplierProductPriceMap = new Map();
+  const poDetailsCache = new Map();
+  const STEP_ORDER = ["manager", "finance", "director"];
+  /** PO statuses where approve / decline / hold apply */
+  const APPROVAL_ACTIVE_STATUSES = new Set(["submitted", "pending_manager", "pending_finance", "pending_director"]);
+  const escHtml = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const rejectionApprovalEntry = (po) => {
+    const approvals = (po && po.approvals) || [];
+    const rej = approvals.filter(a => String(a.status || "").toLowerCase() === "rejected");
+    rej.sort((a, b) => String(b.rejected_at || "").localeCompare(String(a.rejected_at || "")));
+    return rej[0] || null;
+  };
+  const statusBadgeLabel = (s) => {
+    const x = String(s || "").toLowerCase();
+    if (x === "rejected") return "Declined";
+    if (x === "postponed") return "Postponed";
+    return String(s || "—");
+  };
+  const statusBadgeClass = (s) => {
+    const x = String(s || "").toLowerCase();
+    if (x === "rejected") return "po-badge po-badge--declined";
+    if (x === "postponed") return "po-badge po-badge--postponed";
+    return "po-badge";
+  };
+  const CURRENT_USERNAME = {{ username | tojson }};
+  const IS_ADMIN = {{ is_admin | tojson }};
+  const IS_PO_SUPER_ADMIN = String(CURRENT_USERNAME || "").toLowerCase() === "admin";
+  const msg = (t, ok = true) => {
+    const el = document.getElementById("poMsg");
+    el.textContent = t || "";
+    el.style.color = ok ? "#4ade80" : "#fb7185";
+  };
+  const j = async (url, opts = {}) => {
+    const r = await fetch(url, Object.assign({headers: {"Content-Type":"application/json"}}, opts));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) {
+      let detail = d.detail;
+      if (Array.isArray(detail)) {
+        detail = detail.map((x) => (x && x.msg) || JSON.stringify(x)).join("; ");
+      } else if (detail != null && typeof detail === "object") {
+        detail = JSON.stringify(detail);
+      }
+      throw new Error(detail || d.error || ("HTTP " + r.status));
+    }
+    return d;
+  };
+  const itemsBody = () => document.getElementById("poItemsBody");
+  const renderItemDescriptionSuggestions = () => {
+    const dl = document.getElementById("poItemDescOptions");
+    if (!dl) return;
+    dl.innerHTML = (supplierProductSuggestions || [])
+      .map(name => `<option value="${String(name || "").replace(/"/g, "&quot;")}"></option>`)
+      .join("");
+  };
+  const rebuildProductPriceMap = () => {
+    supplierProductPriceMap = new Map();
+    (supplierProductCatalog || []).forEach(p => {
+      const k = String((p && p.name) || "").trim().toLowerCase();
+      if (!k) return;
+      supplierProductPriceMap.set(k, p);
+    });
+  };
+  const matchProductCatalogEntry = (description) => {
+    const key = String(description || "").trim().toLowerCase();
+    if (!key) return null;
+    const exact = supplierProductPriceMap.get(key);
+    if (exact) return exact;
+    const starts = (supplierProductCatalog || []).filter(p => String((p && p.name) || "").toLowerCase().startsWith(key));
+    if (starts.length === 1) return starts[0];
+    return null;
+  };
+  const loadSupplierProductSuggestions = async () => {
+    const supplierId = Number(document.getElementById("poSupplier").value || "0");
+    if (!supplierId) {
+      supplierProductSuggestions = [];
+      supplierProductCatalog = [];
+      rebuildProductPriceMap();
+      renderItemDescriptionSuggestions();
+      return;
+    }
+    const d = await j(`/api/po/suppliers/${supplierId}/product-catalog`);
+    supplierProductCatalog = Array.isArray(d.products) ? d.products : [];
+    rebuildProductPriceMap();
+    supplierProductSuggestions = supplierProductCatalog.map(p => p.name);
+    renderItemDescriptionSuggestions();
+  };
+  const addItemRow = (item = {}) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td data-label="Description"><div class="po-col-resize"><input class="po-item-desc" list="poItemDescOptions" value="${String(item.description || "").replace(/"/g, "&quot;")}" placeholder="Item description" /></div></td>
+      <td data-label="Qty"><div class="po-col-resize"><input class="po-item-qty" type="number" min="1" step="1" value="${Math.max(1, Math.round(Number(item.quantity ?? 1) || 1))}" /></div></td>
+      <td data-label="Unit price"><div class="po-col-resize"><input class="po-item-unit" type="number" min="0" step="0.01" value="${Number(item.unit_price ?? 0)}" /></div></td>
+      <td data-label="Line total"><span class="po-item-line-total">R 0.00</span></td>
+      <td class="po-item-actions po-td--stack-wide" data-label="Remove"><button type="button" class="po-item-del">Remove</button></td>
+    `;
+    tr.querySelector(".po-item-del").onclick = () => { tr.remove(); recalcTotals(); };
+    const autoFillUnitPrice = () => {
+      const desc = tr.querySelector(".po-item-desc").value || "";
+      const m = matchProductCatalogEntry(desc);
+      if (!m || m.unit_price == null) return;
+      tr.querySelector(".po-item-unit").value = Number(m.unit_price).toFixed(2);
+    };
+    const recalc = () => {
+      const qtyInput = tr.querySelector(".po-item-qty");
+      const qtyNorm = Math.max(1, Math.round(Number(qtyInput.value || "1") || 1));
+      if (String(qtyInput.value) !== String(qtyNorm)) qtyInput.value = String(qtyNorm);
+      const qty = Number(tr.querySelector(".po-item-qty").value || "0");
+      const unit = Number(tr.querySelector(".po-item-unit").value || "0");
+      const line = (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+      tr.querySelector(".po-item-line-total").textContent = `R ${line.toFixed(2)}`;
+      recalcTotals();
+    };
+    tr.querySelector(".po-item-desc").addEventListener("change", () => { autoFillUnitPrice(); recalc(); });
+    tr.querySelector(".po-item-desc").addEventListener("blur", () => { autoFillUnitPrice(); recalc(); });
+    tr.querySelector(".po-item-qty").addEventListener("input", recalc);
+    tr.querySelector(".po-item-unit").addEventListener("input", recalc);
+    itemsBody().appendChild(tr);
+    autoFillUnitPrice();
+    recalc();
+  };
+  const recalcTotals = () => {
+    let subtotal = 0;
+    itemsBody().querySelectorAll("tr").forEach(tr => {
+      const qty = Number(tr.querySelector(".po-item-qty").value || "0");
+      const unit = Number(tr.querySelector(".po-item-unit").value || "0");
+      subtotal += (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+    });
+    const tax = subtotal * 0.15;
+    const grand = subtotal + tax;
+    document.getElementById("poSubtotal").textContent = `R ${subtotal.toFixed(2)}`;
+    document.getElementById("poTaxAmount").textContent = `R ${tax.toFixed(2)}`;
+    document.getElementById("poGrandTotal").innerHTML = `<b>R ${grand.toFixed(2)}</b>`;
+  };
+  const parseItems = () => {
+    const out = [];
+    itemsBody().querySelectorAll("tr").forEach(tr => {
+      const description = tr.querySelector(".po-item-desc").value.trim();
+      const quantity = Math.max(1, Math.round(Number(tr.querySelector(".po-item-qty").value || "1") || 1));
+      const unit_price = Number(tr.querySelector(".po-item-unit").value || "0");
+      if (!description) return;
+      out.push({
+        description,
+        quantity: Number.isFinite(quantity) ? quantity : 1,
+        unit_price: Number.isFinite(unit_price) ? unit_price : 0,
+        tax_rate: 0,
+      });
+    });
+    if (out.length === 0) throw new Error("Add at least one line item");
+    return out;
+  };
+  const loadLookups = async () => {
+    const d = await j("/api/po/lookups");
+    const s = document.getElementById("poSupplier");
+    const dep = document.getElementById("poDepartment");
+    s.innerHTML = '<option value="">-- supplier --</option>' + d.suppliers.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+    dep.innerHTML = '<option value="">-- department --</option>' + d.departments.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+    await loadSupplierProductSuggestions();
+  };
+  const loadRules = async () => {
+    const rows = document.getElementById("poRuleRows");
+    if (!rows) return;
+    const d = await j("/api/po/rules");
+    const dep = document.getElementById("poRuleDepartment");
+    const appr = document.getElementById("poRuleApprover");
+    const bkp = document.getElementById("poRuleBackup");
+    dep.innerHTML = '<option value="">All departments</option>' + (d.departments || []).map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+    appr.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+    bkp.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+    const roleDep = document.getElementById("poRoleDepartment");
+    if (roleDep) {
+      const oldVal = roleDep.value || "";
+      roleDep.innerHTML = '<option value="">-- department --</option>' + (d.departments || []).map(x => `<option value="${x.id}">${x.name}</option>`).join("");
+      if (oldVal && Array.from(roleDep.options).some(o => o.value === oldVal)) roleDep.value = oldVal;
+      if (!roleDep.value && roleDep.options.length > 1) roleDep.value = roleDep.options[1].value;
+    }
+    const roleAssignment = {};
+    const rolePairs = [
+      ["manager", "poRoleManager", "poRoleManagerBackup"],
+      ["finance", "poRoleFinance", "poRoleFinanceBackup"],
+      ["director", "poRoleDirector", "poRoleDirectorBackup"],
+    ];
+    for (const [rk, primId, bkpId] of rolePairs) {
+      const prim = document.getElementById(primId);
+      const bk = document.getElementById(bkpId);
+      if (!prim || !bk) continue;
+      prim.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+      bk.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+      const ra = roleAssignment[rk] || {};
+      if (ra.user_id) prim.value = String(ra.user_id);
+      if (ra.backup_user_id) bk.value = String(ra.backup_user_id);
+    }
+    rows.innerHTML = (d.rules || []).map(r => `
+      <tr>
+        <td data-label="ID">${r.id}</td>
+        <td data-label="Name">${r.name}</td>
+        <td data-label="Total range (ZAR)">${r.min_total} - ${r.max_total == null ? "INF" : r.max_total}</td>
+        <td data-label="Department">${r.department_name || "All"}</td>
+        <td data-label="Category">${r.category || "All"}</td>
+        <td data-label="Step # / role">${r.step_number} / ${r.step_name}</td>
+        <td data-label="Primary approver">${r.approver_username || r.approver_user_id}</td>
+        <td data-label="Backup approver">${r.backup_approver_username || "-"}</td>
+        <td class="po-td--stack-wide" data-label="Remove"><button type="button" data-rule-del="${r.id}">Delete</button></td>
+      </tr>
+    `).join("");
+    rows.querySelectorAll("[data-rule-del]").forEach(btn => {
+      btn.onclick = () => act(async () => {
+        await fetch(`/api/po/rules/${btn.getAttribute("data-rule-del")}`, {method:"DELETE"});
+        await loadRules();
+      });
+    });
+  };
+  const loadRoleAssignments = async () => {
+    const roleDep = document.getElementById("poRoleDepartment");
+    if (!roleDep) return;
+    const depId = Number(roleDep.value || 0);
+    if (!depId) return;
+    const d = await j(`/api/po/role-assignments?department_id=${encodeURIComponent(depId)}`);
+    const roleAssignment = d.assignments || {};
+    const rolePairs = [
+      ["manager", "poRoleManager", "poRoleManagerBackup"],
+      ["finance", "poRoleFinance", "poRoleFinanceBackup"],
+      ["director", "poRoleDirector", "poRoleDirectorBackup"],
+    ];
+    for (const [rk, primId, bkpId] of rolePairs) {
+      const prim = document.getElementById(primId);
+      const bk = document.getElementById(bkpId);
+      if (!prim || !bk) continue;
+      prim.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+      bk.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+      const ra = roleAssignment[rk] || {};
+      if (ra.user_id) prim.value = String(ra.user_id);
+      if (ra.backup_user_id) bk.value = String(ra.backup_user_id);
+    }
+  };
+  const loadNotificationSettings = async () => {
+    const body = document.getElementById("poNtRows");
+    if (!body) return;
+    const d = await j("/api/po/notifications/settings");
+    const t = d.timing || {};
+    document.getElementById("poNt4").value = String(t.reminder_4h_sec || 14400);
+    document.getElementById("poNt24").value = String(t.escalation_24h_sec || 86400);
+    document.getElementById("poNt48").value = String(t.backup_48h_sec || 172800);
+    body.innerHTML = (d.users || []).map(u => `
+      <tr data-uid="${u.user_id}">
+        <td data-label="User">${u.username}</td>
+        <td data-label="In-app"><input type="checkbox" class="nt-app" ${u.notify_app ? "checked" : ""} /></td>
+        <td data-label="Email"><input type="checkbox" class="nt-email" ${u.notify_email ? "checked" : ""} /></td>
+        <td data-label="WhatsApp"><input type="checkbox" class="nt-wa" ${u.notify_whatsapp ? "checked" : ""} /></td>
+        <td data-label="Email address"><input type="text" class="nt-email-val" value="${(u.email || "").replace(/"/g,'&quot;')}" placeholder="${(u.user_email || "")}" /></td>
+        <td data-label="Mobile / WhatsApp"><input type="text" class="nt-wa-val" value="${(u.whatsapp_number || "").replace(/"/g,'&quot;')}" placeholder="${(u.user_mobile || "")}" /></td>
+        <td class="po-td--stack-wide" data-label="Actions">
+          <button type="button" class="nt-save">Save</button>
+          <button type="button" class="nt-test-app">Test App</button>
+          <button type="button" class="nt-test-email">Test Email</button>
+          <button type="button" class="nt-test-wa">Test WA</button>
+        </td>
+      </tr>
+    `).join("");
+    body.querySelectorAll("tr").forEach(tr => {
+      const uid = Number(tr.getAttribute("data-uid"));
+      const save = async () => {
+        await j(`/api/po/notifications/users/${uid}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            notify_app: tr.querySelector(".nt-app").checked,
+            notify_email: tr.querySelector(".nt-email").checked,
+            notify_whatsapp: tr.querySelector(".nt-wa").checked,
+            email: tr.querySelector(".nt-email-val").value || "",
+            whatsapp_number: tr.querySelector(".nt-wa-val").value || "",
+          }),
+        });
+      };
+      tr.querySelector(".nt-save").onclick = () => act(async () => save());
+      tr.querySelector(".nt-test-app").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "app"})}); });
+      tr.querySelector(".nt-test-email").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "email"})}); });
+      tr.querySelector(".nt-test-wa").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "whatsapp"})}); });
+    });
+  };
+  const addDepartment = async () => {
+    const name = (document.getElementById("poDepartmentNew")?.value || "").trim();
+    if (!name) throw new Error("Enter department name");
+    await j("/api/po/departments", {method:"POST", body: JSON.stringify({name})});
+    document.getElementById("poDepartmentNew").value = "";
+    await loadLookups();
+  };
+  const buildApprovalTrack = (po) => {
+    const st = String((po && po.status) || "").toLowerCase();
+    if (st === "rejected") {
+      const ra = rejectionApprovalEntry(po);
+      const stepLab = ra && ra.step_name ? escHtml(ra.step_name) : "";
+      const cm = ra && String(ra.comments || "").trim() ? escHtml(String(ra.comments).trim()) : "";
+      let inner = `<span class="po-step po-step--declined">Declined${stepLab ? " · " + stepLab : ""}</span>`;
+      if (cm) inner += `<div class="muted small" style="margin-top:4px;max-width:420px;">${cm}</div>`;
+      return inner;
+    }
+    if (st === "postponed") {
+      const who = escHtml(po.postponed_by_username || "—");
+      const rd = escHtml(po.resume_at || "—");
+      const cm = String(po.postponed_comment || "").trim() ? escHtml(String(po.postponed_comment).trim()) : "";
+      let inner = `<span class="po-step po-step--postponed">Postponed · ${who}</span>`;
+      inner += `<div class="muted small" style="margin-top:4px;">Resume on ${rd}</div>`;
+      if (cm) inner += `<div class="muted small" style="margin-top:4px;max-width:420px;">${cm}</div>`;
+      return inner;
+    }
+    const approvals = (po && po.approvals) || [];
+    const byRole = {};
+    approvals.forEach(a => {
+      const nm = String(a.step_name || "").toLowerCase();
+      if (nm.includes("manager")) byRole.manager = a;
+      else if (nm.includes("finance")) byRole.finance = a;
+      else if (nm.includes("director")) byRole.director = a;
+    });
+    const presentRoles = STEP_ORDER.filter(role => Boolean(byRole[role]));
+    // Fallback for unknown/custom step names: show all materialized steps.
+    if (presentRoles.length === 0 && approvals.length > 0) {
+      return approvals
+        .sort((a, b) => Number(a.step_number || 0) - Number(b.step_number || 0))
+        .map((item, idx, arr) => {
+          const ok = String(item.status || "").toLowerCase() === "approved";
+          const cls = `po-step ${ok ? "approved" : "current"}`;
+          const txt = `${ok ? "✓ " : ""}${item.step_name || "Step"}`;
+          const arrow = idx < arr.length - 1 ? `<span class="po-step-arrow">→</span>` : "";
+          return `<span class="${cls}">${txt}</span>${arrow}`;
+        })
+        .join("");
+    }
+    return presentRoles.map((role, idx) => {
+      const item = byRole[role];
+      let cls = "po-step";
+      let text = role.charAt(0).toUpperCase() + role.slice(1);
+      if (String(item.status || "").toLowerCase() === "approved") {
+        cls += " approved";
+        text = "✓ " + text;
+      } else {
+        cls += " current";
+      }
+      const arrow = idx < presentRoles.length - 1 ? `<span class="po-step-arrow">→</span>` : "";
+      return `<span class="${cls}">${text}</span>${arrow}`;
+    }).join("");
+  };
+  const pendingCurrentStep = (po) => {
+    const approvals = (po && po.approvals) || [];
+    const step = Number(po && po.current_approval_step || 0);
+    return approvals.filter(a => Number(a.step_number || 0) === step && String(a.status || "").toLowerCase() === "pending");
+  };
+  const toggleCustomerFields = () => {
+    const t = String(document.getElementById("poRequestType")?.value || "");
+    const wrap = document.getElementById("poCustomerFields");
+    if (!wrap) return;
+    if (t === "customer_item") {
+      wrap.classList.add("is-visible");
+    } else {
+      wrap.classList.remove("is-visible");
+      const cid = document.getElementById("poCustomerId");
+      const ps = document.getElementById("poPaymentStatus");
+      if (cid) cid.value = "";
+      if (ps) ps.value = "";
+    }
+  };
+  const canApprovePo = (po) => {
+    const st = String((po && po.status) || "").toLowerCase();
+    if (!APPROVAL_ACTIVE_STATUSES.has(st)) return false;
+    const pend = pendingCurrentStep(po);
+    if (!pend.length) return false;
+    if (IS_PO_SUPER_ADMIN) return true;
+    const me = String(CURRENT_USERNAME || "").toLowerCase();
+    return pend.some(a => {
+      const primary = String(a.approver_username || "").toLowerCase();
+      const backup = String(a.backup_approver_username || "").toLowerCase();
+      return me && (me === primary || (backup && me === backup));
+    });
+  };
+  const waitingOnText = (po) => {
+    const st = String((po && po.status) || "").toLowerCase();
+    if (st === "rejected") {
+      const ra = rejectionApprovalEntry(po);
+      const cm = ra && String(ra.comments || "").trim();
+      return cm ? ("Declined · " + cm) : "Declined";
+    }
+    if (st === "postponed") {
+      const cm = String(po.postponed_comment || "").trim();
+      const rdt = po.resume_at || "";
+      return cm ? ("Postponed · " + cm + (rdt ? " · resumes " + rdt : "")) : ("Postponed" + (rdt ? " · resumes " + rdt : ""));
+    }
+    if (st === "approved") return "Ready to place order";
+    if (st === "sent_to_supplier") return "Order placed";
+    const pend = pendingCurrentStep(po);
+    if (!pend.length) return "Waiting on: -";
+    const names = pend.map(p => p.approver_username || p.step_name || "Approver");
+    return "Waiting on: " + names.join(", ");
+  };
+  const currentPoDocument = (po) => {
+    const docs = Array.isArray(po && po.documents) ? po.documents : [];
+    if (!docs.length) return null;
+    const cur = docs.find(d => !!d && d.is_current);
+    if (cur && Number(cur.version_no || 0) > 0) return cur;
+    return docs.slice().sort((a, b) => Number(b.version_no || 0) - Number(a.version_no || 0))[0] || null;
+  };
+  const poDocumentUrl = (po) => {
+    const st = String((po && po.status) || "").toLowerCase();
+    if (st !== "sent_to_supplier") return "";
+    const doc = currentPoDocument(po);
+    if (!doc || !Number(doc.version_no || 0) || !Number(po && po.id || 0)) return "";
+    return `/api/po/${Number(po.id)}/document/${Number(doc.version_no)}`;
+  };
+
+  const poPostponeModalEl = document.getElementById("poPostponeModal");
+  const openPostponeModal = (pid) => {
+    postponeTargetPoId = Number(pid || 0);
+    const ta = document.getElementById("poPostponeComment");
+    const dt = document.getElementById("poPostponeResumeDate");
+    if (ta) ta.value = "";
+    if (dt) dt.value = new Date().toISOString().slice(0, 10);
+    if (poPostponeModalEl) poPostponeModalEl.classList.add("is-open");
+  };
+  const closePostponeModal = () => {
+    postponeTargetPoId = 0;
+    if (poPostponeModalEl) poPostponeModalEl.classList.remove("is-open");
+  };
+
+  const loadList = async () => {
+    const renderVersion = ++poListRenderVersion;
+    const q = (document.getElementById("poListSearch")?.value || "").trim();
+    const d = await j(
+      `/api/po/list?page=${encodeURIComponent(poListPage)}&page_size=${PO_PAGE_SIZE}&q=${encodeURIComponent(q)}`
+    );
+    if (renderVersion !== poListRenderVersion) return;
+    const total = Number(d.total || 0);
+    const pageSize = Number(d.page_size || PO_PAGE_SIZE);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (poListPage > totalPages) {
+      poListPage = totalPages;
+      return loadList();
+    }
+    const infoEl = document.getElementById("poListPageInfo");
+    const prevEl = document.getElementById("poListPrev");
+    const nextEl = document.getElementById("poListNext");
+    if (infoEl) {
+      if (!total) {
+        infoEl.textContent = "No purchase orders";
+      } else {
+        const start = (poListPage - 1) * pageSize + 1;
+        const end = Math.min(total, poListPage * pageSize);
+        infoEl.textContent = `Showing ${start}–${end} of ${total} · page ${poListPage} of ${totalPages}`;
+      }
+    }
+    if (prevEl) prevEl.disabled = poListPage <= 1;
+    if (nextEl) nextEl.disabled = poListPage >= totalPages || total === 0;
+    const rows = document.getElementById("poRows");
+    rows.innerHTML = "";
+    const all = Array.isArray(d.purchase_orders) ? d.purchase_orders : [];
+    const uniqueById = new Map();
+    for (const po of all) {
+      const id = Number(po && po.id || 0);
+      if (!id || uniqueById.has(id)) continue;
+      uniqueById.set(id, po);
+    }
+    for (const po of uniqueById.values()) {
+      if (renderVersion !== poListRenderVersion) return;
+      let detail = poDetailsCache.get(po.id);
+      if (!detail) {
+        try {
+          const dd = await j(`/api/po/${po.id}`);
+          if (renderVersion !== poListRenderVersion) return;
+          detail = dd.purchase_order || {};
+          poDetailsCache.set(po.id, detail);
+        } catch (_) {
+          if (renderVersion !== poListRenderVersion) return;
+          detail = {
+            id: po.id,
+            status: po.status,
+            po_number: po.po_number,
+            current_approval_step: po.current_approval_step,
+            approvals: [],
+          };
+        }
+      }
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      const poStatus = String((detail && detail.status) || po.status || "").toLowerCase();
+      const isApproved = poStatus === "approved";
+      const canEditRow = (poStatus === "draft" || poStatus === "changes_requested");
+      const isOwner = String(po.requested_by_username || "").toLowerCase() === String(CURRENT_USERNAME || "").toLowerCase();
+      const rowEditBtn = canEditRow ? `<button type="button" data-po-open="${po.id}">Edit</button>` : "";
+      const approvalActionsAllowed = {% if is_admin %}canApprovePo(detail){% else %}false{% endif %};
+      const rowApproveBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-approve="${po.id}">Approve</button>` : ""){% else %}""{% endif %};
+      const rowPostponeBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-postpone="${po.id}">Postpone</button>` : ""){% else %}""{% endif %};
+      const rowDeclineBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-decline="${po.id}">Decline</button>` : ""){% else %}""{% endif %};
+      const rowPlaceBtn = (isApproved && ({% if is_admin %}true{% else %}false{% endif %} || isOwner)) ? `<button type="button" data-po-place="${po.id}">Place Order</button>` : "";
+      const rowDeleteBtn = (poStatus === "draft") ? `<button type="button" data-po-del="${po.id}">Delete</button>` : "";
+      const docUrl = poDocumentUrl(detail);
+      const rowViewPdfBtn = docUrl ? `<button type="button" data-po-view-pdf="${po.id}">View PDF</button>` : "";
+      const rowDlPdfBtn = docUrl ? `<button type="button" data-po-download-pdf="${po.id}">Download PDF</button>` : "";
+      const dispStatus = (detail && detail.status) || po.status || "";
+      tr.innerHTML = `
+        <td data-label="ID">${po.id}</td>
+        <td data-label="PO #">${po.po_number || "-"}</td>
+        <td data-label="Status"><span class="${statusBadgeClass(dispStatus)}">${escHtml(statusBadgeLabel(dispStatus))}</span></td>
+        <td data-label="Approval flow"><div class="po-step-track">${buildApprovalTrack(detail)}</div></td>
+        <td data-label="Total (ZAR)">${po.total.toFixed(2)}</td>
+        <td data-label="Supplier">${po.supplier_name || "-"}</td>
+        <td data-label="Department">${po.department_name || "-"}</td>
+        <td data-label="Requested by">${po.requested_by_username || "-"}</td>
+        <td class="po-td--stack-wide" data-label="Actions">
+          ${rowEditBtn}
+          ${rowApproveBtn}
+          ${rowPostponeBtn}
+          ${rowDeclineBtn}
+          ${rowPlaceBtn}
+          ${rowDeleteBtn}
+          ${rowViewPdfBtn}
+          ${rowDlPdfBtn}
+          <div class="muted small" style="margin-top:4px;">${waitingOnText(detail)}</div>
+        </td>
+      `;
+      tr.onclick = () => { selectPo(po.id); };
+      const openBtn = tr.querySelector('[data-po-open]');
+      if (openBtn) openBtn.onclick = (e) => { e.stopPropagation(); selectPo(po.id); openCreateModal(); };
+      const quickApproveBtn = tr.querySelector('[data-po-approve]');
+      if (quickApproveBtn) {
+        quickApproveBtn.onclick = (e) => act(async () => {
+          e.stopPropagation();
+          await j(`/api/po/${po.id}/approve`, {method:"POST", body: JSON.stringify({comments:"Approved from list"})});
+        });
+      }
+      const postponeBtn = tr.querySelector('[data-po-postpone]');
+      if (postponeBtn) {
+        postponeBtn.onclick = (e) => {
+          e.stopPropagation();
+          openPostponeModal(po.id);
+        };
+      }
+      const declineBtn = tr.querySelector('[data-po-decline]');
+      if (declineBtn) {
+        declineBtn.onclick = (e) => act(async () => {
+          e.stopPropagation();
+          const comments = prompt("Decline comments (required):", "") || "";
+          if (!String(comments).trim()) throw new Error("Comments are required");
+          await j(`/api/po/${po.id}/reject`, {method:"POST", body: JSON.stringify({comments})});
+        });
+      }
+      const placeBtn = tr.querySelector('[data-po-place]');
+      if (placeBtn) {
+        placeBtn.onclick = (e) => act(async () => {
+          e.stopPropagation();
+          await j(`/api/po/${po.id}/place-order`, {method:"POST"});
+        });
+      }
+      const delBtn = tr.querySelector('[data-po-del]');
+      if (delBtn) {
+        delBtn.onclick = (e) => act(async () => {
+          e.stopPropagation();
+          const isOwner = String(po.requested_by_username || "").toLowerCase() === String(CURRENT_USERNAME || "").toLowerCase();
+          if (!IS_ADMIN) {
+            if (!isOwner) throw new Error("You can only delete your own draft PO");
+            if (String(po.status || "").toLowerCase() !== "draft") throw new Error("Only drafts can be deleted");
+          }
+          if (!confirm(`Delete PO #${po.id}?`)) return;
+          await fetch(`/api/po/${po.id}`, {method: "DELETE"}).then(async r => {
+            if (!r.ok) {
+              const d = await r.json().catch(() => ({}));
+              throw new Error(d.detail || `HTTP ${r.status}`);
+            }
+          });
+          if (selectedPoId === po.id) selectedPoId = 0;
+        });
+      }
+      const viewPdfBtn = tr.querySelector('[data-po-view-pdf]');
+      if (viewPdfBtn) {
+        viewPdfBtn.onclick = (e) => {
+          e.stopPropagation();
+          const d = poDocumentUrl(detail);
+          if (!d) return;
+          window.open(d, "_blank", "noopener");
+        };
+      }
+      const downloadPdfBtn = tr.querySelector('[data-po-download-pdf]');
+      if (downloadPdfBtn) {
+        downloadPdfBtn.onclick = (e) => {
+          e.stopPropagation();
+          const d = poDocumentUrl(detail);
+          if (!d) return;
+          const a = document.createElement("a");
+          a.href = d;
+          a.download = `PO-${po.id}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        };
+      }
+      rows.appendChild(tr);
+    }
+  };
+  const runPoListSearch = () => {
+    poListPage = 1;
+    loadList().catch((e) => msg(e.message || String(e), false));
+  };
+  const poListSearchInput = document.getElementById("poListSearch");
+  const poListSearchBtn = document.getElementById("poListSearchBtn");
+  const poListPrev = document.getElementById("poListPrev");
+  const poListNext = document.getElementById("poListNext");
+  if (poListSearchBtn) poListSearchBtn.onclick = () => runPoListSearch();
+  if (poListSearchInput) {
+    poListSearchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runPoListSearch();
+      }
+    });
+  }
+  if (poListPrev) {
+    poListPrev.onclick = () => {
+      if (poListPage <= 1) return;
+      poListPage -= 1;
+      loadList().catch((e) => msg(e.message || String(e), false));
+    };
+  }
+  if (poListNext) {
+    poListNext.onclick = () => {
+      poListPage += 1;
+      loadList().catch((e) => {
+        poListPage = Math.max(1, poListPage - 1);
+        msg(e.message || String(e), false);
+      });
+    };
+  }
+  const selectPo = async (id) => {
+    poComposingNew = false;
+    selectedPoId = id;
+    const d = await j(`/api/po/${id}`);
+    const po = d.purchase_order || {};
+    poDetailsCache.set(id, po);
+    const detail = document.getElementById("poDetailSummary");
+    const poSt = String(po.status || "").toLowerCase();
+    const rejEnt = poSt === "rejected" ? rejectionApprovalEntry(po) : null;
+    const rejCommentExtra = rejEnt && String(rejEnt.comments || "").trim()
+      ? `<b>Decline comment</b><span>${escHtml(String(rejEnt.comments).trim())}</span>`
+      : "";
+    const postponeExtra = poSt === "postponed"
+      ? `<b>Postponed by</b><span>${escHtml(po.postponed_by_username || "-")}</span><b>Resume on</b><span>${escHtml(po.resume_at || "-")}</span><b>Postpone comment</b><span>${escHtml(po.postponed_comment || "-")}</span>`
+      : "";
+    detail.innerHTML = `
+      <b>PO Number</b><span>${po.po_number || "-"}</span>
+      <b>Status</b><span><span class="${statusBadgeClass(po.status)}">${escHtml(statusBadgeLabel(po.status))}</span></span>
+      <b>Supplier</b><span>${po.supplier_name || "-"}</span>
+      <b>Department</b><span>${po.department_name || "-"}</span>
+      <b>Type</b><span>${String(po.request_type || "stock_item").replace(/_/g, " ")}</span>
+      <b>Customer ID</b><span>${po.customer_id || "-"}</span>
+      <b>Payment</b><span>${po.payment_status || "-"}</span>
+      <b>Date Required</b><span>${po.date_required || "-"}</span>
+      <b>Urgency</b><span>${po.urgency || "-"}</span>
+      <b>Requested By</b><span>${po.requested_by_username || "-"}</span>
+      <b>Total</b><span>R ${(po.total || 0).toFixed ? po.total.toFixed(2) : po.total}</span>
+      <b>Created</b><span>${po.created_at || "-"}</span>
+      <b>Notes</b><span>${po.notes || "-"}</span>
+      ${rejCommentExtra}
+      ${postponeExtra}
+    `;
+    document.getElementById("poSupplier").value = po.supplier_id || "";
+    await loadSupplierProductSuggestions();
+    document.getElementById("poDepartment").value = po.department_id || "";
+    document.getElementById("poCategory").value = po.category || "";
+    document.getElementById("poRequestType").value = po.request_type || "stock_item";
+    document.getElementById("poCustomerId").value = po.customer_id || "";
+    document.getElementById("poPaymentStatus").value = po.payment_status || "";
+    document.getElementById("poDateRequired").value = po.date_required || "";
+    document.getElementById("poUrgency").value = po.urgency || "standard";
+    toggleCustomerFields();
+    document.getElementById("poNotes").value = po.notes || "";
+    itemsBody().innerHTML = "";
+    (po.items || []).forEach(x => addItemRow(x));
+    if ((po.items || []).length === 0) addItemRow();
+    recalcTotals();
+    const log = document.getElementById("poLog");
+    log.innerHTML = (po.status_log || []).map(x => `<div><b>${x.created_at}</b> | ${x.actor_username || "-"} | ${x.action} (${x.from_status || "-"} -> ${x.to_status || "-"}) ${x.comments || ""}</div>`).join("");
+    const approveBtn = document.getElementById("poApproveBtn");
+    const placeBtn = document.getElementById("poPlaceOrderBtn");
+    const viewPdfBtn = document.getElementById("poViewPdfBtn");
+    const downloadPdfBtn = document.getElementById("poDownloadPdfBtn");
+    if (approveBtn) {
+      const ok = canApprovePo(po);
+      const approved = String(po.status || "").toLowerCase() === "approved";
+      const approvalLive = APPROVAL_ACTIVE_STATUSES.has(String(po.status || "").toLowerCase());
+      approveBtn.disabled = !ok;
+      approveBtn.title = ok ? "Approve current step" : waitingOnText(po);
+      approveBtn.style.display = approvalLive ? "" : "none";
+      if (placeBtn) placeBtn.style.display = approved ? "" : "none";
+    }
+    const changesBtn = document.getElementById("poChangesBtn");
+    const rejectBtn = document.getElementById("poRejectBtn");
+    const postponeAdminBtn = document.getElementById("poPostponeBtn");
+    const approvalLiveModal = APPROVAL_ACTIVE_STATUSES.has(String(po.status || "").toLowerCase());
+    if (changesBtn) changesBtn.style.display = approvalLiveModal ? "" : "none";
+    if (rejectBtn) rejectBtn.style.display = approvalLiveModal ? "" : "none";
+    if (postponeAdminBtn) {
+      postponeAdminBtn.style.display = approvalLiveModal ? "" : "none";
+      postponeAdminBtn.onclick = () => openPostponeModal(selectedPoId);
+    }
+    const docUrl = poDocumentUrl(po);
+    if (viewPdfBtn) {
+      viewPdfBtn.style.display = docUrl ? "" : "none";
+      viewPdfBtn.onclick = () => {
+        if (!docUrl) return;
+        window.open(docUrl, "_blank", "noopener");
+      };
+    }
+    if (downloadPdfBtn) {
+      downloadPdfBtn.style.display = docUrl ? "" : "none";
+      downloadPdfBtn.onclick = () => {
+        if (!docUrl) return;
+        const a = document.createElement("a");
+        a.href = docUrl;
+        a.download = `PO-${po.id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+    }
+  };
+  const poPayload = () => ({
+    supplier_id: document.getElementById("poSupplier").value || null,
+    department_id: document.getElementById("poDepartment").value || null,
+    category: document.getElementById("poCategory").value || "",
+    request_type: document.getElementById("poRequestType").value || "stock_item",
+    customer_id: document.getElementById("poCustomerId").value || null,
+    payment_status: document.getElementById("poPaymentStatus").value || "",
+    date_required: document.getElementById("poDateRequired").value || "",
+    urgency: document.getElementById("poUrgency").value || "standard",
+    notes: document.getElementById("poNotes").value || "",
+    items: parseItems(),
+    tax: (() => {
+      let subtotal = 0;
+      itemsBody().querySelectorAll("tr").forEach(tr => {
+        const qty = Number(tr.querySelector(".po-item-qty").value || "0");
+        const unit = Number(tr.querySelector(".po-item-unit").value || "0");
+        subtotal += (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+      });
+      return subtotal * 0.15;
+    })(),
+  });
+  const act = async (fn) => {
+    try {
+      await fn();
+      poDetailsCache.clear();
+      await loadList();
+      if (selectedPoId) await selectPo(selectedPoId);
+      msg("Success");
+    } catch (e) {
+      msg(e.message || String(e), false);
+    }
+  };
+  const isPoCreateModalOpen = () => {
+    const m = document.getElementById("poCreateModal");
+    return !!(m && m.classList.contains("is-open"));
+  };
+  const scheduleRealtimeRefresh = (poId = 0) => {
+    if (poRefreshTimer) window.clearTimeout(poRefreshTimer);
+    poRefreshTimer = window.setTimeout(async () => {
+      try {
+        poDetailsCache.clear();
+        await loadList();
+        /* User is composing a *new* PO (Create PO cleared selection). Do not selectPo —
+           SSE would reload the last PO id and Submit would hit "PO already submitted". */
+        if (isPoCreateModalOpen() && !selectedPoId) return;
+        const id = Number(poId || selectedPoId || 0);
+        if (id) await selectPo(id);
+      } catch (_) {}
+    }, 120);
+  };
+  const connectPoEvents = () => {
+    if (typeof window.EventSource === "undefined") return;
+    if (poEventSource) {
+      try { poEventSource.close(); } catch (_) {}
+      poEventSource = null;
+    }
+    poEventSource = new EventSource("/api/po/events/stream");
+    poEventSource.addEventListener("po_update", (ev) => {
+      let payload = {};
+      try { payload = JSON.parse((ev && ev.data) || "{}"); } catch (_) {}
+      scheduleRealtimeRefresh(Number(payload.po_id || 0));
+    });
+    poEventSource.onerror = () => {
+      try { poEventSource.close(); } catch (_) {}
+      poEventSource = null;
+      window.setTimeout(connectPoEvents, 2000);
+    };
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleRealtimeRefresh(0);
+  });
+  const modal = document.getElementById("poCreateModal");
+  const openCreateModal = () => modal.classList.add("is-open");
+  const closeCreateModal = () => modal.classList.remove("is-open");
+  const prepareNewPoModal = () => {
+    poComposingNew = true;
+    selectedPoId = 0;
+    document.getElementById("poSupplier").value = "";
+    document.getElementById("poDepartment").value = "";
+    document.getElementById("poCategory").value = "";
+    document.getElementById("poDateRequired").value = "";
+    document.getElementById("poNotes").value = "";
+    document.getElementById("poUrgency").value = "standard";
+    document.getElementById("poRequestType").value = "stock_item";
+    document.getElementById("poCustomerId").value = "";
+    document.getElementById("poPaymentStatus").value = "";
+    const dn = document.getElementById("poDepartmentNew");
+    if (dn) dn.value = "";
+    itemsBody().innerHTML = "";
+    addItemRow();
+    toggleCustomerFields();
+    loadSupplierProductSuggestions().catch(() => {});
+  };
+  document.getElementById("poOpenCreateBtn").onclick = () => {
+    prepareNewPoModal();
+    openCreateModal();
+  };
+  document.getElementById("poCloseCreateBtn").onclick = () => closeCreateModal();
+  document.getElementById("poAddItemBtn").onclick = () => addItemRow();
+  document.getElementById("poSupplier").addEventListener("change", () => {
+    loadSupplierProductSuggestions().catch(e => msg(e.message || String(e), false));
+  });
+  document.getElementById("poRequestType").addEventListener("change", toggleCustomerFields);
+  const depBtn = document.getElementById("poDepartmentAddBtn");
+  if (depBtn) depBtn.onclick = () => act(async () => addDepartment());
+  const ruleBtn = document.getElementById("poRuleAddBtn");
+  if (ruleBtn) ruleBtn.onclick = () => act(async () => {
+    await j("/api/po/rules", {
+      method: "POST",
+      body: JSON.stringify({
+        name: document.getElementById("poRuleName").value || "Rule",
+        min_total: Number(document.getElementById("poRuleMin").value || 0),
+        max_total: document.getElementById("poRuleMax").value || null,
+        department_id: document.getElementById("poRuleDepartment").value || null,
+        category: document.getElementById("poRuleCategory").value || "",
+        step_number: Number(document.getElementById("poRuleStepNo").value || 1),
+        step_name: document.getElementById("poRuleStepName").value || "Manager",
+        approver_user_id: Number(document.getElementById("poRuleApprover").value || 0),
+        backup_approver_user_id: document.getElementById("poRuleBackup").value || null,
+        active: true
+      })
+    });
+    await loadRules();
+  });
+  const roleSaveBtn = document.getElementById("poRoleSaveBtn");
+  if (roleSaveBtn) roleSaveBtn.onclick = () => act(async () => {
+    const depId = Number(document.getElementById("poRoleDepartment")?.value || 0);
+    if (!depId) throw new Error("Select department for role assignments");
+    await j("/api/po/role-assignments", {
+      method: "PUT",
+      body: JSON.stringify({
+        department_id: depId,
+        manager: {user_id: document.getElementById("poRoleManager").value || null, backup_user_id: document.getElementById("poRoleManagerBackup").value || null},
+        finance: {user_id: document.getElementById("poRoleFinance").value || null, backup_user_id: document.getElementById("poRoleFinanceBackup").value || null},
+        director: {user_id: document.getElementById("poRoleDirector").value || null, backup_user_id: document.getElementById("poRoleDirectorBackup").value || null},
+      })
+    });
+    await loadRoleAssignments();
+  });
+  const roleDepSel = document.getElementById("poRoleDepartment");
+  if (roleDepSel) roleDepSel.addEventListener("change", () => {
+    loadRoleAssignments().catch(e => msg(e.message || String(e), false));
+  });
+  const ntSave = document.getElementById("poNtSaveTimingBtn");
+  if (ntSave) ntSave.onclick = () => act(async () => {
+    await j("/api/po/notifications/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        reminder_4h_sec: Number(document.getElementById("poNt4").value || 14400),
+        escalation_24h_sec: Number(document.getElementById("poNt24").value || 86400),
+        backup_48h_sec: Number(document.getElementById("poNt48").value || 172800),
+      }),
+    });
+    await loadNotificationSettings();
+  });
+  document.getElementById("poCreateBtn").onclick = () => act(async () => {
+    poListPage = 1;
+    const d = await j("/api/po", {method:"POST", body: JSON.stringify(poPayload())});
+    selectedPoId = d.id;
+    poComposingNew = false;
+    await selectPo(selectedPoId);
+    closeCreateModal();
+  });
+  document.getElementById("poUpdateBtn").onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    await j(`/api/po/${selectedPoId}`, {method:"PUT", body: JSON.stringify(poPayload())});
+  });
+  document.getElementById("poSubmitBtn").onclick = () => act(async () => {
+    let id = selectedPoId;
+    if (!id || poComposingNew) {
+      poListPage = 1;
+      const created = await j("/api/po", {method:"POST", body: JSON.stringify(poPayload())});
+      id = Number(created.id);
+      selectedPoId = id;
+      poComposingNew = false;
+    } else {
+      await j(`/api/po/${id}`, {method:"PUT", body: JSON.stringify(poPayload())});
+    }
+    await j(`/api/po/${id}/submit`, {method:"POST"});
+    closeCreateModal();
+  });
+  const approveModalBtn = document.getElementById("poApproveBtn");
+  if (approveModalBtn) approveModalBtn.onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    await j(`/api/po/${selectedPoId}/approve`, {method:"POST", body: JSON.stringify({comments:"Approved from UI"})});
+  });
+  const placeOrderModalBtn = document.getElementById("poPlaceOrderBtn");
+  if (placeOrderModalBtn) placeOrderModalBtn.onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    await j(`/api/po/${selectedPoId}/place-order`, {method:"POST"});
+  });
+  const rejectModalBtn = document.getElementById("poRejectBtn");
+  if (rejectModalBtn) rejectModalBtn.onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    const comments = prompt("Decline comments (required):", "") || "";
+    if (!String(comments).trim()) throw new Error("Comments are required");
+    await j(`/api/po/${selectedPoId}/reject`, {method:"POST", body: JSON.stringify({comments})});
+  });
+  const changesModalBtn = document.getElementById("poChangesBtn");
+  if (changesModalBtn) changesModalBtn.onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    const comments = prompt("Request changes — comments (required):", "") || "";
+    if (!String(comments).trim()) throw new Error("Comments are required");
+    await j(`/api/po/${selectedPoId}/changes`, {method:"POST", body: JSON.stringify({comments})});
+  });
+  const poPostponeClose = document.getElementById("poPostponeModalClose");
+  const poPostponeCancel = document.getElementById("poPostponeModalCancel");
+  const poPostponeSave = document.getElementById("poPostponeModalSave");
+  if (poPostponeClose) poPostponeClose.onclick = () => closePostponeModal();
+  if (poPostponeCancel) poPostponeCancel.onclick = () => closePostponeModal();
+  if (poPostponeSave) {
+    poPostponeSave.onclick = () => act(async () => {
+      const pid = postponeTargetPoId || selectedPoId;
+      if (!pid) throw new Error("No PO selected");
+      const comments = (document.getElementById("poPostponeComment").value || "").trim();
+      const resume_at = (document.getElementById("poPostponeResumeDate").value || "").trim();
+      if (!comments) throw new Error("Comment is required");
+      if (!resume_at) throw new Error("Resume date is required");
+      await j("/api/po/action/postpone", { method: "POST", body: JSON.stringify({ po_id: pid, comments, resume_at }) });
+      closePostponeModal();
+    });
+  }
+  const cancelBtn = document.getElementById("poCancelBtn");
+  if (cancelBtn) cancelBtn.onclick = () => act(async () => {
+    if (!selectedPoId) throw new Error("Select a PO first");
+    await j(`/api/po/${selectedPoId}/status`, {method:"POST", body: JSON.stringify({status:"cancelled", comments:"Admin cancel"})});
+  });
+  const dispatchBtn = document.getElementById("poDispatchBtn");
+  if (dispatchBtn) dispatchBtn.onclick = () => act(async () => {
+    await j("/api/po/notifications/dispatch", {method:"POST", body: JSON.stringify({limit:100})});
+  });
+  document.getElementById("poRefreshBtn").onclick = () => act(async () => {});
+  addItemRow();
+  toggleCustomerFields();
+  connectPoEvents();
+  loadLookups().then(loadList).then(loadRules).then(loadRoleAssignments).then(loadNotificationSettings).catch(e => msg(e.message || String(e), false));
+})();
+</script>
+{% endblock %}

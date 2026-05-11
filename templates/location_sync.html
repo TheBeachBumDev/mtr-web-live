@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .lsync-hint { color: var(--muted); font-size: 0.95rem; line-height: 1.45; max-width: 48rem; margin: 0 0 16px; }
+  .lsync-bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px;
+  }
+  .lsync-bar .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .lsync-bar input[type="search"] { min-width: 200px; }
+  .lsync-status { font-size: 0.9rem; color: var(--muted); }
+  .lsync-status b { color: var(--fg); }
+  .lsync-pager { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; font-size: 0.9rem; }
+  .lsync-pager button { padding: 6px 10px; }
+  .lsync-table-wrap { max-height: min(70vh, 640px); overflow: auto; border: 1px solid var(--border); border-radius: 12px; margin-top: 8px; }
+  .lsync-table { width: 100%; border-collapse: collapse; }
+  .lsync-table th, .lsync-table td { border-bottom: 1px solid var(--border); padding: 8px 10px; font-size: 0.9rem; }
+  .lsync-table th { position: sticky; top: 0; background: var(--code-bg); z-index: 1; text-align: left; }
+  .lsync-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  .lsync-ok { color: #15803d; }
+  html[data-theme="dark"] .lsync-ok { color: #86efac; }
+  .lsync-err { color: #b91c1c; }
+  html[data-theme="dark"] .lsync-err { color: #fca5a5; }
+  .lsync-runmsg { font-size: 0.9rem; margin-top: 8px; }
+  .lsync-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.48);
+    box-sizing: border-box;
+  }
+  .lsync-modal-overlay.is-open { display: flex; }
+  .lsync-modal-panel {
+    width: min(920px, 100%);
+    max-height: min(88vh, 900px);
+    overflow: auto;
+    padding: 16px 20px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg, var(--bg));
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  html[data-theme="dark"] .lsync-modal-overlay { background: rgba(0, 0, 0, 0.65); }
+  .lsync-modal-header {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-shrink: 0;
+    margin: 0 0 12px;
+    gap: 10px;
+  }
+  .lsync-modal-close {
+    position: static;
+    width: auto;
+    flex: 0 0 auto;
+    margin: 0;
+    cursor: pointer;
+  }
+  .lsync-modal-summary { font-size: 0.92rem; line-height: 1.5; margin: 0 0 14px; white-space: pre-wrap; clear: both; }
+  .lsync-modal-heading { margin: 0 0 8px; font-size: 1.05rem; }
+</style>
+
+<h1>Location Sync</h1>
+<p class="lsync-hint">
+  Syncs <strong>active</strong> Splynx customers (same <code>customer_id</code> as Field Tech / IPAM). Multiple <strong>active internet services</strong> become multiple rows (keyed by service login / id from Splynx bulk internet-services API).
+  Pagination uses <strong>100</strong>-record API pages by default (override with <code>SPLYNX_CUSTOMER_PAGE_SIZE</code>) with a short pause between requests.
+  MAC is taken from <strong>online sessions</strong> when present, otherwise last session / list / optional deep lookups (see env).
+  Use <strong>Cross-reference</strong> to read active PPP sessions on a chosen edge router, match MACs to this cache, and set <strong>Location</strong> to that router’s site (from Routers / IPAM). Antenna IP in IPAM is left to field techs; it is not changed here.
+</p>
+
+<div class="card" style="margin-bottom:16px; padding:14px;">
+  <div class="hint mono" style="margin-bottom:8px;">Cross-reference (router PPP ↔ MAC → Location)</div>
+  <div class="lsync-bar" style="margin-bottom:0;">
+    <label class="hint mono" for="lsXrefRouter">Router</label>
+    <select id="lsXrefRouter" style="min-width:220px;"></select>
+    <label class="hint mono" for="lsXrefVendor">Vendor</label>
+    <select id="lsXrefVendor" style="min-width:180px;"></select>
+    <button type="button" id="lsXrefBtn" onclick="runCrossRef()">Update</button>
+  </div>
+  <div id="lsXrefMsg" class="lsync-runmsg mono" style="margin-top:8px;"></div>
+</div>
+
+<div id="lsXrefModalOverlay" class="lsync-modal-overlay" aria-hidden="true" aria-modal="true" role="dialog">
+  <div class="lsync-modal-panel card" onclick="event.stopPropagation();">
+    <div class="lsync-modal-header">
+      <button type="button" class="btn lsync-modal-close" id="lsXrefModalClose" onclick="closeLsXrefModal()">Close</button>
+    </div>
+    <div id="lsXrefModalSummary" class="lsync-modal-summary mono lsync-ok"></div>
+    <h2 class="lsync-modal-heading">Found on router but not in Location Sync DB</h2>
+    <p class="hint mono" style="margin-top:0;">PPP sessions whose MAC did not match any MAC in your Location Sync cache (same direction only — not “in DB but offline on router”).</p>
+    <div class="lsync-table-wrap" style="max-height:min(55vh,520px); margin-top:12px;">
+      <table class="lsync-table">
+        <thead>
+          <tr>
+            <th>PPP name</th>
+            <th>MAC (normalized)</th>
+            <th>Caller-ID (raw)</th>
+          </tr>
+        </thead>
+        <tbody id="lsXrefModalBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="lsync-bar">
+  <button type="button" id="lsRunBtn" onclick="runSyncNow()">Run sync now</button>
+  <div class="row">
+    <label class="hint mono" for="lsSearch">Filter</label>
+    <input id="lsSearch" type="search" placeholder="Customer ID, name, or MAC…" autocomplete="off" />
+    <button type="button" onclick="applySearch()">Apply</button>
+  </div>
+</div>
+<div id="lsRunMsg" class="lsync-runmsg mono"></div>
+<div id="lsStatus" class="lsync-status mono"></div>
+
+<div class="lsync-table-wrap">
+  <table class="lsync-table">
+    <thead>
+      <tr>
+        <th>Customer ID</th>
+        <th>Service login</th>
+        <th>Name</th>
+        <th>Status</th>
+        <th>MAC</th>
+        <th>MAC source</th>
+        <th>Location</th>
+        <th>Cross-ref (UTC)</th>
+        <th>Cached at (UTC)</th>
+      </tr>
+    </thead>
+    <tbody id="lsBody">
+      <tr><td colspan="9" class="hint mono">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="lsync-pager">
+  <button type="button" id="lsPrev" onclick="pagePrev()" disabled>Previous</button>
+  <span id="lsPageInfo" class="mono hint"></span>
+  <button type="button" id="lsNext" onclick="pageNext()" disabled>Next</button>
+</div>
+
+<script>
+  const LS_PAGE = 500;
+  let lsOffset = 0;
+  let lsTotal = 0;
+  let lsSearch = "";
+
+  function sourceLabel(s) {
+    if (!s) return "—";
+    if (s === "online") return "Online session";
+    if (s === "list") return "Customer list";
+    if (s === "customer_detail") return "Customer detail";
+    if (s === "internet_service") return "Internet service";
+    if (s === "last_session") return "Last session";
+    return s;
+  }
+
+  function xrefHint(c) {
+    const v = (c.cross_ref_vendor || "").trim();
+    const rid = c.cross_ref_router_id;
+    if (!v && !rid) return "";
+    let t = "";
+    if (v) t += v;
+    if (rid != null && rid !== "") t += (t ? " · " : "") + ("router #" + rid);
+    return t;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  async function loadStatus() {
+    const el = document.getElementById("lsStatus");
+    try {
+      const r = await fetch("/api/location-sync/status", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        el.innerHTML = "Status: <span class='lsync-err'>" + esc(j.detail || "unavailable") + "</span>";
+        return;
+      }
+      const sync = j.last_sync_at ? esc(j.last_sync_at) : "—";
+      const cnt = j.last_sync_count != null ? esc(String(j.last_sync_count)) : "—";
+      const ih = j.interval_hours != null ? esc(String(j.interval_hours)) : "—";
+      const prog = j.in_progress ? "<b>Sync running…</b>" : "";
+      const err = j.last_error ? " <span class='lsync-err'>Last error: " + esc(j.last_error) + "</span>" : "";
+      const xr = j.last_cross_ref_at ? " · Last cross-ref (UTC): <b>" + esc(j.last_cross_ref_at) + "</b>" : "";
+      let schedLine;
+      if (j.scheduler_enabled === false) {
+        schedLine =
+          "Schedule: <b>disabled</b> <span class='hint'>(standby — nightly auto-sync off; cache from DB clone. <b>Run sync now</b> still available.)</span>";
+      } else {
+        schedLine = "Schedule: nightly at local midnight (nominal <b>" + ih + "</b> h) ";
+      }
+      el.innerHTML =
+        "Last sync (UTC): <b>" + sync + "</b> · Rows: <b>" + cnt + "</b> · " + schedLine + prog + err + xr;
+    } catch (e) {
+      el.textContent = "Could not load status.";
+    }
+  }
+
+  async function loadRows() {
+    const body = document.getElementById("lsBody");
+    body.innerHTML = '<tr><td colspan="9" class="hint mono">Loading…</td></tr>';
+    const u = new URL("/api/location-sync/customers", window.location.origin);
+    u.searchParams.set("offset", String(lsOffset));
+    u.searchParams.set("limit", String(LS_PAGE));
+    if (lsSearch) u.searchParams.set("search", lsSearch);
+    try {
+      const r = await fetch(u.toString(), { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        body.innerHTML = '<tr><td colspan="9" class="lsync-err">' + esc(j.detail || ("HTTP " + r.status)) + "</td></tr>";
+        return;
+      }
+      lsTotal = Number(j.total) || 0;
+      const rows = j.customers || [];
+      body.innerHTML = "";
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="9" class="hint mono">No rows — run a sync first.</td></tr>';
+      } else {
+        rows.forEach(function (c) {
+          const tr = document.createElement("tr");
+          const xr = xrefHint(c);
+          tr.innerHTML =
+            "<td class=\"mono\">" + esc(c.customer_id) + "</td>" +
+            "<td class=\"mono hint\">" + esc(c.service_login || "—") + "</td>" +
+            "<td>" + esc(c.customer_name || "") + "</td>" +
+            "<td>" + esc(c.status || "") + "</td>" +
+            "<td class=\"lsync-mono\">" + esc(c.mac || "—") + "</td>" +
+            "<td class=\"hint\">" + esc(sourceLabel(c.mac_source)) + "</td>" +
+            "<td title=\"" + esc(xr) + "\">" + esc(c.cross_ref_location || "—") + "</td>" +
+            "<td class=\"hint mono\">" + esc(c.cross_ref_at || "—") + "</td>" +
+            "<td class=\"hint mono\">" + esc(c.updated_at || "") + "</td>";
+          body.appendChild(tr);
+        });
+      }
+      updatePager();
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="9" class="lsync-err">' + esc(String(e)) + "</td></tr>";
+    }
+  }
+
+  function updatePager() {
+    const info = document.getElementById("lsPageInfo");
+    const prev = document.getElementById("lsPrev");
+    const next = document.getElementById("lsNext");
+    const start = lsTotal === 0 ? 0 : lsOffset + 1;
+    const end = Math.min(lsOffset + LS_PAGE, lsTotal);
+    info.textContent = lsTotal ? ("Showing " + start + "–" + end + " of " + lsTotal) : "No rows";
+    prev.disabled = lsOffset <= 0;
+    next.disabled = lsOffset + LS_PAGE >= lsTotal;
+  }
+
+  function pagePrev() {
+    lsOffset = Math.max(0, lsOffset - LS_PAGE);
+    loadRows();
+  }
+
+  function pageNext() {
+    if (lsOffset + LS_PAGE < lsTotal) {
+      lsOffset += LS_PAGE;
+      loadRows();
+    }
+  }
+
+  function applySearch() {
+    lsSearch = (document.getElementById("lsSearch").value || "").trim();
+    lsOffset = 0;
+    loadRows();
+  }
+
+  async function runSyncNow() {
+    const btn = document.getElementById("lsRunBtn");
+    const msg = document.getElementById("lsRunMsg");
+    btn.disabled = true;
+    msg.textContent = "Starting sync…";
+    msg.className = "lsync-runmsg mono";
+    try {
+      const r = await fetch("/api/location-sync/run", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (j.ok) {
+        msg.className = "lsync-runmsg mono lsync-ok";
+        msg.textContent = j.message || j.detail || "Done.";
+      } else {
+        msg.className = "lsync-runmsg mono lsync-err";
+        msg.textContent = j.detail || j.message || ("HTTP " + r.status);
+      }
+    } catch (e) {
+      msg.className = "lsync-runmsg mono lsync-err";
+      msg.textContent = String(e);
+    } finally {
+      btn.disabled = false;
+      await loadStatus();
+      lsOffset = 0;
+      await loadRows();
+    }
+  }
+
+  document.getElementById("lsSearch").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") applySearch();
+  });
+
+  function closeLsXrefModal() {
+    const overlay = document.getElementById("lsXrefModalOverlay");
+    if (!overlay) return;
+    overlay.classList.remove("is-open");
+    overlay.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  function openLsXrefModal(summaryText, unmatchedRows) {
+    const overlay = document.getElementById("lsXrefModalOverlay");
+    const summary = document.getElementById("lsXrefModalSummary");
+    const tbody = document.getElementById("lsXrefModalBody");
+    if (!overlay || !summary || !tbody) return;
+    summary.textContent = summaryText || "";
+    summary.className = "lsync-modal-summary mono lsync-ok";
+    tbody.innerHTML = "";
+    const rows = unmatchedRows || [];
+    if (!rows.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="3" class="hint mono">None — every PPP MAC seen on this router matched the Location Sync cache.</td></tr>';
+    } else {
+      rows.forEach(function (row) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + esc(row.ppp_name || "—") + "</td>" +
+          "<td class=\"lsync-mono\">" + esc(row.mac_normalized || "") + "</td>" +
+          "<td class=\"lsync-mono hint\">" + esc(row.caller_id_raw || "") + "</td>";
+        tbody.appendChild(tr);
+      });
+    }
+    overlay.classList.add("is-open");
+    overlay.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  (function bindLsXrefModal() {
+    const overlay = document.getElementById("lsXrefModalOverlay");
+    if (!overlay) return;
+    overlay.addEventListener("click", function (ev) {
+      if (ev.target === overlay) closeLsXrefModal();
+    });
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && overlay.classList.contains("is-open")) closeLsXrefModal();
+    });
+  })();
+
+  async function loadCrossRefControls() {
+    const rs = document.getElementById("lsXrefRouter");
+    const vs = document.getElementById("lsXrefVendor");
+    rs.innerHTML = "";
+    vs.innerHTML = "";
+    try {
+      const rv = await fetch("/api/routers", { credentials: "same-origin" });
+      const jr = await rv.json().catch(function () { return {}; });
+      if (jr.ok && jr.routers && jr.routers.length) {
+        jr.routers.forEach(function (row) {
+          const o = document.createElement("option");
+          o.value = String(row.id);
+          const loc = row.location_name || "?";
+          const host = row.router_host || "";
+          o.textContent = loc + " — " + host;
+          rs.appendChild(o);
+        });
+      } else {
+        const o = document.createElement("option");
+        o.value = "";
+        o.textContent = "No routers configured";
+        rs.appendChild(o);
+      }
+    } catch (e) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "Could not load routers";
+      rs.appendChild(o);
+    }
+    try {
+      const vv = await fetch("/api/location-sync/cross-ref/vendors", { credentials: "same-origin" });
+      const jv = await vv.json().catch(function () { return {}; });
+      if (jv.ok && jv.vendors && jv.vendors.length) {
+        jv.vendors.forEach(function (v) {
+          const o = document.createElement("option");
+          o.value = v.id;
+          o.textContent = v.label || v.id;
+          vs.appendChild(o);
+        });
+      } else {
+        const o = document.createElement("option");
+        o.value = "mikrotik";
+        o.textContent = "Mikrotik RouterOS";
+        vs.appendChild(o);
+      }
+    } catch (e) {
+      const o = document.createElement("option");
+      o.value = "mikrotik";
+      o.textContent = "Mikrotik RouterOS";
+      vs.appendChild(o);
+    }
+  }
+
+  async function runCrossRef() {
+    const btn = document.getElementById("lsXrefBtn");
+    const msg = document.getElementById("lsXrefMsg");
+    const rid = document.getElementById("lsXrefRouter").value;
+    const vendor = document.getElementById("lsXrefVendor").value;
+    if (!rid) {
+      msg.className = "lsync-runmsg mono lsync-err";
+      msg.textContent = "Select a router.";
+      return;
+    }
+    btn.disabled = true;
+    msg.textContent = "Scanning PPP active sessions…";
+    msg.className = "lsync-runmsg mono";
+    try {
+      const r = await fetch("/api/location-sync/cross-ref/run", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ router_id: parseInt(rid, 10), vendor: vendor }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (j.ok) {
+        msg.className = "lsync-runmsg mono lsync-ok";
+        msg.textContent = "Done — full summary in dialog.";
+        var um = j.stats && j.stats.unmatched_sessions ? j.stats.unmatched_sessions : [];
+        openLsXrefModal(j.message || j.detail || "Done.", um);
+      } else {
+        msg.className = "lsync-runmsg mono lsync-err";
+        msg.textContent = j.detail || j.message || ("HTTP " + r.status);
+      }
+    } catch (e) {
+      msg.className = "lsync-runmsg mono lsync-err";
+      msg.textContent = String(e);
+    } finally {
+      btn.disabled = false;
+      await loadStatus();
+      await loadRows();
+    }
+  }
+
+  loadCrossRefControls();
+  loadStatus();
+  loadRows();
+  setInterval(loadStatus, 15000);
+</script>
+{% endblock %}

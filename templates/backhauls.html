@@ -1,0 +1,1535 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .bh-intro { color: var(--muted); margin: 0 0 10px; max-width: 42rem; line-height: 1.35; font-size: 0.88rem; }
+  .bh-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+  }
+  .bh-form label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .bh-form input, .bh-form select { min-width: 120px; max-width: 100%; padding: 8px 10px; font-size: 0.9rem; }
+  .bh-form input#bhName { min-width: 160px; }
+  .bh-form input#bhCap { width: 96px; min-width: 80px; }
+  .bh-links { display: flex; flex-direction: column; gap: 8px; }
+  .bh-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px 12px 10px;
+    background: var(--card);
+    contain: layout style;
+  }
+  .bh-card__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    justify-content: space-between;
+    row-gap: 6px;
+  }
+  .bh-card__left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    min-width: 0;
+    flex: 1;
+  }
+  .bh-card__name { font-weight: 700; font-size: 0.98rem; }
+  .bh-metrics {
+    font-size: 0.88rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .bh-metrics .bh-dir { color: var(--muted); font-size: 0.78rem; margin-right: 2px; }
+  .bh-val-up, .bh-val-down { font-weight: 650; min-width: 4.5ch; display: inline-block; }
+  .bh-val-lat { color: var(--muted); }
+  .bh-sep { color: var(--muted); margin: 0 4px; opacity: 0.65; }
+  .bh-pill {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .bh-pill--ok { background: #dcfce7; color: #166534; }
+  .bh-pill--warn { background: #fef9c3; color: #854d0e; }
+  .bh-pill--crit, .bh-pill--down { background: #fee2e2; color: #991b1b; }
+  .bh-pill--unk { background: var(--code-bg); color: var(--muted); }
+  html[data-theme="dark"] .bh-pill--ok { background: #14532d; color: #bbf7d0; }
+  html[data-theme="dark"] .bh-pill--warn { background: #422006; color: #fef08a; }
+  html[data-theme="dark"] .bh-pill--crit, html[data-theme="dark"] .bh-pill--down { background: #450a0a; color: #fecaca; }
+  .bh-card__hosts {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.35;
+    word-break: break-all;
+  }
+  .bh-card__actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .bh-card__actions input.bh-edit-mbps {
+    width: 88px;
+    font-size: 0.82rem;
+    padding: 4px 6px;
+  }
+  .bh-card__actions button { padding: 6px 10px; font-size: 0.82rem; }
+  .bh-empty { padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; font-size: 0.92rem; }
+  .bh-poll { font-size: 0.82rem; color: var(--muted); margin-top: 10px; }
+  .bh-warn { font-size: 0.8rem; color: #b45309; margin-top: 6px; }
+  html[data-theme="dark"] .bh-warn { color: #fbbf24; }
+  .bh-radio-wrap { margin-top: 18px; border-top: 1px dashed var(--border); padding-top: 14px; }
+  .bh-radio-grid { display: flex; flex-direction: column; gap: 8px; }
+  .bh-radio-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--card); }
+  .bh-radio-name { font-weight: 700; }
+  .bh-oid-edit-row { display: flex; align-items: center; gap: 8px; width: 100%; flex-wrap: wrap; box-sizing: border-box; }
+  .bh-oid-edit-row input[type="text"] { flex: 1 1 140px; min-width: 0; max-width: 220px; }
+  .bh-oid-edit-row .bh-oid-path { flex: 2 1 180px; min-width: 0; word-break: break-all; }
+  .bh-oid-edit-row .bh-oid-live { flex: 1 1 160px; min-width: 0; font-variant-numeric: tabular-nums; color: var(--fg); }
+  .bh-oid-edit-row .bh-oid-save { margin-left: auto; flex-shrink: 0; }
+  .bh-cmd-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .bh-cmd-row input { min-width: 150px; }
+  .bh-cmd-out { margin: 4px 0 8px 0; font-size: 0.8rem; white-space: pre-wrap; }
+  .bh-oid-list { margin-top:8px; max-height:280px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:8px; }
+  .bh-oid-row { display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap; }
+  .bh-mib-panel { margin-top:10px; padding:10px 12px; border:1px dashed var(--border); border-radius:10px; background:color-mix(in srgb, var(--card) 92%, var(--muted) 8%); }
+  .bh-mib-panel label { font-size:12px; color: var(--muted); display:block; margin-bottom:4px; }
+  .bh-mib-list { list-style:none; margin:8px 0 0 0; padding:0; font-size:0.82rem; max-height:120px; overflow:auto; }
+  .bh-mib-list li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0; border-bottom:1px solid var(--border); }
+  .bh-mib-list li:last-child { border-bottom:none; }
+  .bh-hist-modal {
+    position: fixed; inset: 0; z-index: 3000; display:none; align-items:center; justify-content:center;
+    padding: 18px; box-sizing: border-box;
+  }
+  .bh-hist-modal.is-open { display:flex; }
+  .bh-hist-backdrop { position:absolute; inset:0; background:rgba(0,0,0,.45); }
+  .bh-hist-panel { position:relative; width:min(980px,100%); max-height:min(86vh,900px); overflow:auto; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px; }
+  .bh-hist-wrap { min-height: 200px; }
+  .bh-hist-charts { display: flex; flex-direction: column; gap: 14px; max-height: min(68vh, 640px); overflow: auto; padding-right: 4px; }
+  .bh-hist-chart-slot { min-height: 200px; height: 220px; position: relative; }
+  .bh-hist-chart-slot canvas { width: 100% !important; height: calc(100% - 22px) !important; }
+  .bh-hist-chart-slot .bh-hist-chart-title { margin: 0 0 6px 0; font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+  .bh-hist-empty { color: var(--muted); font-size: 0.9rem; padding: 10px 2px; }
+  .bh-snmp-walk-msg {
+    margin: 10px 0 0 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--border) 85%, #eab308 35%);
+    background: color-mix(in srgb, var(--card) 93%, #eab308 10%);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .bh-snmp-ping-result {
+    margin: 8px 0 0 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+</style>
+
+<div id="bhLivePausedBanner" class="hint" style="display:none; margin-bottom:14px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:color-mix(in srgb, var(--card) 90%, #eab308 15%);">
+  <strong>Live backhaul probing paused</strong> — Standby: no ICMP, SSH to routers, periodic SNMP polls, or manual <strong>SNMP ping / Discover OIDs</strong> until <strong>MONITORING_SAMPLING_ENABLED=1</strong> (use <strong>Promote Standby</strong>). Static config and DB-backed views still load.
+</div>
+
+<h1>Backhauls</h1>
+<p class="bh-intro">
+  Link two routers and interfaces; live throughput on the <strong>first</strong> router’s iface; latency is ping to the second router.
+  Utilisation vs the cap: warn / crit use the global ratios (default 80% / 90%). Updates about every <span class="mono">5s</span>.
+</p>
+
+<div class="bh-form">
+  <div>
+    <label for="bhName">Name</label>
+    <input id="bhName" type="text" placeholder="e.g. Tower ↔ core" autocomplete="off" />
+  </div>
+  <div>
+    <label for="bhRA">Router 1</label>
+    <select id="bhRA"></select>
+  </div>
+  <div>
+    <label for="bhIA">Iface</label>
+    <select id="bhIA" disabled><option value="">—</option></select>
+  </div>
+  <div>
+    <label for="bhRB">Router 2</label>
+    <select id="bhRB"></select>
+  </div>
+  <div>
+    <label for="bhIB">Iface</label>
+    <select id="bhIB" disabled><option value="">—</option></select>
+  </div>
+  <div>
+    <label for="bhCap">Max Mbps</label>
+    <input id="bhCap" type="number" min="0.1" max="1000000" step="0.1" value="500" />
+  </div>
+  <div>
+    <button type="button" id="bhAddBtn">Add</button>
+  </div>
+</div>
+<div id="bhErr" class="err" style="display:none; margin-bottom:10px;"></div>
+
+<div id="bhList" class="bh-links"></div>
+<div id="bhEmpty" class="bh-empty" style="display:none;">No links yet — add routers, interfaces, and a cap above.</div>
+<p class="bh-poll mono" id="bhPoll">—</p>
+
+<section class="bh-radio-wrap" id="bh-radio-snmp">
+  <h2 style="margin:0 0 8px 0;">Radio monitoring (SNMP)</h2>
+  <p class="hint" style="margin:0 0 12px 0; font-size:0.84rem; line-height:1.45;">
+    Enter <strong>Host/IP</strong> and <strong>SNMP community</strong> first. Click <strong>Test SNMP from server</strong> to confirm this web app reaches the device (same process as Discover). Click <strong>Discover OIDs</strong>, wait for the status line — <strong>numeric OID candidates appear in the bordered box below</strong> (scroll down). Ceragon/CERAGON-style trees often live under base <span class="mono">.1.3.6.1.4.1.2281.3</span> or <span class="mono">.2281.2</span>, not always under <span class="mono">.2281.10</span>.
+  </p>
+  <div class="bh-form">
+    <div><label for="rName">Radio Name</label><input id="rName" type="text" placeholder="Siklu 8010 A" /></div>
+    <div><label for="rHost">Host/IP</label><input id="rHost" type="text" placeholder="10.0.0.10" /></div>
+    <div><label for="rSnmpPort">SNMP Port</label><input id="rSnmpPort" type="number" value="161" min="1" max="65535" /></div>
+    <div><label for="rSnmpVer">SNMP Version</label><select id="rSnmpVer"><option value="2c">2c</option><option value="1">1</option></select></div>
+    <div><label for="rSnmpComm">SNMP Community</label><input id="rSnmpComm" type="text" value="public" /></div>
+    <div class="bh-mib-panel" style="min-width:100%; width:100%;">
+      <label for="rSnmpMibFile">Vendor MIB files (optional)</label>
+      <p class="hint" style="margin:0 0 8px 0; font-size:0.82rem; line-height:1.35;">
+        Upload vendor <span class="mono">.mib</span> modules so <strong>Discover OIDs</strong> shows symbolic names from your MIB (in addition to system MIBs on this server). Upload any MIBs your file <code>IMPORT</code>s if translation fails.
+      </p>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        <input id="rSnmpMibFile" type="file" accept=".mib,.txt,.my,text/plain,application/octet-stream" {% if not is_admin %}disabled{% endif %} />
+        <button type="button" id="rSnmpMibUploadBtn" {% if not is_admin %}disabled{% endif %}>Upload MIB</button>
+        <span id="rSnmpMibUploadState" class="hint mono" style="display:none;"></span>
+      </div>
+      {% if not is_admin %}
+      <p class="hint" style="margin:8px 0 0 0; font-size:0.8rem;">MIB upload is admin-only; saved MIBs still apply to discovery for all users.</p>
+      {% endif %}
+      <ul id="rSnmpMibList" class="bh-mib-list mono"></ul>
+      <p id="rSnmpMibDirHint" class="hint mono" style="margin:6px 0 0 0; font-size:0.75rem; word-break:break-all;"></p>
+    </div>
+    <div style="min-width:100%; width:100%;">
+      <label>SNMP OIDs to monitor</label>
+      <p class="hint" style="margin:0 0 6px 0; font-size:0.82rem; line-height:1.35;">
+        Walking <span class="mono">.1</span> returns standard MIBs (interfaces, etc.) <strong>before</strong> vendor trees. Uploaded MIBs are scanned for <code>::= { enterprises &lt;PEN&gt; … }</code>; when one enterprise root is found, the base OID below is set automatically (you can still edit it). Use <span class="mono">.1</span> for a full-tree walk.
+        Discovery runs on the <strong>same host as this web app</strong> (often a Docker container): if <span class="mono">snmpwalk</span> works on the server shell but not here, fix routing/firewall so <strong>that</strong> environment can reach the radio on UDP <span class="mono">161</span>. MIBs affect names only, not reachability.
+      </p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input id="rSnmpBaseOid" type="text" value=".1" placeholder=".1.3.6.1.4.1.&lt;vendor&gt; for vendor-only walk" style="min-width:260px;" />
+        <button type="button" id="rSnmpPingBtn">Test SNMP from server</button>
+        <button type="button" id="rSnmpDiscoverBtn">Discover OIDs (snmpwalk)</button>
+        <span id="rSnmpDiscoverState" class="hint mono" style="display:none;">SNMP walk running...</span>
+      </div>
+      <div id="rSnmpPingResult" class="bh-snmp-ping-result" style="display:none;" role="status"></div>
+      <div id="rSnmpWalkMsg" class="bh-snmp-walk-msg" style="display:none;" role="status" aria-live="polite"></div>
+      <div id="rSnmpSuggestedRoots" style="display:none; margin-top:6px; font-size:0.8rem; color:var(--muted);"></div>
+      <p class="hint mono" style="margin:8px 0 4px 0; font-size:0.78rem;">Discovery results (numeric values only) ↓</p>
+      <div id="rOidList" class="bh-oid-list"></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+      <div>
+        <label for="rAppendRadio" style="display:block;font-size:12px;color:var(--muted);margin-bottom:3px;">Append walk to existing radio</label>
+        <select id="rAppendRadio" style="min-width:220px;padding:8px 10px;font-size:0.9rem;">
+          <option value="">— New radio only (use Add Radio) —</option>
+        </select>
+      </div>
+      <button type="button" id="rAppendOidsBtn">Append checked OIDs</button>
+    </div>
+    <div><button type="button" id="rAddBtn">Add Radio</button></div>
+  </div>
+  <p class="hint mono" id="bhRadioPoll" style="margin:8px 0 0 0;font-size:0.78rem;">Radio SNMP poll interval · configure <span class="mono">BACKHAUL_RADIO_POLL_MS</span> (default 30s)</p>
+  <div id="rList" class="bh-radio-grid"></div>
+  <div id="rEmpty" class="bh-empty" style="display:none;">No radios yet — add one above.</div>
+</section>
+
+<div id="bhHistModal" class="bh-hist-modal" aria-hidden="true">
+  <div class="bh-hist-backdrop" id="bhHistBackdrop"></div>
+  <div class="bh-hist-panel" role="dialog" aria-modal="true" aria-labelledby="bhHistTitle">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+      <h2 id="bhHistTitle" style="margin:0;">Radio — 12-hour graphs</h2>
+      <button type="button" id="bhHistClose">Close</button>
+    </div>
+    <div id="bhHistEmpty" class="bh-hist-empty" style="display:none;"></div>
+    <div class="bh-hist-wrap"><div id="bhHistCharts" class="bh-hist-charts"></div></div>
+  </div>
+</div>
+
+<script>
+  const BH_IS_ADMIN = {{ is_admin | tojson }};
+  const BH_RADIO_POLL_MS = {{ radio_poll_ms | default(30000) }};
+  let _routers = [];
+  let _poll = null;
+  let _cmdIdx = 0;
+  let _bhHistCharts = [];
+
+  function setErr(t) {
+    const el = document.getElementById("bhErr");
+    if (!t) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = t;
+  }
+
+  function setWalkMsg(t) {
+    const el = document.getElementById("rSnmpWalkMsg");
+    if (!el) return;
+    if (!t) {
+      el.style.display = "none";
+      el.textContent = "";
+      return;
+    }
+    el.style.display = "block";
+    el.textContent = t;
+  }
+
+  function snmpFormPayload() {
+    return {
+      host: (document.getElementById("rHost").value || "").trim(),
+      snmp_port: parseInt(document.getElementById("rSnmpPort").value || "161", 10),
+      snmp_version: (document.getElementById("rSnmpVer").value || "2c"),
+      snmp_community: (document.getElementById("rSnmpComm").value || "").trim(),
+    };
+  }
+
+  /** FastAPI {detail: ...} or non-JSON (504 HTML) from fetch().text() */
+  function parseApiErrBody(j, rawText, r) {
+    if (j && j.detail !== undefined && j.detail !== null) {
+      if (Array.isArray(j.detail)) {
+        return j.detail.map(function (x) { return (x.msg || JSON.stringify(x)); }).join("; ");
+      }
+      return String(j.detail);
+    }
+    const t = (rawText || "").trim();
+    if (t && t.charAt(0) !== "{" && t.charAt(0) !== "[") {
+      return "HTTP " + r.status + ": " + t.slice(0, 320);
+    }
+    return "HTTP " + r.status;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  /** Live SNMP row from merge with DB oid row — only labels/values returned by the server. */
+  function formatOidLiveSnap(cmd, orow) {
+    if (!cmd) return "—";
+    if (cmd.error) return String(cmd.error);
+    var pv = cmd.parsed_values || [];
+    if (!pv.length) return "—";
+    var bits = [];
+    pv.forEach(function (m) {
+      if (!m) return;
+      var lab = String(m.label || (orow && orow.label) || "metric").trim();
+      if (m.value == null || Number.isNaN(Number(m.value))) {
+        bits.push(lab + ": —");
+      } else {
+        var num = Number(m.value);
+        var s =
+          Math.abs(num) >= 100 && Math.abs(num) < 1e9 && Number.isFinite(num)
+            ? num.toFixed(1)
+            : String(num);
+        bits.push(lab + ": " + s);
+      }
+    });
+    return bits.join(" · ") || "—";
+  }
+
+  function fillRouters(routers) {
+    _routers = routers || [];
+    const a = document.getElementById("bhRA");
+    const b = document.getElementById("bhRB");
+    a.innerHTML = "<option value=\"\">—</option>";
+    b.innerHTML = "<option value=\"\">—</option>";
+    _routers.forEach(function (r) {
+      const t = (r.location_name || "") + " — " + (r.router_host || "");
+      [a, b].forEach(function (sel) {
+        const o = document.createElement("option");
+        o.value = String(r.id);
+        o.textContent = t;
+        sel.appendChild(o);
+      });
+    });
+  }
+
+  async function loadIfaces(routerId, selectEl) {
+    selectEl.innerHTML = "<option value=\"\">—</option>";
+    if (!routerId) { selectEl.disabled = true; return; }
+    selectEl.disabled = true;
+    try {
+      const r = await fetch("/api/backhauls/routers/" + encodeURIComponent(routerId) + "/interfaces", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      (j.interfaces || []).forEach(function (x) {
+        const o = document.createElement("option");
+        o.value = x.name;
+        o.textContent = x.name + " (" + (x.type || "") + ")";
+        selectEl.appendChild(o);
+      });
+      if (j.warning) {
+        setErr("Interface list: " + j.warning);
+      } else {
+        setErr("");
+      }
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      selectEl.disabled = false;
+    }
+  }
+
+  function pillClass(lvl) {
+    if (lvl === "ok") return "bh-pill bh-pill--ok";
+    if (lvl === "warn") return "bh-pill bh-pill--warn";
+    if (lvl === "crit" || lvl === "down") return "bh-pill bh-pill--crit";
+    return "bh-pill bh-pill--unk";
+  }
+
+  function pillText(lvl) {
+    if (lvl === "ok") return "OK";
+    if (lvl === "warn") return "80%+";
+    if (lvl === "crit") return "90%+";
+    if (lvl === "down") return "Down";
+    return "—";
+  }
+
+  function fmtMb(v) {
+    if (v == null || Number.isNaN(v)) return "—";
+    return (Number(v) < 10 ? v.toFixed(2) : v.toFixed(1)) + " Mbps";
+  }
+
+  // SSH command rows removed; radios are SNMP-only.
+
+  function gatherSelectedOids() {
+    const out = [];
+    document.querySelectorAll("#rOidList input[data-oid-check]").forEach(function (cb) {
+      if (!cb.checked) return;
+      const oid = cb.getAttribute("data-oid") || "";
+      const lb = (cb.getAttribute("data-label") || oid).trim();
+      if (!oid) return;
+      out.push({ oid: oid, label: lb });
+    });
+    return out;
+  }
+
+  function renderOidCandidates(items, walkHint) {
+    const root = document.getElementById("rOidList");
+    root.innerHTML = "";
+    if (!items || !items.length) {
+      var hint = walkHint || "No numeric OID rows in this walk.";
+      root.innerHTML =
+        "<div style=\"padding:10px;line-height:1.45;\"><strong style=\"display:block;margin-bottom:6px;\">Nothing listed — numeric metrics only</strong>" +
+        "<span class=\"hint\">The UI skips STRING/OID/Hex rows. Try base OID </span><span class=\"mono\">.1.3.6.1.4.1.2281.3</span><span class=\"hint\"> (Ceragon units) or </span><span class=\"mono\">.1.3.6.1.4.1.2281.2</span><span class=\"hint\">.</span></div>" +
+        "<div class=\"hint mono\" style=\"margin-top:8px;white-space:pre-wrap;word-break:break-word;\">" + esc(hint) + "</div>";
+      return;
+    }
+    items.forEach(function (o, idx) {
+      const row = document.createElement("label");
+      row.className = "bh-oid-row mono";
+      const oid = String(o.oid || "");
+      const symbol = String(o.symbol || "");
+      const sample = o.sample_value != null ? String(o.sample_value) : "—";
+      const disp = String(o.label || oid || "");
+      const showOidDot = oid && disp && String(oid).trim() !== String(disp).trim();
+      row.innerHTML =
+        "<input type=\"checkbox\" data-oid-check data-oid=\"" + esc(oid) + "\" data-label=\"" + esc(disp) + "\" " + (idx < 24 ? "checked" : "") + " />" +
+        "<span><strong>" + esc(disp) + "</strong></span>" +
+        (showOidDot ? "<span class=\"hint mono\" style=\"font-size:0.76rem;flex:1;min-width:12ch;overflow:hidden;text-overflow:ellipsis\">" + esc(oid) + "</span>" : "") +
+        (symbol && symbol !== disp ? "<span class=\"hint\">[" + esc(symbol) + "]</span>" : "") +
+        "<span class=\"hint\">(" + esc(sample) + ")</span>";
+      root.appendChild(row);
+    });
+  }
+
+  function renderSnmpMibList(mibs, dirHint, byFile) {
+    const ul = document.getElementById("rSnmpMibList");
+    const hint = document.getElementById("rSnmpMibDirHint");
+    if (hint) hint.textContent = dirHint ? ("MIB search dir: " + dirHint) : "";
+    if (!ul) return;
+    const rootsMap = {};
+    (byFile || []).forEach(function (row) {
+      if (row && row.file) rootsMap[row.file] = row.roots || [];
+    });
+    ul.innerHTML = "";
+    (mibs || []).forEach(function (m) {
+      const li = document.createElement("li");
+      const roots = rootsMap[m.name];
+      if (roots && roots.length) li.style.alignItems = "flex-start";
+      const stack = document.createElement("div");
+      stack.style.flex = "1";
+      stack.style.minWidth = "0";
+      const title = document.createElement("div");
+      title.textContent = m.name + " (" + m.size + " B)";
+      stack.appendChild(title);
+      if (roots && roots.length) {
+        const sub = document.createElement("div");
+        sub.className = "hint mono";
+        sub.style.fontSize = "0.76rem";
+        sub.style.marginTop = "2px";
+        sub.style.lineHeight = "1.35";
+        sub.textContent = "Enterprise roots in this file: " + roots.join(", ");
+        stack.appendChild(sub);
+      }
+      li.appendChild(stack);
+      if (BH_IS_ADMIN) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Remove";
+        btn.style.fontSize = "0.78rem";
+        btn.style.padding = "2px 8px";
+        btn.addEventListener("click", async function () {
+          if (!confirm("Remove MIB \"" + m.name + "\"?")) return;
+          try {
+            const r = await fetch("/api/backhauls/radios/snmp-mibs/" + encodeURIComponent(m.name), {
+              method: "DELETE",
+              credentials: "same-origin",
+            });
+            const j = await r.json().catch(function () { return {}; });
+            if (!r.ok || !j.ok) {
+              setErr(j.detail || ("HTTP " + r.status));
+              return;
+            }
+            setErr("");
+            await refreshSnmpMibList();
+          } catch (e) {
+            setErr(String(e));
+          }
+        });
+        li.appendChild(btn);
+      }
+      ul.appendChild(li);
+    });
+  }
+
+  function applySuggestedVendorRoots(suggestions, byFile) {
+    const inp = document.getElementById("rSnmpBaseOid");
+    const wrap = document.getElementById("rSnmpSuggestedRoots");
+    if (!inp) return;
+    const list = Array.isArray(suggestions) ? suggestions.filter(Boolean) : [];
+    const detail = Array.isArray(byFile)
+      ? byFile.filter(function (r) {
+          return r && r.file && r.roots && r.roots.length;
+        })
+      : [];
+    function addOidBtn(parent, oid) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = oid;
+      b.style.fontSize = "0.78rem";
+      b.style.marginRight = "6px";
+      b.style.marginTop = "4px";
+      b.addEventListener("click", function () {
+        inp.value = oid;
+      });
+      parent.appendChild(b);
+    }
+    if (wrap) {
+      wrap.innerHTML = "";
+      if (detail.length > 0) {
+        wrap.style.display = "block";
+        const head = document.createElement("div");
+        head.className = "hint";
+        head.style.marginBottom = "4px";
+        head.textContent = "Enterprise roots by MIB file (click to set walk base OID):";
+        wrap.appendChild(head);
+        detail.forEach(function (row) {
+          const block = document.createElement("div");
+          block.style.marginTop = "6px";
+          const fn = document.createElement("div");
+          fn.style.fontSize = "0.78rem";
+          fn.style.fontWeight = "600";
+          fn.style.marginBottom = "2px";
+          fn.textContent = row.file;
+          block.appendChild(fn);
+          const btns = document.createElement("div");
+          (row.roots || []).forEach(function (oid) {
+            addOidBtn(btns, oid);
+          });
+          block.appendChild(btns);
+          wrap.appendChild(block);
+        });
+      } else if (list.length > 1) {
+        wrap.style.display = "block";
+        const lab = document.createElement("span");
+        lab.textContent = "Detected enterprise roots — ";
+        wrap.appendChild(lab);
+        list.forEach(function (oid) {
+          addOidBtn(wrap, oid);
+        });
+      } else {
+        wrap.style.display = "none";
+      }
+    }
+    if (list.length === 1) {
+      const v = (inp.value || "").trim();
+      if (v === "" || v === ".1") {
+        inp.value = list[0];
+      }
+    }
+  }
+
+  async function refreshSnmpMibList() {
+    try {
+      const r = await fetch("/api/backhauls/radios/snmp-mibs", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) return;
+      renderSnmpMibList(j.mibs || [], j.dir || "", j.suggested_base_oids_by_file || []);
+      applySuggestedVendorRoots(j.suggested_base_oids || [], j.suggested_base_oids_by_file || []);
+    } catch (e) {}
+  }
+
+  function bindCardActions(card, b) {
+    card.querySelector(".bh-remove").onclick = function () {
+      if (!confirm("Remove link \"" + (b.name || "") + "\"?")) return;
+      fetch("/api/backhauls/" + encodeURIComponent(b.id), { method: "DELETE", credentials: "same-origin" })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function () { refreshOverview(); })
+        .catch(function (e) { setErr(String(e)); });
+    };
+    card.querySelector(".bh-save-mbps").onclick = async function () {
+      const inp = card.querySelector(".bh-edit-mbps");
+      const v = inp ? inp.value : "";
+      try {
+        const r = await fetch("/api/backhauls/" + encodeURIComponent(b.id), {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ max_mbps: parseFloat(v) }),
+        });
+        const j = await r.json().catch(function () { return {}; });
+        if (!r.ok || !j.ok) {
+          setErr(j.detail || ("HTTP " + r.status));
+          return;
+        }
+        setErr("");
+        refreshOverview();
+      } catch (e) {
+        setErr(String(e));
+      }
+    };
+  }
+
+  function patchCard(card, b) {
+    const L = b.live || {};
+    const util = L.util_level || "unknown";
+    const up = L.toward_b_mbps;
+    const down = L.return_from_b_mbps;
+    const lat = L.latency_ms;
+    const cap = b.max_mbps;
+    const nameEl = card.querySelector(".bh-card__name");
+    if (nameEl) nameEl.textContent = b.name || "";
+    const pill = card.querySelector(".bh-pill");
+    if (pill) {
+      pill.className = pillClass(util) + " bh-pill";
+      pill.textContent = pillText(util);
+    }
+    const vu = card.querySelector(".bh-val-up");
+    const vd = card.querySelector(".bh-val-down");
+    const vl = card.querySelector(".bh-val-lat");
+    if (vu) vu.textContent = fmtMb(up);
+    if (vd) vd.textContent = fmtMb(down);
+    if (vl) {
+      vl.textContent =
+        lat != null && !Number.isNaN(Number(lat))
+          ? Number(lat).toFixed(1) + " ms RTT"
+          : "— RTT";
+    }
+    const capEl = card.querySelector(".bh-cap-hint");
+    if (capEl) {
+      const wf = L.warn_frac != null ? L.warn_frac : 0.8;
+      const cf = L.crit_frac != null ? L.crit_frac : 0.9;
+      capEl.textContent =
+        "cap " + String(cap) + " · w" + Math.round(wf * 100) + "/c" + Math.round(cf * 100);
+    }
+    const hosts = card.querySelector(".bh-card__hosts");
+    if (hosts) hosts.textContent = formatHostsUnesc(b);
+    const w = card.querySelector(".bh-warn");
+    if (w) {
+      if (L.polling_paused) {
+        w.style.display = "block";
+        w.textContent = "Live probing paused on standby — promote primary for pings and throughput.";
+      } else if (L.iface_a_err || L.iface_b_err) {
+        w.style.display = "block";
+        w.textContent = "SSH: " + (L.iface_a_err || "") + (L.iface_a_err && L.iface_b_err ? " · " : "") + (L.iface_b_err || "");
+      } else {
+        w.style.display = "none";
+        w.textContent = "";
+      }
+    }
+    const inp = card.querySelector(".bh-edit-mbps");
+    if (inp && document.activeElement !== inp) {
+      inp.value = String(cap);
+    }
+  }
+
+  function formatHostsUnesc(b) {
+    const left = (b.host_a || "") + " · " + (b.iface_a || "");
+    const right = (b.host_b || "") + " · " + (b.iface_b || "");
+    const la = (b.loc_a || "").trim();
+    const lb = (b.loc_b || "").trim();
+    let tail = "";
+    if (la && lb) tail = " · " + la + " · " + lb;
+    else if (la) tail = " · " + la;
+    else if (lb) tail = " · " + lb;
+    return left + " ↔ " + right + tail;
+  }
+
+  function renderOne(b) {
+    const L = b.live || {};
+    const util = L.util_level || "unknown";
+    const cap = b.max_mbps;
+
+    const card = document.createElement("div");
+    card.className = "bh-card";
+    card.setAttribute("data-bh-id", String(b.id));
+    card.innerHTML =
+      "<div class=\"bh-card__top\">" +
+        "<div class=\"bh-card__left\">" +
+          "<span class=\"bh-card__name\"></span>" +
+          "<span class=\"" + pillClass(util) + " bh-pill\"></span>" +
+          "<span class=\"bh-metrics mono\">" +
+            "<span class=\"bh-dir\">↑</span><span class=\"bh-val-up\"></span>" +
+            "<span class=\"bh-sep\">·</span>" +
+            "<span class=\"bh-dir\">↓</span><span class=\"bh-val-down\"></span>" +
+            "<span class=\"bh-sep\">·</span>" +
+            "<span class=\"bh-val-lat\"></span>" +
+          "</span>" +
+        "</div>" +
+        "<div class=\"bh-card__actions\">" +
+          "<label class=\"hint\" style=\"display:inline-flex;align-items:center;gap:4px;font-size:0.78rem;\">" +
+          "<input class=\"bh-edit-mbps mono\" type=\"number\" min=\"0.1\" step=\"0.1\" /></label>" +
+          "<button type=\"button\" class=\"bh-save-mbps\">Save</button>" +
+          "<button type=\"button\" class=\"bh-remove\">Remove</button>" +
+        "</div>" +
+      "</div>" +
+      "<div class=\"bh-card__hosts mono\"></div>" +
+      "<div class=\"hint bh-cap-hint\" style=\"margin-top:4px;font-size:0.75rem;\"></div>" +
+      "<div class=\"bh-warn mono\" style=\"display:none;margin-top:4px;\"></div>";
+
+    patchCard(card, b);
+    const inp = card.querySelector(".bh-edit-mbps");
+    if (inp) inp.value = String(cap);
+    bindCardActions(card, b);
+    return card;
+  }
+
+  function applyOverview(list) {
+    const root = document.getElementById("bhList");
+    const empty = document.getElementById("bhEmpty");
+    const ids = {};
+    (list || []).forEach(function (b) {
+      ids[String(b.id)] = true;
+    });
+    root.querySelectorAll("[data-bh-id]").forEach(function (el) {
+      const id = el.getAttribute("data-bh-id");
+      if (!ids[id]) {
+        el.remove();
+      }
+    });
+    if (!list || !list.length) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    list.forEach(function (b) {
+      let el = root.querySelector('[data-bh-id="' + b.id + '"]');
+      if (!el) {
+        el = renderOne(b);
+        root.appendChild(el);
+      } else {
+        patchCard(el, b);
+      }
+    });
+  }
+
+  function updateBhPausedUi(enabled) {
+    var ban = document.getElementById("bhLivePausedBanner");
+    if (ban) ban.style.display = enabled === false ? "block" : "none";
+    var snmpBtn = document.getElementById("rSnmpDiscoverBtn");
+    if (snmpBtn) snmpBtn.disabled = enabled === false;
+  }
+
+  async function refreshOverview() {
+    /* Do not setErr("") here — this runs every 5s and would erase SNMP walk / form errors. */
+    try {
+      const r = await fetch("/api/backhauls/overview", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      updateBhPausedUi(j.live_probing_enabled);
+      applyOverview(j.backhauls || []);
+      var ts = new Date().toLocaleTimeString();
+      document.getElementById("bhPoll").textContent =
+        j.live_probing_enabled === false
+          ? "Standby view " + ts + " · live probing paused · refresh in 5s"
+          : "Updated " + ts + " · backhaul links refresh every 5s";
+      var rp = document.getElementById("bhRadioPoll");
+      if (rp) {
+        rp.textContent =
+          j.live_probing_enabled === false
+            ? "Radio SNMP paused on standby."
+            : "Radio SNMP sampled about every " + Math.round(BH_RADIO_POLL_MS / 1000) + "s on the server (tab optional) · 12H chart fills as samples arrive";
+      }
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  function renderRadios(items) {
+    const root = document.getElementById("rList");
+    const empty = document.getElementById("rEmpty");
+    root.innerHTML = "";
+    if (!items || !items.length) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    items.forEach(function (r) {
+      const l = r.live || {};
+      const card = document.createElement("div");
+      card.className = "bh-radio-card";
+      const oidCount = (r.oids || []).length;
+      card.innerHTML =
+        "<div style=\"display:flex;justify-content:space-between;gap:8px;align-items:center;\">" +
+          "<div class=\"bh-radio-name\">" + esc(r.name || "") + "</div>" +
+          "<span style=\"display:flex;gap:6px;flex-wrap:wrap;\">" +
+            "<button type=\"button\" data-rn=\"" + esc(r.id) + "\">Rename radio</button>" +
+            "<button type=\"button\" data-h12=\"" + esc(r.id) + "\">12H</button>" +
+            "<button type=\"button\" data-rm=\"" + esc(r.id) + "\">Remove</button>" +
+          "</span>" +
+        "</div>" +
+        "<div class=\"hint mono\" style=\"margin-top:4px;\">" + esc(r.host || "") + ":" + esc(String(r.snmp_port != null ? r.snmp_port : 161)) + (oidCount ? " · " + oidCount + " SNMP OID(s)" : "") + "</div>" +
+        (l.error ? "<div class=\"bh-warn mono\" style=\"display:block;margin-top:6px;\">" + esc(l.error) + "</div>" : "");
+      const oidBlock = document.createElement("div");
+      oidBlock.className = "bh-oid-edits";
+      oidBlock.style.marginTop = "8px";
+      const cmds = l.commands || [];
+      (r.oids || []).forEach(function (orow, idx) {
+        let cmd = cmds[idx];
+        if (!cmd && orow.oid) {
+          cmd = cmds.find(function (c) {
+            return String(c.command || "").trim() === String(orow.oid || "").trim();
+          });
+        }
+        const liveTxt = formatOidLiveSnap(cmd, orow);
+        const row = document.createElement("div");
+        row.className = "bh-oid-edit-row";
+        row.style.marginBottom = "6px";
+        const inp = document.createElement("input");
+        inp.type = "text";
+        inp.value = orow.label || "";
+        inp.setAttribute("aria-label", "Metric display name");
+        inp.style.fontSize = "0.82rem";
+        const oidHint = document.createElement("span");
+        oidHint.className = "hint mono bh-oid-path";
+        oidHint.style.fontSize = "0.72rem";
+        oidHint.textContent = orow.oid || "";
+        const liveSpan = document.createElement("span");
+        liveSpan.className = "mono bh-oid-live";
+        liveSpan.style.fontSize = "0.8rem";
+        liveSpan.textContent = liveTxt;
+        const save = document.createElement("button");
+        save.type = "button";
+        save.textContent = "Save";
+        save.className = "bh-oid-save";
+        save.style.fontSize = "0.76rem";
+        save.onclick = async function () {
+          const lb = (inp.value || "").trim();
+          if (!lb) {
+            setErr("Display name required.");
+            return;
+          }
+          try {
+            const rr = await fetch(
+              "/api/backhauls/radios/" + encodeURIComponent(r.id) + "/oids/" + encodeURIComponent(orow.id),
+              {
+                method: "PATCH",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ label: lb }),
+              }
+            );
+            const jj = await rr.json().catch(function () { return {}; });
+            if (!rr.ok || !jj.ok) {
+              setErr(jj.detail || ("HTTP " + rr.status));
+              return;
+            }
+            setErr("");
+            refreshRadios(false);
+            refreshRadios(true);
+          } catch (e) {
+            setErr(String(e));
+          }
+        };
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.textContent = "Remove";
+        delBtn.style.fontSize = "0.76rem";
+        delBtn.style.flexShrink = "0";
+        delBtn.onclick = async function () {
+          const oidDisp = (orow.oid || "").slice(0, 120);
+          if (!confirm("Remove this SNMP OID from \"" + (r.name || "radio") + "\"?\n\n" + oidDisp)) return;
+          try {
+            const rr = await fetch(
+              "/api/backhauls/radios/" + encodeURIComponent(r.id) + "/oids/" + encodeURIComponent(orow.id),
+              { method: "DELETE", credentials: "same-origin" }
+            );
+            const jj = await rr.json().catch(function () { return {}; });
+            if (!rr.ok || !jj.ok) {
+              setErr(jj.detail || ("HTTP " + rr.status));
+              return;
+            }
+            setErr("");
+            refreshRadios(false);
+            refreshRadios(true);
+          } catch (e) {
+            setErr(String(e));
+          }
+        };
+        row.appendChild(inp);
+        row.appendChild(oidHint);
+        row.appendChild(liveSpan);
+        row.appendChild(save);
+        row.appendChild(delBtn);
+        oidBlock.appendChild(row);
+      });
+      if ((r.oids || []).length) {
+        card.appendChild(oidBlock);
+      }
+      if (l.polling_paused) {
+        const pauseNote = document.createElement("div");
+        pauseNote.className = "bh-warn mono";
+        pauseNote.style.marginTop = "6px";
+        pauseNote.style.fontSize = "0.82rem";
+        pauseNote.textContent = "Live SNMP paused on standby — promote primary to poll radios.";
+        card.appendChild(pauseNote);
+      }
+      const rm = card.querySelector("button[data-rm]");
+      const h12 = card.querySelector("button[data-h12]");
+      const rn = card.querySelector("button[data-rn]");
+      if (rn) {
+        rn.onclick = async function () {
+          const nn = prompt("Radio name", r.name || "");
+          if (nn == null) return;
+          const t = String(nn).trim();
+          if (!t) return;
+          try {
+            const rr = await fetch("/api/backhauls/radios/" + encodeURIComponent(r.id), {
+              method: "PATCH",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: t }),
+            });
+            const jj = await rr.json().catch(function () { return {}; });
+            if (!rr.ok || !jj.ok) {
+              setErr(jj.detail || ("HTTP " + rr.status));
+              return;
+            }
+            setErr("");
+            refreshRadios(false);
+            refreshRadios(true);
+          } catch (e) {
+            setErr(String(e));
+          }
+        };
+      }
+      h12.onclick = function (ev) {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        showRadioHistory(r.id, r.name || "Radio");
+      };
+      rm.onclick = async function () {
+        if (!confirm("Remove radio \"" + (r.name || "") + "\"?")) return;
+        const rr = await fetch("/api/backhauls/radios/" + encodeURIComponent(r.id), { method: "DELETE", credentials: "same-origin" });
+        const jj = await rr.json().catch(function () { return {}; });
+        if (!rr.ok || !jj.ok) {
+          setErr(jj.detail || ("HTTP " + rr.status));
+          return;
+        }
+        refreshRadios(true);
+      };
+      root.appendChild(card);
+    });
+  }
+
+  function openBhHistModal() {
+    const m = document.getElementById("bhHistModal");
+    m.classList.add("is-open");
+    m.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+  }
+
+  function destroyBhHistCharts() {
+    _bhHistCharts.forEach(function (ch) {
+      try { ch.destroy(); } catch (e) {}
+    });
+    _bhHistCharts = [];
+    var wrap = document.getElementById("bhHistCharts");
+    if (wrap) wrap.innerHTML = "";
+  }
+
+  function closeBhHistModal() {
+    const m = document.getElementById("bhHistModal");
+    m.classList.remove("is-open");
+    m.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    destroyBhHistCharts();
+  }
+
+  function pickColor(i) {
+    const c = ["#2563eb", "#dc2626", "#16a34a", "#7c3aed", "#ea580c", "#0891b2", "#9333ea"];
+    return c[i % c.length];
+  }
+
+  function stemRxTx(title) {
+    return String(title || "")
+      .replace(/\b(rx|tx|receive|transmit|upload|download|up\b|down\b)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function rxTxKind(title) {
+    var t = String(title || "").toLowerCase();
+    if (/\brssi\b|\bdbm\b|\bcinr\b|\bsnr\b/.test(t) && !/mbps|throughput|rate|traffic|\/s/.test(t)) return "signal";
+    var tx = /\btx\b|transmit|upload|uplink/.test(t);
+    var rx = /\brx\b|receive|download|downlink/.test(t);
+    if (tx && !rx) return "tx";
+    if (rx && !tx) return "rx";
+    return null;
+  }
+
+  function isThroughputRxTxPair(ta, tb) {
+    var a = rxTxKind(ta);
+    var b = rxTxKind(tb);
+    if (a === "signal" || b === "signal") return false;
+    if ((a === "rx" && b === "tx") || (a === "tx" && b === "rx")) return stemRxTx(ta) === stemRxTx(tb);
+    return false;
+  }
+
+  /** One chart per metric; RX + TX throughput merged when names match after stripping rx/tx (same stem). */
+  function buildHistChartPlan(keys, labels) {
+    var used = {};
+    var charts = [];
+    var i, j;
+    for (i = 0; i < keys.length; i++) {
+      var ka = keys[i];
+      if (used[ka]) continue;
+      var ta = labels[ka] || ka;
+      var found = false;
+      for (j = i + 1; j < keys.length; j++) {
+        var kb = keys[j];
+        if (used[kb]) continue;
+        var tb = labels[kb] || kb;
+        if (!isThroughputRxTxPair(ta, tb)) continue;
+        used[ka] = used[kb] = true;
+        found = true;
+        var st = stemRxTx(ta);
+        charts.push({
+          title: st ? st.replace(/\b\w/g, function (x) { return x.toUpperCase(); }) + " (RX / TX)" : "Throughput (RX / TX)",
+          keys: [ka, kb],
+        });
+        break;
+      }
+      if (!found && !used[ka]) {
+        used[ka] = true;
+        charts.push({ title: labels[ka] || ka, keys: [ka] });
+      }
+    }
+    return charts;
+  }
+
+  function bhHistChartOptions() {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      parsing: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: {
+          type: "linear",
+          title: { display: true, text: "Time (local)" },
+          ticks: {
+            maxTicksLimit: 8,
+            callback: function (v) {
+              try {
+                return new Date(v).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+              } catch (e) { return v; }
+            },
+          },
+        },
+        y: { title: { display: true, text: "Value" } },
+      },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            title: function (items) {
+              var raw = items && items[0] && items[0].parsed && items[0].parsed.x;
+              return raw ? new Date(raw).toLocaleString() : "";
+            },
+          },
+        },
+      },
+    };
+  }
+
+  async function showRadioHistory(radioId, name) {
+    setErr("");
+    document.getElementById("bhHistTitle").textContent = (name || "Radio") + " — 12-hour graphs";
+    document.getElementById("bhHistEmpty").style.display = "none";
+    destroyBhHistCharts();
+    openBhHistModal();
+    try {
+      const r = await fetch("/api/backhauls/radios/" + encodeURIComponent(radioId) + "/history?hours=12", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        closeBhHistModal();
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      const pts = j.points || [];
+      const labels = j.labels || {};
+      var keys = j.keys || [];
+      if (!keys.length && pts.length) {
+        var lk = {};
+        pts.forEach(function (p) {
+          Object.keys(p.values || {}).forEach(function (k) { lk[k] = true; });
+        });
+        keys = Object.keys(lk);
+        keys.forEach(function (k) {
+          if (!labels[k]) labels[k] = k;
+        });
+      }
+      if (!keys.length) {
+        document.getElementById("bhHistEmpty").style.display = "block";
+        document.getElementById("bhHistEmpty").textContent = "No numeric samples in this window yet.";
+        return;
+      }
+      var plan = buildHistChartPlan(keys, labels);
+      var wrap = document.getElementById("bhHistCharts");
+      plan.forEach(function (slot, si) {
+        var slotEl = document.createElement("div");
+        slotEl.className = "bh-hist-chart-slot";
+        var ht = document.createElement("div");
+        ht.className = "bh-hist-chart-title";
+        ht.textContent = slot.title;
+        slotEl.appendChild(ht);
+        var cv = document.createElement("canvas");
+        slotEl.appendChild(cv);
+        wrap.appendChild(slotEl);
+        var datasets = slot.keys.map(function (k, idx) {
+          var color = pickColor(si * 4 + idx);
+          var legendLabel = labels[k] || k;
+          return {
+            label: legendLabel,
+            data: pts.map(function (p) {
+              var ms = Date.parse(p.ts);
+              var val = (p.values || {})[k];
+              return { x: ms, y: (val == null || Number.isNaN(Number(val))) ? null : Number(val) };
+            }).filter(function (x) { return !Number.isNaN(x.x); }),
+            borderColor: color,
+            backgroundColor: color,
+            pointRadius: 0,
+            borderWidth: 2,
+            tension: 0.1,
+            spanGaps: false,
+          };
+        });
+        var ctx = cv.getContext("2d");
+        var ch = new Chart(ctx, {
+          type: "line",
+          data: { datasets: datasets },
+          options: bhHistChartOptions(),
+        });
+        _bhHistCharts.push(ch);
+      });
+    } catch (e) {
+      closeBhHistModal();
+      setErr(String(e || "History failed"));
+    }
+  }
+
+  function mergeRadioLive(baseItems, liveItems) {
+    const byId = {};
+    (liveItems || []).forEach(function (r) { byId[String(r.id)] = r.live || {}; });
+    return (baseItems || []).map(function (r) {
+      const x = Object.assign({}, r);
+      if (byId[String(r.id)]) x.live = byId[String(r.id)];
+      return x;
+    });
+  }
+
+  function fillAppendRadioSelect(items) {
+    const sel = document.getElementById("rAppendRadio");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = "<option value=\"\">— New radio only (use Add Radio) —</option>";
+    (items || []).forEach(function (r) {
+      const o = document.createElement("option");
+      o.value = String(r.id);
+      o.textContent = (r.name || "Radio") + " (id " + String(r.id) + ")";
+      sel.appendChild(o);
+    });
+    if (prev && Array.prototype.some.call(sel.options, function (x) { return x.value === prev; })) {
+      sel.value = prev;
+    }
+  }
+
+  async function refreshRadios(liveMode) {
+    try {
+      const r0 = await fetch("/api/backhauls/radios?live=0", { credentials: "same-origin" });
+      const j0 = await r0.json().catch(function () { return {}; });
+      if (!r0.ok || !j0.ok) {
+        setErr(j0.detail || ("HTTP " + r0.status));
+        return;
+      }
+      updateBhPausedUi(j0.live_probing_enabled);
+      const base = j0.radios || [];
+      fillAppendRadioSelect(base);
+      renderRadios(base);
+
+      if (liveMode === false) return;
+
+      const r1 = await fetch("/api/backhauls/radios?live=1", { credentials: "same-origin" });
+      const j1 = await r1.json().catch(function () { return {}; });
+      if (!r1.ok || !j1.ok) return;
+      updateBhPausedUi(j1.live_probing_enabled);
+      renderRadios(mergeRadioLive(base, j1.radios || []));
+    } catch (e) {
+      setErr(String(e || "Radio refresh failed"));
+    }
+  }
+
+  async function refreshRouters() {
+    try {
+      const r = await fetch("/api/routers", { credentials: "same-origin" });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      fillRouters(j.routers || []);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  document.getElementById("bhRA").addEventListener("change", function () {
+    loadIfaces(this.value, document.getElementById("bhIA"));
+  });
+  document.getElementById("bhRB").addEventListener("change", function () {
+    loadIfaces(this.value, document.getElementById("bhIB"));
+  });
+
+  document.getElementById("bhAddBtn").addEventListener("click", async function () {
+    setErr("");
+    const name = (document.getElementById("bhName").value || "").trim();
+    const ra = document.getElementById("bhRA").value;
+    const rb = document.getElementById("bhRB").value;
+    const ia = document.getElementById("bhIA").value;
+    const ib = document.getElementById("bhIB").value;
+    const cap = document.getElementById("bhCap").value;
+    if (!name) { setErr("Name required."); return; }
+    if (!ra || !rb) { setErr("Choose both routers."); return; }
+    if (ra === rb) { setErr("Routers must differ."); return; }
+    if (!ia || !ib) { setErr("Choose both interfaces."); return; }
+    try {
+      const r = await fetch("/api/backhauls", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          router_a_id: parseInt(ra, 10),
+          router_b_id: parseInt(rb, 10),
+          iface_a: ia,
+          iface_b: ib,
+          max_mbps: parseFloat(cap),
+        }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      document.getElementById("bhName").value = "";
+      await refreshOverview();
+    } catch (e) {
+      setErr(String(e));
+    }
+  });
+
+  document.getElementById("rAppendOidsBtn").addEventListener("click", async function () {
+    setErr("");
+    const sel = document.getElementById("rAppendRadio");
+    const rid = sel && sel.value ? parseInt(sel.value, 10) : 0;
+    if (!rid) {
+      setErr("Choose a radio in “Append walk to existing radio”.");
+      return;
+    }
+    const oids = gatherSelectedOids();
+    if (!oids.length) {
+      setErr("Select at least one OID checkbox from discovery.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/backhauls/radios/" + encodeURIComponent(rid) + "/oids", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oids: oids }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      setErr("Added " + (j.added || 0) + " OID(s).");
+      refreshRadios(false);
+      refreshRadios(true);
+    } catch (e) {
+      setErr(String(e));
+    }
+  });
+
+  document.getElementById("rAddBtn").addEventListener("click", async function () {
+    setErr("");
+    const oids = gatherSelectedOids();
+    const p = {
+      name: (document.getElementById("rName").value || "").trim(),
+      host: (document.getElementById("rHost").value || "").trim(),
+      snmp_port: parseInt(document.getElementById("rSnmpPort").value || "161", 10),
+      snmp_version: (document.getElementById("rSnmpVer").value || "2c"),
+      snmp_community: (document.getElementById("rSnmpComm").value || "").trim(),
+      oids: oids,
+    };
+    if (!p.name || !p.host || !p.snmp_community || !oids.length) {
+      setErr("Radio name, host, SNMP community, and at least one selected OID are required.");
+      return;
+    }
+    try {
+      const r = await fetch("/api/backhauls/radios", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(p),
+      });
+      const raw = await r.text();
+      let j = {};
+      try {
+        j = raw ? JSON.parse(raw) : {};
+      } catch (ignore) {
+        setErr("Add radio: bad response (HTTP " + r.status + "): " + raw.slice(0, 260));
+        return;
+      }
+      if (!r.ok || !j.ok) {
+        setErr(parseApiErrBody(j, raw, r));
+        return;
+      }
+      document.getElementById("rName").value = "";
+      document.getElementById("rHost").value = "";
+      document.getElementById("rOidList").innerHTML = "";
+      setErr("Radio added. Running first live poll...");
+      refreshRadios(false);
+      setTimeout(function () { refreshRadios(true); }, 200);
+    } catch (e) {
+      setErr(String(e));
+    }
+  });
+
+  (function () {
+    const upBtn = document.getElementById("rSnmpMibUploadBtn");
+    if (!upBtn || !BH_IS_ADMIN) return;
+    upBtn.addEventListener("click", async function () {
+      const inp = document.getElementById("rSnmpMibFile");
+      const st = document.getElementById("rSnmpMibUploadState");
+      if (!inp || !inp.files || !inp.files.length) {
+        if (st) { st.style.display = ""; st.textContent = "Choose a MIB file first."; }
+        return;
+      }
+      const fd = new FormData();
+      fd.append("upload", inp.files[0], inp.files[0].name);
+      if (st) { st.style.display = ""; st.textContent = "Uploading…"; }
+      try {
+        const r = await fetch("/api/backhauls/radios/snmp-mibs", { method: "POST", body: fd, credentials: "same-origin" });
+        const j = await r.json().catch(function () { return {}; });
+        if (!r.ok || !j.ok) {
+          setErr(j.detail || ("HTTP " + r.status));
+          if (st) st.textContent = "";
+          return;
+        }
+        setErr("");
+        if (st) st.textContent = "Saved: " + (j.name || "");
+        inp.value = "";
+        await refreshSnmpMibList();
+      } catch (e) {
+        setErr(String(e));
+        if (st) st.textContent = "";
+      }
+    });
+  })();
+
+  document.getElementById("rSnmpPingBtn").addEventListener("click", async function () {
+    const prEl = document.getElementById("rSnmpPingResult");
+    setErr("");
+    setWalkMsg("");
+    const p = snmpFormPayload();
+    if (!prEl) return;
+    if (!p.host || !p.snmp_community) {
+      setErr("Enter host and SNMP community first.");
+      prEl.style.display = "none";
+      return;
+    }
+    prEl.style.display = "block";
+    prEl.textContent = "Querying " + p.host + ":161 (sysDescr.0) from app server…";
+    try {
+      const r = await fetch("/api/backhauls/radios/snmp-ping", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(p),
+      });
+      const raw = await r.text();
+      let j = {};
+      try {
+        j = raw ? JSON.parse(raw) : {};
+      } catch (ignore) {
+        prEl.textContent = "Bad response (HTTP " + r.status + "): " + raw.slice(0, 400);
+        return;
+      }
+      if (!r.ok || !j.ok) {
+        prEl.textContent = "Failed: " + (parseApiErrBody(j, raw, r) || ("HTTP " + r.status));
+        return;
+      }
+      prEl.textContent = "OK (same path as Discover): " + (j.line || "—");
+    } catch (e) {
+      prEl.textContent = "Failed: " + String(e);
+    }
+  });
+
+  document.getElementById("rSnmpDiscoverBtn").addEventListener("click", async function () {
+    setErr("");
+    setWalkMsg("");
+    const btn = document.getElementById("rSnmpDiscoverBtn");
+    const st = document.getElementById("rSnmpDiscoverState");
+    const payload = Object.assign({}, snmpFormPayload(), {
+      base_oid: (document.getElementById("rSnmpBaseOid").value || ".1").trim(),
+    });
+    if (!payload.host || !payload.snmp_community) {
+      setErr("Enter host and SNMP community first.");
+      return;
+    }
+    try {
+      btn.disabled = true;
+      st.style.display = "";
+      st.textContent = "Starting SNMP walk…";
+      const r = await fetch("/api/backhauls/radios/snmp-walk", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const raw = await r.text();
+      let j = {};
+      try {
+        j = raw ? JSON.parse(raw) : {};
+      } catch (ignore) {
+        setErr("SNMP walk: bad response (HTTP " + r.status + "): " + raw.slice(0, 260));
+        st.textContent = "SNMP walk failed.";
+        return;
+      }
+      if (!r.ok || !j.ok || !j.job_id) {
+        setErr(parseApiErrBody(j, raw, r));
+        st.textContent = "SNMP walk failed.";
+        return;
+      }
+      const jid = j.job_id;
+      const t0 = Date.now();
+      const deadline = t0 + 20 * 60 * 1000;
+      while (Date.now() < deadline) {
+        const pr = await fetch("/api/backhauls/radios/snmp-walk-jobs/" + encodeURIComponent(jid), {
+          credentials: "same-origin",
+        });
+        const praw = await pr.text();
+        let pj = {};
+        try {
+          pj = praw ? JSON.parse(praw) : {};
+        } catch (ignore2) {
+          setErr("SNMP walk poll: bad JSON (HTTP " + pr.status + ")");
+          st.textContent = "SNMP walk failed.";
+          return;
+        }
+        if (!pr.ok || !pj.ok) {
+          setErr(parseApiErrBody(pj, praw, pr));
+          st.textContent = "SNMP walk failed.";
+          return;
+        }
+        if (pj.status === "done") {
+          setErr("");
+          setWalkMsg(pj.warning || "");
+          renderOidCandidates(pj.oids || [], pj.warning);
+          var n = (pj.oids && pj.oids.length) ? pj.oids.length : 0;
+          st.textContent = n
+            ? ("Listed " + n + " numeric OID(s) — scroll to the bordered box below.")
+            : (pj.warning ? "Walk finished — see yellow note + box below." : "Walk finished.");
+          var oidBox = document.getElementById("rOidList");
+          if (oidBox) oidBox.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
+        if (pj.status === "error") {
+          setErr(pj.detail || "SNMP walk failed.");
+          st.textContent = "SNMP walk failed.";
+          return;
+        }
+        var sec = Math.round((Date.now() - t0) / 1000);
+        st.textContent = "SNMP walk running… " + sec + "s (walk runs on server; short polls avoid proxy timeout)";
+        await new Promise(function (resolve) { setTimeout(resolve, 900); });
+      }
+      setErr("SNMP walk still running after 20 minutes — try a narrower base OID or check server logs.");
+      st.textContent = "Stopped waiting.";
+    } catch (e) {
+      setErr(String(e || "SNMP walk failed"));
+      st.textContent = "SNMP walk failed.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  document.getElementById("bhHistClose").addEventListener("click", closeBhHistModal);
+  document.getElementById("bhHistBackdrop").addEventListener("click", closeBhHistModal);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") {
+      const m = document.getElementById("bhHistModal");
+      if (m.classList.contains("is-open")) closeBhHistModal();
+    }
+  });
+
+  refreshSnmpMibList();
+
+  refreshRouters().then(function () {
+    refreshOverview();
+    refreshRadios(true);
+    _poll = setInterval(refreshOverview, 5000);
+    setInterval(function () {
+      refreshRadios(true);
+    }, BH_RADIO_POLL_MS);
+  });
+</script>
+{% endblock %}

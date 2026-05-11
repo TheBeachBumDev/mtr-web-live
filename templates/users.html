@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ur-intro { color: var(--muted); font-size: 0.88rem; margin: 0 0 12px; max-width: 42rem; line-height: 1.4; }
+  .ur-panel {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--card);
+    margin-bottom: 14px;
+  }
+  .ur-panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  .ur-formrow { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 10px; }
+  .ur-formrow .ur-field > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .ur-formrow .ur-field input[type="text"],
+  .ur-formrow .ur-field input[type="password"] { min-width: 140px; max-width: 100%; width: min(260px, 100%); padding: 8px 10px; }
+  .ur-formrow .ur-inline-check { display: flex; align-items: center; align-self: center; padding-bottom: 2px; }
+  .ur-formrow .ur-inline-check label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: var(--fg);
+    margin: 0;
+    cursor: pointer;
+    line-height: 1.2;
+  }
+  .ur-pages-head { font-size: 0.8rem; color: var(--muted); margin: 4px 0 6px; }
+  .ur-pages {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 4px 12px;
+    align-items: center;
+    margin-top: 4px;
+  }
+  .ur-pages label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    line-height: 1.25;
+    cursor: pointer;
+    margin: 0;
+    min-height: 1.75rem;
+  }
+  .ur-pages label input[type="checkbox"] { margin: 0; }
+  .ur-tablewrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; max-height: 420px; }
+  table.ur-t { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  table.ur-t th, table.ur-t td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  table.ur-t th { position: sticky; top: 0; background: var(--code-bg); z-index: 1; }
+  .ur-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ur-actions button { padding: 5px 10px; font-size: 0.82rem; }
+  .ur-edit-pages { font-size: 0.82rem; max-width: 280px; }
+</style>
+
+<h1>Users</h1>
+<p class="ur-intro">
+  Admins can create accounts and choose which tabs each user sees. <strong>Admin</strong> users always have full access.
+  New installs seed one admin from <code class="mono">APP_USER</code> / <code class="mono">APP_PASS</code> into <code class="mono">data/auth.db</code> on first start.
+  <strong>Home</strong> (<code class="mono">/</code>) is always enabled for non-admins and cannot be removed. <strong>MTR Live</strong> (<code class="mono">/mtr-live</code>) is a separate tab for the live hop dashboard; new users with no pages selected get both Home and MTR Live.
+</p>
+
+<div class="ur-panel">
+  <h2>Add user</h2>
+  <div class="ur-formrow">
+    <div class="ur-field">
+      <label for="urUser">Username</label>
+      <input id="urUser" type="text" autocomplete="off" />
+    </div>
+    <div class="ur-field">
+      <label for="urPass">Password</label>
+      <input id="urPass" type="password" autocomplete="new-password" />
+    </div>
+    <div class="ur-field">
+      <label for="urPass2">Confirm password</label>
+      <input id="urPass2" type="password" autocomplete="new-password" />
+    </div>
+    <div class="ur-field">
+      <label for="urEmail">Email</label>
+      <input id="urEmail" type="text" autocomplete="off" />
+    </div>
+    <div class="ur-field">
+      <label for="urMobile">Mobile</label>
+      <input id="urMobile" type="text" autocomplete="off" />
+    </div>
+    <div class="ur-inline-check">
+      <label><input type="checkbox" id="urAdmin" /> Admin (full access)</label>
+    </div>
+    <div>
+      <button type="button" id="urAddBtn">Create</button>
+    </div>
+  </div>
+  <div class="ur-pages-head">Pages (ignored for admin):</div>
+  <div class="ur-pages" id="urPagesNew"></div>
+</div>
+
+<div id="urErr" class="err" style="display:none;margin-bottom:10px;"></div>
+
+<div class="ur-panel" id="urListPanel">
+  <h2>Accounts</h2>
+  <div class="ur-tablewrap">
+    <table class="ur-t">
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Role</th>
+          <th>2FA</th>
+          <th>Email</th>
+          <th>Mobile</th>
+          <th>Pages</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="urBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const PAGE_DEFS = {{ page_definitions | tojson }};
+
+  function setErr(t) {
+    var el = document.getElementById("urErr");
+    if (!t) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = t;
+  }
+
+  function renderPageChecks(containerId, namePrefix, selectedKeys, disabled) {
+    var root = document.getElementById(containerId);
+    root.innerHTML = "";
+    PAGE_DEFS.forEach(function (pair) {
+      var key = pair[0];
+      var label = pair[1];
+      var id = namePrefix + "_" + key;
+      var lab = document.createElement("label");
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.value = key;
+      cb.id = id;
+      if (key === "home") {
+        cb.checked = true;
+        cb.disabled = true;
+      } else {
+        cb.disabled = !!disabled;
+        if (selectedKeys && selectedKeys.indexOf(key) >= 0) cb.checked = true;
+      }
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(" " + label));
+      root.appendChild(lab);
+    });
+  }
+
+  function gatherChecked(containerId) {
+    var root = document.getElementById(containerId);
+    var out = [];
+    root.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+      if (cb.checked && !cb.disabled) out.push(cb.value);
+    });
+    return out;
+  }
+
+  async function refresh() {
+    setErr("");
+    try {
+      var r = await fetch("/api/users", { credentials: "same-origin" });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      renderTable(j.users || []);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  function renderTable(users) {
+    var tb = document.getElementById("urBody");
+    tb.innerHTML = "";
+    users.forEach(function (u) {
+      var tr = document.createElement("tr");
+      var pagesStr = u.is_admin ? "—" : (u.pages && u.pages.length ? u.pages.join(", ") : "home (default)");
+      tr.innerHTML =
+        "<td class=\"mono\">" + escapeHtml(u.username) + "</td>" +
+        "<td>" + (u.is_admin ? "<b>Admin</b>" : "User") + "</td>" +
+        "<td class=\"muted small\">" + (u.twofa_enabled ? "Enabled" : "Enrollment required") + "</td>" +
+        "<td class=\"muted small\">" + escapeHtml(u.email || "-") + "</td>" +
+        "<td class=\"muted small\">" + escapeHtml(u.mobile || "-") + "</td>" +
+        "<td class=\"muted small\">" + escapeHtml(pagesStr) + "</td>" +
+        "<td class=\"ur-actions\"></td>";
+      var cell = tr.querySelector(".ur-actions");
+      if (!u.is_admin) {
+        var b1 = document.createElement("button");
+        b1.type = "button";
+        b1.textContent = "Edit pages";
+        b1.onclick = function () { openEditPages(u); };
+        cell.appendChild(b1);
+      }
+      var b2 = document.createElement("button");
+      b2.type = "button";
+      b2.textContent = "Set password";
+      b2.onclick = function () {
+        var pw = prompt("New password for " + u.username + " (min 6 chars):");
+        if (pw == null) return;
+        if (pw.length < 6) { setErr("Password too short"); return; }
+        var pw2 = prompt("Confirm new password for " + u.username + ":");
+        if (pw2 == null) return;
+        if (pw !== pw2) { setErr("Passwords do not match"); return; }
+        patchUser(u.id, { password: pw });
+      };
+      cell.appendChild(b2);
+      var bContact = document.createElement("button");
+      bContact.type = "button";
+      bContact.textContent = "Edit contacts";
+      bContact.onclick = function () {
+        var em = prompt("Email for " + u.username + ":", u.email || "");
+        if (em == null) return;
+        var mo = prompt("Mobile for " + u.username + ":", u.mobile || "");
+        if (mo == null) return;
+        patchUser(u.id, { email: em, mobile: mo });
+      };
+      cell.appendChild(bContact);
+      if (!u.is_admin) {
+        var b3 = document.createElement("button");
+        b3.type = "button";
+        b3.textContent = "Make admin";
+        b3.onclick = function () {
+          if (!confirm("Grant admin to " + u.username + "?")) return;
+          patchUser(u.id, { is_admin: true });
+        };
+        cell.appendChild(b3);
+      } else {
+        var b4 = document.createElement("button");
+        b4.type = "button";
+        b4.textContent = "Remove admin";
+        b4.onclick = function () {
+          if (!confirm("Remove admin from " + u.username + "? They need at least one page.")) return;
+          patchUser(u.id, { is_admin: false, pages: ["home", "mtr_live"] });
+        };
+        cell.appendChild(b4);
+      }
+      var b5 = document.createElement("button");
+      b5.type = "button";
+      b5.textContent = "Delete";
+      b5.onclick = function () {
+        if (!confirm("Delete user " + u.username + "?")) return;
+        delUser(u.id);
+      };
+      cell.appendChild(b5);
+      tb.appendChild(tr);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function openEditPages(u) {
+    var box = document.createElement("div");
+    box.id = "urEditWrap";
+    box.style.cssText = "margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--code-bg);";
+    box.innerHTML = "<p style='margin:0 0 8px;font-size:0.88rem'>Edit pages for <b>" + escapeHtml(u.username) + "</b></p><div class='ur-pages' id='urPagesEdit'></div><div style='margin-top:10px'><button type='button' id='urSavePages'>Save</button> <button type='button' id='urCancelEdit'>Cancel</button></div>";
+    var old = document.getElementById("urEditWrap");
+    if (old) old.remove();
+    document.getElementById("urListPanel").appendChild(box);
+    renderPageChecks("urPagesEdit", "e", u.pages || [], false);
+    document.getElementById("urCancelEdit").onclick = function () { box.remove(); };
+    document.getElementById("urSavePages").onclick = function () {
+      patchUser(u.id, { pages: gatherChecked("urPagesEdit") });
+      box.remove();
+    };
+  }
+
+  async function patchUser(id, body) {
+    setErr("");
+    try {
+      var r = await fetch("/api/users/" + encodeURIComponent(id), {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  async function delUser(id) {
+    setErr("");
+    try {
+      var r = await fetch("/api/users/" + encodeURIComponent(id), { method: "DELETE", credentials: "same-origin" });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  document.getElementById("urAddBtn").addEventListener("click", async function () {
+    setErr("");
+    var username = (document.getElementById("urUser").value || "").trim();
+    var password = document.getElementById("urPass").value || "";
+    var pass2 = document.getElementById("urPass2").value || "";
+    if (password !== pass2) {
+      setErr("Passwords do not match");
+      return;
+    }
+    var isAdm = document.getElementById("urAdmin").checked;
+    var pages = gatherChecked("urPagesNew");
+    var email = (document.getElementById("urEmail").value || "").trim();
+    var mobile = (document.getElementById("urMobile").value || "").trim();
+    try {
+      var r = await fetch("/api/users", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username,
+          password: password,
+          is_admin: isAdm,
+          pages: pages,
+          email: email,
+          mobile: mobile,
+        }),
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      document.getElementById("urUser").value = "";
+      document.getElementById("urPass").value = "";
+      document.getElementById("urPass2").value = "";
+      document.getElementById("urAdmin").checked = false;
+      document.getElementById("urEmail").value = "";
+      document.getElementById("urMobile").value = "";
+      renderPageChecks("urPagesNew", "n", [], false);
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+    }
+  });
+
+  document.getElementById("urAdmin").addEventListener("change", function () {
+    var dis = this.checked;
+    document.querySelectorAll("#urPagesNew input[type=checkbox]").forEach(function (c) {
+      c.disabled = dis;
+    });
+  });
+
+  renderPageChecks("urPagesNew", "n", [], false);
+  refresh();
+</script>
+{% endblock %}

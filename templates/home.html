@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="home-hero">
+  <img
+    src="/static/Wibernet-logo.png"
+    alt="Wibernet"
+    class="home-hero__logo"
+    width="280"
+    height="auto"
+    decoding="async"
+  />
+  <p class="home-hero__greeting">
+    Hey there <strong>{{ username|replace("@wibersolutions.co.za", "")|title|e }}</strong>, what are we doing today?
+  </p>
+  <div class="home-hero__select-wrap">
+    <select id="homePageSelect" class="home-hero__select" autocomplete="off" aria-label="Choose a page">
+      <option value="" selected disabled>Choose a page…</option>
+      {% for item in nav_items %}
+      {% if item.key != "home" %}
+      <option value="{{ item.href }}">{{ item.label }}</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+  </div>
+</div>
+<script>
+(function () {
+  var sel = document.getElementById("homePageSelect");
+  if (!sel) return;
+  sel.addEventListener("change", function () {
+    var v = sel.value;
+    if (v) window.location.href = v;
+  });
+})();
+</script>
+{% endblock %}

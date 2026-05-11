@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .sl-head { margin-bottom: 12px; }
+  .sl-filters { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--card); display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .sl-filters label { display: flex; flex-direction: column; gap: 4px; min-width: 170px; }
+  .sl-meta { margin-top: 10px; color: var(--muted); }
+  .sl-grid { margin-top: 12px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+  .sl-card { border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 10px 12px; }
+  .sl-card h3 { margin: 0 0 6px 0; font-size: 1rem; }
+  .sl-small { font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+  .sl-empty { border: 1px dashed var(--border); border-radius: 14px; padding: 16px; color: var(--muted); margin-top: 12px; }
+</style>
+
+<div class="sl-head">
+  <h1 class="title" style="margin-top:0">Sales Log</h1>
+  <p class="hint">Booked in vs booked out per product over a selected period.</p>
+</div>
+
+<div class="sl-filters">
+  <label>From
+    <input id="slStart" type="date">
+  </label>
+  <label>To
+    <input id="slEnd" type="date">
+  </label>
+  <label>Product filter
+    <input id="slProduct" type="text" placeholder="Type product name">
+  </label>
+  <div>
+    <button id="slApplyBtn" type="button">Apply</button>
+  </div>
+</div>
+<div id="slMeta" class="sl-meta"></div>
+<div id="slErr" class="err" style="display:none;margin-top:8px;"></div>
+<div id="slGrid" class="sl-grid"></div>
+<div id="slEmpty" class="sl-empty" style="display:none;">No product movements found for this period.</div>
+
+<script>
+(() => {
+  const charts = [];
+  const byId = (id) => document.getElementById(id);
+  const err = (t) => {
+    const el = byId("slErr");
+    if (!t) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = t;
+  };
+  const clearCharts = () => {
+    while (charts.length) {
+      const c = charts.pop();
+      try { c.destroy(); } catch (_) {}
+    }
+  };
+  const today = new Date();
+  const toIso = (d) => d.toISOString().slice(0, 10);
+  const defaultEnd = toIso(today);
+  const s = new Date(today);
+  s.setDate(s.getDate() - 29);
+  byId("slStart").value = toIso(s);
+  byId("slEnd").value = defaultEnd;
+
+  async function loadSales() {
+    err("");
+    clearCharts();
+    const start = byId("slStart").value || "";
+    const end = byId("slEnd").value || "";
+    const product = (byId("slProduct").value || "").trim();
+    const qs = new URLSearchParams({ start, end, product });
+    try {
+      const r = await fetch("/api/stock/sales-log?" + qs.toString(), { credentials: "same-origin" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.detail || ("HTTP " + r.status));
+      const rows = Array.isArray(j.products) ? j.products : [];
+      byId("slMeta").textContent = `Range: ${j.start} to ${j.end} | Products: ${rows.length}`;
+      const grid = byId("slGrid");
+      grid.innerHTML = "";
+      if (!rows.length) {
+        byId("slEmpty").style.display = "";
+        return;
+      }
+      byId("slEmpty").style.display = "none";
+      rows.forEach((row, idx) => {
+        const card = document.createElement("div");
+        card.className = "sl-card";
+        const canvasId = "slChart" + idx;
+        card.innerHTML = `
+          <h3>${String(row.product_name || "-")}</h3>
+          <div class="sl-small">Booked in qty: ${Number(row.total_in || 0).toFixed(2)} | Booked out qty: ${Number(row.total_out || 0).toFixed(2)}</div>
+          <div class="sl-small">Booked in value: R ${Number(row.total_in_value || 0).toFixed(2)} | Booked out value: R ${Number(row.total_out_value || 0).toFixed(2)}</div>
+          <div class="chart-box"><canvas id="${canvasId}"></canvas></div>
+        `;
+        grid.appendChild(card);
+        const pts = Array.isArray(row.series) ? row.series : [];
+        const labels = pts.map(x => String(x.day || ""));
+        const inVals = pts.map(x => Number(x.booked_in || 0));
+        const outVals = pts.map(x => Number(x.booked_out || 0));
+        const inValsValue = pts.map(x => Number(x.booked_in_value || 0));
+        const outValsValue = pts.map(x => Number(x.booked_out_value || 0));
+        const ctx = card.querySelector("canvas");
+        charts.push(new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [
+              { label: "Booked In Qty", data: inVals, backgroundColor: "rgba(249,115,22,0.55)", borderColor: "rgba(194,65,12,1)", borderWidth: 1, yAxisID: "yQty" },
+              { label: "Booked Out Qty", data: outVals, backgroundColor: "rgba(239,68,68,0.55)", borderColor: "rgba(185,28,28,1)", borderWidth: 1, yAxisID: "yQty" },
+              { label: "Booked In Value (R)", type: "line", data: inValsValue, borderColor: "rgba(22,163,74,1)", backgroundColor: "rgba(22,163,74,0.25)", borderWidth: 2, pointRadius: 2, tension: 0.2, yAxisID: "yValue" },
+              { label: "Booked Out Value (R)", type: "line", data: outValsValue, borderColor: "rgba(59,130,246,1)", backgroundColor: "rgba(59,130,246,0.25)", borderWidth: 2, pointRadius: 2, tension: 0.2, yAxisID: "yValue" }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              yQty: { beginAtZero: true, position: "left", title: { display: true, text: "Quantity" } },
+              yValue: { beginAtZero: true, position: "right", title: { display: true, text: "Value (R)" }, grid: { drawOnChartArea: false } }
+            },
+            plugins: { legend: { position: "top" } }
+          }
+        }));
+      });
+    } catch (e) {
+      byId("slGrid").innerHTML = "";
+      byId("slEmpty").style.display = "none";
+      err(e.message || String(e));
+    }
+  }
+
+  byId("slApplyBtn").addEventListener("click", loadSales);
+  loadSales();
+})();
+</script>
+{% endblock %}

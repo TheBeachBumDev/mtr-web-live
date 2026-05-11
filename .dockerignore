@@ -1,0 +1,38 @@
+# Keep image context small and deterministic — never rely on containers for missing host files.
+.git
+.gitignore
+
+# Local Python environments (often huge; breaks COPY assumptions if mixed into layer caches)
+venv/
+.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / tooling
+.cursor/
+.idea/
+.vscode/
+
+# Runtime data and logs on developer machines (must not bake into images)
+data/
+logs/
+*.log
+.deploy-state/
+
+# Large backups / recovery trees
+backups/
+
+# Optional local env (compose reads host env_file paths at runtime; never bake secrets into COPY . layers)
+.env
+.env.*
+!.env.compose.example
+!.env.compose.standby
+
+*.bak
+
+# Node / frontend artifacts if present
+node_modules/

@@ -1,0 +1,873 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+#waPage .card { border-radius: 12px; }
+#waPage h2, #waPage h3 { letter-spacing: -0.01em; }
+#waPage .wa-muted { color: var(--muted, #6b7280); }
+#waPage .wa-table-wrap {
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+}
+#waPage .wa-table-wrap table {
+  margin: 0;
+  width: 100%;
+  border-collapse: collapse;
+}
+#waPage .wa-table-wrap th {
+  white-space: nowrap;
+  background: var(--card2, rgba(0,0,0,0.04));
+}
+#waPage .wa-chip-btn {
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 999px;
+  background: transparent;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+#waRecordModal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 15, 26, 0.55);
+  padding: 16px;
+  box-sizing: border-box;
+}
+#waRecordModal .wa-modal-panel {
+  width: min(640px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+#waRecordModal .wa-detail-grid {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+#waRecordModal .wa-detail-key {
+  font-weight: 600;
+  opacity: 0.8;
+}
+#waRecordModal .wa-detail-val {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+</style>
+<div id="waPage">
+<section class="card">
+  <h2 style="margin:0 0 8px 0;">Whatsapp Signups</h2>
+  <p class="hint" style="margin:0;">
+    Configuration + inbox module for WhatsApp-driven signups. Clients sign up inside WhatsApp via QR/link.
+  </p>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <h3 style="margin:0 0 10px 0;">Technical Configuration</h3>
+  <p class="hint wa-muted" style="margin:0 0 10px 0;">
+    Required signup entry fields are built in your WhatsApp provider flow/template. This module stores config, generates campaign QR/link, and receives submitted data via webhook.
+  </p>
+  <div class="grid cols-3">
+    <label>Provider
+      <input id="waProvider" placeholder="meta" />
+    </label>
+    <label>Business Number (E.164 digits)
+      <input id="waBusinessNumber" placeholder="27731234567" />
+    </label>
+    <label>Phone Number ID
+      <input id="waPhoneNumberId" placeholder="Meta phone_number_id" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Flow ID
+      <input id="waFlowId" placeholder="WhatsApp Flow ID" />
+    </label>
+    <label>Webhook Verify Token
+      <input id="waVerifyToken" placeholder="Used for webhook challenge verify" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Access Token (Meta Cloud API)
+      <input id="waAccessToken" placeholder="Temporary or long-lived token" />
+    </label>
+  </div>
+  <div class="grid cols-3" style="margin-top:10px;">
+    <label>Splynx Integration Enabled
+      <select id="waSplynxEnabled">
+        <option value="0">No</option>
+        <option value="1">Yes</option>
+      </select>
+    </label>
+    <label>Splynx Dry Run
+      <select id="waSplynxDryRun">
+        <option value="1">Yes (safe)</option>
+        <option value="0">No (live write)</option>
+      </select>
+    </label>
+    <label>Splynx Lead Path
+      <input id="waSplynxLeadPath" placeholder="admin/customers/customer" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Splynx Default Location ID
+      <input id="waSplynxLocationId" placeholder="optional location id" />
+    </label>
+    <label>Splynx Default Status
+      <input id="waSplynxStatus" placeholder="lead" />
+    </label>
+  </div>
+  <label style="display:block;margin-top:10px;">Signup Message Template
+    <textarea id="waSignupTemplate" rows="3" placeholder="Hi, I want to sign up. Campaign: {campaign}"></textarea>
+  </label>
+  <label style="display:block;margin-top:10px;">Field Mapping JSON (incoming WhatsApp form key -> app field)
+    <textarea id="waFieldMappingJson" rows="8" placeholder='{"full_name":"full_name","email":"email"}'></textarea>
+  </label>
+  <div style="display:flex;gap:8px;margin-top:12px;">
+    <button id="waSaveCfgBtn" type="button">Save Configuration</button>
+    <button id="waReloadCfgBtn" type="button">Reload Configuration</button>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Test Destination Phone
+      <input id="waTestPhone" placeholder="2773..." />
+    </label>
+    <label>Test Message
+      <input id="waTestMessage" placeholder="Wibernet WhatsApp config test" />
+    </label>
+  </div>
+  <p class="hint" style="margin:8px 0 0 0;">Connection test sends WhatsApp template <code class="mono">hello_world</code> (required for first contact in test mode).</p>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <button id="waRunTestBtn" type="button">Run Connection Test</button>
+  </div>
+  <div id="waCfgMsg" class="hint" style="margin-top:10px;"></div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+    <h3 style="margin:0;">Webhook Health</h3>
+    <button id="waHealthRefreshBtn" type="button">Refresh Health</button>
+  </div>
+  <div class="grid cols-3" style="margin-top:10px;">
+    <div><b>Events Total:</b> <span id="waHealthEventsTotal">0</span></div>
+    <div><b>Records Total:</b> <span id="waHealthRecordsTotal">0</span></div>
+    <div><b>Last Inbound At:</b> <span id="waHealthLastAt">-</span></div>
+  </div>
+  <div class="grid cols-3" style="margin-top:6px;">
+    <div><b>Last Event Type:</b> <span id="waHealthLastType">-</span></div>
+    <div><b>Last Status:</b> <span id="waHealthLastStatus">-</span></div>
+    <div><b>Last Phone:</b> <span id="waHealthLastPhone">-</span></div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <h3 style="margin:0 0 10px 0;">Campaign Flow Builder</h3>
+  <p class="hint wa-muted" style="margin:0 0 10px 0;">
+    Build custom WhatsApp question flows per campaign. For multiple choice, set options as <code class="mono">key|label|stored_value</code> per line.
+  </p>
+  <div class="grid cols-3">
+    <label>Campaign Code
+      <input id="waFlowCampaignCode" placeholder="MAY-2026-SIGNUP" />
+    </label>
+    <label>Trigger Text (what user sends)
+      <input id="waFlowTriggerText" placeholder="SIGNUP WITH WIBERNET MAY" />
+    </label>
+    <label>Active
+      <select id="waFlowActive">
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select>
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Welcome Message
+      <input id="waFlowWelcomeText" placeholder="Welcome to Wibernet signup." />
+    </label>
+    <label>Success Message
+      <input id="waFlowSuccessText" placeholder="Thank you. Your signup has been submitted successfully." />
+    </label>
+  </div>
+  <div class="wa-table-wrap" style="margin-top:12px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Field Key</th>
+          <th>Type</th>
+          <th>Question</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="waFlowStepRows"></tbody>
+    </table>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+    <button id="waAddFlowStepBtn" type="button">Add Step</button>
+    <button id="waSaveFlowBtn" type="button">Save Campaign Flow</button>
+    <span class="hint" id="waFlowMsg"></span>
+  </div>
+  <div class="wa-table-wrap" style="margin-top:12px;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Campaign</th>
+          <th>Trigger</th>
+          <th>Active</th>
+          <th>Steps</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody id="waFlowDefsRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <h3 style="margin:0 0 10px 0;">QR Campaign Generator</h3>
+  <div class="grid cols-3">
+    <label>Campaign Code
+      <input id="waCampaign" placeholder="MAY-2026-SIGNUP" />
+    </label>
+    <div style="display:flex;align-items:end;">
+      <button id="waGenQrBtn" type="button">Generate QR</button>
+    </div>
+  </div>
+  <div id="waQrMsg" class="hint" style="margin-top:10px;"></div>
+  <div id="waQrBox" style="display:none; margin-top:12px;">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+      <img id="waQrImg" alt="WhatsApp QR" style="width:220px;height:220px;object-fit:contain;border:1px solid var(--border);border-radius:10px;padding:8px;background:#fff;" />
+      <div style="min-width:260px;max-width:700px;">
+        <label style="display:block;">Join Link
+          <input id="waQrLink" readonly />
+        </label>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button id="waCopyLinkBtn" type="button">Copy Link</button>
+          <button id="waOpenLinkBtn" type="button">Open Link</button>
+        </div>
+        <div style="margin-top:10px;">
+          <a id="waManualLink" href="#" target="_blank" rel="noopener" class="hint" style="word-break:break-all; display:none;">
+            Manual test link
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;">Saved QR Campaigns</h3>
+    <span class="hint" id="waCampaignPageInfo">Page 1</span>
+  </div>
+  <div class="wa-table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Campaign</th>
+          <th>Created</th>
+          <th>Open</th>
+        </tr>
+      </thead>
+      <tbody id="waCampaignRows"></tbody>
+    </table>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;">
+    <button id="waCampaignPrevBtn" type="button">Prev</button>
+    <button id="waCampaignNextBtn" type="button">Next</button>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;">WhatsApp Inbox (Webhook Events)</h3>
+    <input id="waSearch" placeholder="Search phone, profile, text, type..." style="max-width:360px;" />
+  </div>
+  <div class="wa-table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Phone</th>
+          <th>Profile</th>
+          <th>Message</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="waRows"></tbody>
+    </table>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:10px;">
+    <button id="waPrevBtn" type="button">Prev</button>
+    <span class="hint" id="waPageInfo">Page 1</span>
+    <button id="waNextBtn" type="button">Next</button>
+  </div>
+</section>
+
+<section class="card" style="margin-top:14px;">
+  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
+    <h3 style="margin:0;">Whatsapp Signups</h3>
+    <input id="waRecordSearch" placeholder="Search phone, name, email, id..." style="max-width:360px;" />
+  </div>
+  <div class="wa-table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Phone</th>
+          <th>Full Name</th>
+          <th>Email</th>
+          <th>Details</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="waRecordRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<div id="waRecordModal" aria-hidden="true">
+  <div class="wa-modal-panel">
+    <div class="po-modal__head">
+      <h3 style="margin:0;">Whatsapp Signup Details</h3>
+    </div>
+    <div class="wa-detail-grid">
+      <div class="wa-detail-key">Phone</div><div class="wa-detail-val" id="waRecPhone">-</div>
+      <div class="wa-detail-key">Full Name</div><div class="wa-detail-val" id="waRecName">-</div>
+      <div class="wa-detail-key">Email</div><div class="wa-detail-val" id="waRecEmail">-</div>
+      <div class="wa-detail-key">Suburb</div><div class="wa-detail-val" id="waRecSuburb">-</div>
+      <div class="wa-detail-key">Address</div><div class="wa-detail-val" id="waRecAddress">-</div>
+      <div class="wa-detail-key">Notes</div><div class="wa-detail-val" id="waRecNotes">-</div>
+    </div>
+    <div style="margin-top:14px;">
+      <h4 style="margin:0 0 8px 0;">Splynx Push</h4>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button type="button" id="waRecPushSplynxBtn">Push To Splynx</button>
+        <span class="hint" id="waRecSplynxMsg"></span>
+      </div>
+      <div class="wa-table-wrap" style="margin-top:10px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody id="waRecSplynxRows"></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:center;margin-top:18px;">
+      <button type="button" id="waRecordModalCloseBottom">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cfgMsgEl = document.getElementById("waCfgMsg");
+  const qrMsgEl = document.getElementById("waQrMsg");
+  const rowsEl = document.getElementById("waRows");
+  const qEl = document.getElementById("waSearch");
+  const recordRowsEl = document.getElementById("waRecordRows");
+  const rqEl = document.getElementById("waRecordSearch");
+  const modalEl = document.getElementById("waRecordModal");
+  const splynxMsgEl = document.getElementById("waRecSplynxMsg");
+  const flowMsgEl = document.getElementById("waFlowMsg");
+  let webhookPage = 1;
+  const webhookPageSize = 10;
+  let campaignPage = 1;
+  const campaignPageSize = 10;
+  let webhookTotal = 0;
+  let selectedRecord = null;
+  let flowDefs = [];
+  let editingFlowId = 0;
+  let flowSteps = [
+    { field_key: "full_name", type: "text", question_text: "Awesome. What is your full name?", options: [] },
+    { field_key: "address_line", type: "text", question_text: "Great. What is your street address?", options: [] },
+    { field_key: "email", type: "email", question_text: "Great. What is your email address?", options: [] },
+  ];
+  const cfgMsg = (text, ok = true) => {
+    if (!cfgMsgEl) return;
+    cfgMsgEl.textContent = text || "";
+    cfgMsgEl.style.color = ok ? "var(--muted)" : "var(--danger,#c53030)";
+  };
+  const splynxMsg = (text, ok = true) => {
+    if (!splynxMsgEl) return;
+    splynxMsgEl.textContent = text || "";
+    splynxMsgEl.style.color = ok ? "var(--muted)" : "var(--danger,#c53030)";
+  };
+  const qrMsg = (text, ok = true) => {
+    if (!qrMsgEl) return;
+    qrMsgEl.textContent = text || "";
+    qrMsgEl.style.color = ok ? "var(--muted)" : "var(--danger,#c53030)";
+  };
+  const flowMsg = (text, ok = true) => {
+    if (!flowMsgEl) return;
+    flowMsgEl.textContent = text || "";
+    flowMsgEl.style.color = ok ? "var(--muted)" : "var(--danger,#c53030)";
+  };
+  const j = async (url, opts = {}) => {
+    const r = await fetch(url, {headers: {"Content-Type":"application/json"}, ...opts});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.detail || d.error || ("HTTP " + r.status));
+    return d;
+  };
+  const esc = (v) => String(v == null ? "" : v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  const ensureStepOptions = (step) => {
+    if (!step || !Array.isArray(step.options)) step.options = [];
+    return step.options;
+  };
+  const renderFlowSteps = () => {
+    const body = document.getElementById("waFlowStepRows");
+    if (!body) return;
+    body.innerHTML = flowSteps.map((s, idx) => `
+      <tr>
+        <td><input data-k="field_key" data-i="${idx}" value="${esc(s.field_key || "")}" placeholder="full_name" /></td>
+        <td>
+          <select data-k="type" data-i="${idx}">
+            <option value="text" ${(s.type || "text") === "text" ? "selected" : ""}>text</option>
+            <option value="email" ${(s.type || "") === "email" ? "selected" : ""}>email</option>
+            <option value="number" ${(s.type || "") === "number" ? "selected" : ""}>number</option>
+            <option value="multiple_choice" ${(s.type || "") === "multiple_choice" ? "selected" : ""}>multiple_choice</option>
+          </select>
+        </td>
+        <td>
+          <input data-k="question_text" data-i="${idx}" value="${esc(s.question_text || "")}" placeholder="Question text" />
+          ${(s.type || "") === "multiple_choice" ? `
+            <div class="hint" style="margin-top:6px;">Options</div>
+            <div style="margin-top:6px;display:grid;gap:6px;">
+              ${ensureStepOptions(s).map((o, oi) => `
+                <div style="display:grid;grid-template-columns:90px 1fr 1fr auto;gap:6px;align-items:center;">
+                  <input data-ok="key" data-i="${idx}" data-oi="${oi}" value="${esc(o.key || "")}" placeholder="Key (1)" />
+                  <input data-ok="label" data-i="${idx}" data-oi="${oi}" value="${esc(o.label || "")}" placeholder="Label (Package 1)" />
+                  <input data-ok="value" data-i="${idx}" data-oi="${oi}" value="${esc(o.value || "")}" placeholder="Stored value (Home 20Mbps)" />
+                  <button type="button" class="wa-chip-btn" data-act="rm-opt" data-i="${idx}" data-oi="${oi}">Remove</button>
+                </div>
+              `).join("")}
+              <div>
+                <button type="button" class="wa-chip-btn" data-act="add-opt" data-i="${idx}">Add Option</button>
+              </div>
+            </div>
+          ` : ``}
+        </td>
+        <td><button type="button" class="wa-chip-btn" data-act="rm-step" data-i="${idx}">Remove</button></td>
+      </tr>
+    `).join("");
+    body.querySelectorAll("[data-k]").forEach((el) => {
+      const onEdit = (e) => {
+        const i = Number(e.target.getAttribute("data-i") || 0);
+        const k = String(e.target.getAttribute("data-k") || "");
+        if (!flowSteps[i] || !k) return;
+        flowSteps[i][k] = e.target.value;
+        if (k === "type") renderFlowSteps();
+      };
+      el.addEventListener("input", onEdit);
+      el.addEventListener("change", onEdit);
+    });
+    body.querySelectorAll("button[data-act='rm-step']").forEach((btn) => {
+      btn.onclick = () => {
+        const i = Number(btn.getAttribute("data-i") || -1);
+        if (i < 0) return;
+        flowSteps.splice(i, 1);
+        renderFlowSteps();
+      };
+    });
+    body.querySelectorAll("button[data-act='add-opt']").forEach((btn) => {
+      btn.onclick = () => {
+        const i = Number(btn.getAttribute("data-i") || -1);
+        if (i < 0 || !flowSteps[i]) return;
+        ensureStepOptions(flowSteps[i]).push({ key: "", label: "", value: "" });
+        renderFlowSteps();
+      };
+    });
+    body.querySelectorAll("button[data-act='rm-opt']").forEach((btn) => {
+      btn.onclick = () => {
+        const i = Number(btn.getAttribute("data-i") || -1);
+        const oi = Number(btn.getAttribute("data-oi") || -1);
+        if (i < 0 || oi < 0 || !flowSteps[i]) return;
+        const opts = ensureStepOptions(flowSteps[i]);
+        opts.splice(oi, 1);
+        renderFlowSteps();
+      };
+    });
+    body.querySelectorAll("[data-ok]").forEach((el) => {
+      const onOptEdit = (e) => {
+        const i = Number(e.target.getAttribute("data-i") || -1);
+        const oi = Number(e.target.getAttribute("data-oi") || -1);
+        const k = String(e.target.getAttribute("data-ok") || "");
+        if (i < 0 || oi < 0 || !k || !flowSteps[i]) return;
+        const opts = ensureStepOptions(flowSteps[i]);
+        if (!opts[oi]) return;
+        opts[oi][k] = e.target.value;
+      };
+      el.addEventListener("input", onOptEdit);
+      el.addEventListener("change", onOptEdit);
+    });
+  };
+  const loadFlowDefs = async () => {
+    const d = await j("/api/whatsapp-signups/campaign-defs");
+    flowDefs = Array.isArray(d.items) ? d.items : [];
+    const body = document.getElementById("waFlowDefsRows");
+    if (!body) return;
+    body.innerHTML = flowDefs.map(x => `
+      <tr>
+        <td>${Number(x.id || 0)}</td>
+        <td>${esc(x.campaign_code || "-")}</td>
+        <td>${esc(x.trigger_text || "-")}</td>
+        <td>${x.active ? "Yes" : "No"}</td>
+        <td>${Array.isArray(x.flow) ? x.flow.length : 0}</td>
+        <td><button type="button" class="wa-chip-btn" data-act="open-flow">Open</button></td>
+      </tr>
+    `).join("") || `<tr><td colspan="6" class="hint">No campaign flows yet</td></tr>`;
+    body.querySelectorAll("button[data-act='open-flow']").forEach((btn, idx) => {
+      btn.onclick = () => {
+        const row = flowDefs[idx];
+        if (!row) return;
+        editingFlowId = Number(row.id || 0);
+        document.getElementById("waFlowCampaignCode").value = row.campaign_code || "";
+        document.getElementById("waFlowTriggerText").value = row.trigger_text || "";
+        document.getElementById("waFlowWelcomeText").value = row.welcome_text || "";
+        document.getElementById("waFlowSuccessText").value = row.success_text || "";
+        document.getElementById("waFlowActive").value = row.active ? "1" : "0";
+        const f = Array.isArray(row.flow) ? row.flow : [];
+        flowSteps = f.map((s) => ({
+          field_key: s.field_key || "",
+          type: s.type || "text",
+          question_text: s.question_text || "",
+          options: Array.isArray(s.options) ? s.options.map(o => ({ key: o.key || "", label: o.label || "", value: o.value || "" })) : [],
+        }));
+        renderFlowSteps();
+        flowMsg(`Loaded campaign flow ${row.campaign_code || ""}`);
+      };
+    });
+  };
+
+  const loadInbox = async () => {
+    const q = (qEl?.value || "").trim();
+    const d = await j(`/api/whatsapp-signups?q=${encodeURIComponent(q)}&page=${encodeURIComponent(webhookPage)}&page_size=${webhookPageSize}`);
+    const items = Array.isArray(d.items) ? d.items : [];
+    webhookTotal = Number(d.total || 0);
+    const page = Number(d.page || webhookPage);
+    const pageSize = Number(d.page_size || webhookPageSize);
+    const totalPages = Math.max(1, Math.ceil(webhookTotal / pageSize));
+    document.getElementById("waPageInfo").textContent = `Page ${page} of ${totalPages} (${webhookTotal} total)`;
+    document.getElementById("waPrevBtn").disabled = page <= 1;
+    document.getElementById("waNextBtn").disabled = page >= totalPages;
+    rowsEl.innerHTML = items.map(x => `
+      <tr>
+        <td>${Number(x.id || 0)}</td>
+        <td>${esc(x.event_type || "-")}</td>
+        <td>${esc(x.status || "pending")}</td>
+        <td>${esc(x.from_phone || "-")}</td>
+        <td>${esc(x.profile_name || "-")}</td>
+        <td>${esc(x.message_text || "-")}</td>
+        <td>${esc(x.created_at || "-")}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="7" class="hint">No webhook events yet</td></tr>`;
+  };
+
+  const loadConfig = async () => {
+    const d = await j("/api/whatsapp-signups/config");
+    const c = d.config || {};
+    document.getElementById("waProvider").value = c.provider || "meta";
+    document.getElementById("waBusinessNumber").value = c.business_number || "";
+    document.getElementById("waPhoneNumberId").value = c.phone_number_id || "";
+    document.getElementById("waFlowId").value = c.flow_id || "";
+    document.getElementById("waVerifyToken").value = c.verify_token || "";
+    document.getElementById("waAccessToken").value = c.access_token || "";
+    document.getElementById("waSignupTemplate").value = c.signup_message_template || "";
+    document.getElementById("waFieldMappingJson").value = c.field_mapping_json || "{}";
+    document.getElementById("waSplynxEnabled").value = String(c.splynx_enabled || "0");
+    document.getElementById("waSplynxDryRun").value = String(c.splynx_dry_run || "1");
+    document.getElementById("waSplynxLeadPath").value = c.splynx_lead_path || "admin/customers/customer";
+    document.getElementById("waSplynxLocationId").value = c.splynx_default_location_id || "";
+    document.getElementById("waSplynxStatus").value = c.splynx_default_status || "lead";
+  };
+  const loadHealth = async () => {
+    const d = await j("/api/whatsapp-signups/health");
+    const last = d.last_event || {};
+    document.getElementById("waHealthEventsTotal").textContent = String(Number(d.events_total || 0));
+    document.getElementById("waHealthRecordsTotal").textContent = String(Number(d.records_total || 0));
+    document.getElementById("waHealthLastAt").textContent = last.created_at || "-";
+    document.getElementById("waHealthLastType").textContent = last.event_type || "-";
+    document.getElementById("waHealthLastStatus").textContent = last.status || "-";
+    document.getElementById("waHealthLastPhone").textContent = last.from_phone || "-";
+  };
+
+  document.getElementById("waSaveCfgBtn").onclick = async () => {
+    try {
+      const d = await j("/api/whatsapp-signups/config", {
+        method: "PUT",
+        body: JSON.stringify({
+          provider: document.getElementById("waProvider").value || "meta",
+          business_number: document.getElementById("waBusinessNumber").value || "",
+          phone_number_id: document.getElementById("waPhoneNumberId").value || "",
+          flow_id: document.getElementById("waFlowId").value || "",
+          verify_token: document.getElementById("waVerifyToken").value || "",
+          access_token: document.getElementById("waAccessToken").value || "",
+          signup_message_template: document.getElementById("waSignupTemplate").value || "",
+          field_mapping_json: document.getElementById("waFieldMappingJson").value || "{}",
+          splynx_enabled: document.getElementById("waSplynxEnabled").value || "0",
+          splynx_dry_run: document.getElementById("waSplynxDryRun").value || "1",
+          splynx_lead_path: document.getElementById("waSplynxLeadPath").value || "admin/customers/customer",
+          splynx_default_location_id: document.getElementById("waSplynxLocationId").value || "",
+          splynx_default_status: document.getElementById("waSplynxStatus").value || "lead",
+        }),
+      });
+      cfgMsg("Configuration saved.");
+      if (d && d.config) {
+        document.getElementById("waBusinessNumber").value = d.config.business_number || "";
+      }
+    } catch (e) {
+      cfgMsg(e.message || String(e), false);
+    }
+  };
+
+  document.getElementById("waReloadCfgBtn").onclick = () => {
+    loadConfig().then(() => cfgMsg("Configuration reloaded.")).catch((e) => cfgMsg(e.message || String(e), false));
+  };
+  document.getElementById("waHealthRefreshBtn").onclick = () => {
+    loadHealth().then(() => cfgMsg("Webhook health refreshed.")).catch((e) => cfgMsg(e.message || String(e), false));
+  };
+  document.getElementById("waRunTestBtn").onclick = async () => {
+    try {
+      const d = await j("/api/whatsapp-signups/test", {
+        method: "POST",
+        body: JSON.stringify({
+          to_phone: document.getElementById("waTestPhone").value || "",
+          message: document.getElementById("waTestMessage").value || "Wibernet WhatsApp config test",
+        }),
+      });
+      cfgMsg("Connection test sent successfully.");
+      if (d?.result?.response?.messages?.length) {
+        const mid = String(d.result.response.messages[0].id || "");
+        if (mid) cfgMsg(`Connection test sent successfully. message_id=${mid}`);
+      }
+    } catch (e) {
+      cfgMsg(e.message || String(e), false);
+    }
+  };
+  document.getElementById("waAddFlowStepBtn").onclick = () => {
+    flowSteps.push({ field_key: "", type: "text", question_text: "", options: [] });
+    renderFlowSteps();
+  };
+  document.getElementById("waSaveFlowBtn").onclick = async () => {
+    try {
+      const flow = flowSteps.map((s) => {
+        const out = {
+          field_key: String(s.field_key || "").trim(),
+          type: String(s.type || "text").trim(),
+          question_text: String(s.question_text || "").trim(),
+          required: true,
+        };
+        if (out.type === "multiple_choice") {
+          const opts = Array.isArray(s.options) ? s.options : [];
+          out.options = opts
+            .map((o) => ({
+              key: String(o.key || "").trim(),
+              label: String(o.label || "").trim(),
+              value: String(o.value || o.label || "").trim(),
+            }))
+            .filter((o) => o.key && o.label);
+        }
+        return out;
+      }).filter(x => x.field_key && x.question_text);
+      await j("/api/whatsapp-signups/campaign-defs", {
+        method: "POST",
+        body: JSON.stringify({
+          id: editingFlowId || 0,
+          campaign_code: document.getElementById("waFlowCampaignCode").value || "",
+          trigger_text: document.getElementById("waFlowTriggerText").value || "",
+          welcome_text: document.getElementById("waFlowWelcomeText").value || "",
+          success_text: document.getElementById("waFlowSuccessText").value || "",
+          active: document.getElementById("waFlowActive").value === "1",
+          flow,
+        }),
+      });
+      flowMsg("Campaign flow saved.");
+      await loadFlowDefs();
+    } catch (e) {
+      flowMsg(e.message || String(e), false);
+    }
+  };
+
+  document.getElementById("waGenQrBtn").onclick = async () => {
+    try {
+      const campaign = (document.getElementById("waCampaign").value || "default").trim();
+      const d = await j(`/api/whatsapp-signups/qr?campaign=${encodeURIComponent(campaign)}`);
+      document.getElementById("waQrBox").style.display = "";
+      document.getElementById("waQrImg").src = d.qr_data_uri || "";
+      document.getElementById("waQrLink").value = d.link || "";
+      const manualLink = document.getElementById("waManualLink");
+      if (manualLink) {
+        manualLink.href = d.link || "#";
+        manualLink.textContent = d.link || "Manual test link";
+        manualLink.style.display = d.link ? "inline" : "none";
+      }
+      qrMsg(`QR generated for campaign "${campaign}".`);
+      campaignPage = 1;
+      loadCampaigns().catch(() => {});
+    } catch (e) {
+      qrMsg(e.message || String(e), false);
+    }
+  };
+
+  document.getElementById("waCopyLinkBtn").onclick = async () => {
+    try {
+      const link = document.getElementById("waQrLink").value || "";
+      if (!link) return;
+      await navigator.clipboard.writeText(link);
+      qrMsg("Link copied.");
+    } catch (e) {
+      qrMsg("Could not copy link", false);
+    }
+  };
+  document.getElementById("waOpenLinkBtn").onclick = () => {
+    const link = document.getElementById("waQrLink").value || "";
+    if (link) window.open(link, "_blank", "noopener");
+  };
+  const loadCampaigns = async () => {
+    const d = await j(`/api/whatsapp-signups/campaigns?page=${encodeURIComponent(campaignPage)}&page_size=${campaignPageSize}`);
+    const items = Array.isArray(d.items) ? d.items : [];
+    const total = Number(d.total || 0);
+    const page = Number(d.page || campaignPage);
+    const ps = Number(d.page_size || campaignPageSize);
+    const totalPages = Math.max(1, Math.ceil(total / ps));
+    document.getElementById("waCampaignPageInfo").textContent = `Page ${page} of ${totalPages} (${total} total)`;
+    document.getElementById("waCampaignPrevBtn").disabled = page <= 1;
+    document.getElementById("waCampaignNextBtn").disabled = page >= totalPages;
+    const body = document.getElementById("waCampaignRows");
+    body.innerHTML = items.map(x => `
+      <tr>
+        <td>${Number(x.id || 0)}</td>
+        <td>${esc(x.campaign_code || "-")}</td>
+        <td>${esc(x.created_at || "-")}</td>
+        <td><button type="button" class="wa-chip-btn" data-act="open-campaign">Open</button></td>
+      </tr>
+    `).join("") || `<tr><td colspan="4" class="hint">No campaigns yet</td></tr>`;
+    body.querySelectorAll("button[data-act='open-campaign']").forEach((btn, idx) => {
+      btn.onclick = () => {
+        const row = items[idx];
+        if (!row) return;
+        document.getElementById("waQrBox").style.display = "";
+        document.getElementById("waQrImg").src = row.qr_data_uri || "";
+        document.getElementById("waQrLink").value = row.invite_link || "";
+        const manualLink = document.getElementById("waManualLink");
+        if (manualLink) {
+          manualLink.href = row.invite_link || "#";
+          manualLink.textContent = row.invite_link || "Manual test link";
+          manualLink.style.display = row.invite_link ? "inline" : "none";
+        }
+      };
+    });
+  };
+  document.getElementById("waCampaignPrevBtn").onclick = () => {
+    campaignPage = Math.max(1, campaignPage - 1);
+    loadCampaigns().catch(() => {});
+  };
+  document.getElementById("waCampaignNextBtn").onclick = () => {
+    campaignPage += 1;
+    loadCampaigns().catch(() => {});
+  };
+  qEl?.addEventListener("input", () => {
+    webhookPage = 1;
+    loadInbox().catch(() => {});
+  });
+  document.getElementById("waPrevBtn").onclick = () => {
+    webhookPage = Math.max(1, webhookPage - 1);
+    loadInbox().catch(() => {});
+  };
+  document.getElementById("waNextBtn").onclick = () => {
+    webhookPage += 1;
+    loadInbox().catch(() => {});
+  };
+  const loadRecords = async () => {
+    const q = (rqEl?.value || "").trim();
+    const d = await j(`/api/whatsapp-signups/records?q=${encodeURIComponent(q)}&limit=200`);
+    const items = Array.isArray(d.items) ? d.items : [];
+    recordRowsEl.innerHTML = items.map(x => `
+      <tr data-rec-id="${Number(x.id || 0)}" style="cursor:pointer;">
+        <td>${Number(x.id || 0)}</td>
+        <td>${esc(x.from_phone || "-")}</td>
+        <td>${esc(x.full_name || "-")}</td>
+        <td>${esc(x.email || "-")}</td>
+        <td><button type="button" class="wa-chip-btn" data-act="open-rec">Open</button></td>
+        <td>${esc(x.created_at || "-")}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="6" class="hint">No mapped records yet</td></tr>`;
+    recordRowsEl.querySelectorAll("button[data-act='open-rec']").forEach((btn, idx) => {
+      btn.onclick = () => {
+        const row = items[idx];
+        if (!row) return;
+        selectedRecord = row;
+        document.getElementById("waRecPhone").textContent = row.from_phone || "-";
+        document.getElementById("waRecName").textContent = row.full_name || "-";
+        document.getElementById("waRecEmail").textContent = row.email || "-";
+        document.getElementById("waRecAddress").textContent = row.address_line || "-";
+        document.getElementById("waRecSuburb").textContent = row.suburb || "-";
+        document.getElementById("waRecNotes").textContent = row.notes || "-";
+        modalEl.style.display = "flex";
+        loadSplynxAttempts(row.id).catch(() => {});
+      };
+    });
+  };
+  const loadSplynxAttempts = async (recordId) => {
+    const d = await j(`/api/whatsapp-signups/records/${Number(recordId)}/splynx-pushes?limit=20`);
+    const items = Array.isArray(d.items) ? d.items : [];
+    const rows = document.getElementById("waRecSplynxRows");
+    rows.innerHTML = items.map(x => `
+      <tr>
+        <td>${Number(x.id || 0)}</td>
+        <td>${esc(x.mode || "-")}</td>
+        <td>${esc(x.status || "-")}</td>
+        <td>${esc(x.created_at || "-")}</td>
+        <td>${esc(x.error_text || "-")}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="5" class="hint">No Splynx push attempts yet</td></tr>`;
+  };
+  rqEl?.addEventListener("input", () => {
+    loadRecords().catch(() => {});
+  });
+  document.getElementById("waRecordModalCloseBottom").onclick = () => { modalEl.style.display = "none"; };
+  document.getElementById("waRecPushSplynxBtn").onclick = async () => {
+    if (!selectedRecord || !selectedRecord.id) return;
+    try {
+      const d = await j(`/api/whatsapp-signups/records/${Number(selectedRecord.id)}/push-splynx`, {method: "POST"});
+      const r = d.result || {};
+      splynxMsg(`Push ${r.status || "done"} (${r.mode || "-"})`);
+      await loadSplynxAttempts(selectedRecord.id);
+    } catch (e) {
+      splynxMsg(e.message || String(e), false);
+    }
+  };
+  modalEl.addEventListener("click", (e) => {
+    if (e.target === modalEl) modalEl.style.display = "none";
+  });
+  loadConfig().catch((e) => cfgMsg(e.message || String(e), false));
+  loadHealth().catch((e) => cfgMsg(e.message || String(e), false));
+  renderFlowSteps();
+  loadFlowDefs().catch((e) => flowMsg(e.message || String(e), false));
+  loadInbox().catch(() => {});
+  loadRecords().catch(() => {});
+  loadCampaigns().catch(() => {});
+})();
+</script>
+</div>
+{% endblock %}

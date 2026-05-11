@@ -1,0 +1,1173 @@
+{% extends "base.html" %}
+{# v1.0.7-hotfix11 #}
+{% block content %}
+<h1>MTR Live</h1>
+
+    <div id="printHeader" class="panel" style="display:none;">
+      <div class="mono" style="font-weight:700; font-size:16px;">MTR Live Report</div>
+      <div class="hint mono" id="printMeta" style="margin-top:6px;"></div>
+    </div>
+
+
+    <p class="hint mono">
+      Log: <code>{{ run_log_path | default("mtr_runs.log", true) }}</code>
+      &nbsp;·&nbsp;
+      <span class="badge">Runs: last 30 days</span>
+    </p>
+
+    <p class="hint">
+      Live hop charts: latency (avg ms) + loss (%) + jitter (ms).
+      Charts hidden until ping <code>{{ warmup_pings }}</code> per hop.
+      Frequency presets: <code>1.0</code>, <code>0.5</code>, <code>0.25</code>.
+      {% if not use_sudo %}
+        <span class="small">Note: intervals &lt; 1.0s require <code>USE_SUDO=1</code>.</span>
+      {% endif %}
+    </p>
+
+    <div class="row">
+      <input id="target" placeholder="8.8.8.8 or example.com" />
+
+      <select id="preset" style="width:260px" onchange="onPresetChange()">
+        <option value="basic" selected>Basic (single test)</option>
+        <option value="gaming">Gaming preset (ICMP vs UDP vs TCP)</option>
+        <option value="gaming_bloat">Gaming preset + Bufferbloat (load + compare)</option>
+      </select>
+
+      <select id="freq" style="width:150px">
+        <option value="1.0" selected>1.0 s</option>
+        <option value="0.5" {% if not use_sudo %}disabled{% endif %}>0.5 s</option>
+        <option value="0.25" {% if not use_sudo %}disabled{% endif %}>0.25 s</option>
+      </select>
+
+      <span id="basicControls" style="display:inline-flex; gap:8px; align-items:center;">
+        <select id="proto" style="width:120px">
+          <option value="icmp" selected>ICMP</option>
+          <option value="udp">UDP</option>
+          <option value="tcp">TCP</option>
+        </select>
+        <input id="port" placeholder="port (optional)" style="width:140px" />
+      </span>
+
+      <span id="gamingControls" style="display:none; gap:8px; align-items:center;">
+        <input id="perTestSeconds" value="20" style="width:120px" />
+        <span class="hint mono">sec/phase</span>
+        <input id="udpPort" value="443" style="width:110px" />
+        <span class="hint mono">UDP port</span>
+        <input id="tcpPort" value="443" style="width:110px" />
+        <span class="hint mono">TCP port</span>
+      </span>
+
+      <span id="bloatControls" style="display:none; gap:8px; align-items:center;">
+        <select id="loadMode" style="width:160px">
+          <option value="none" selected>No load</option>
+          <option value="down">Download load</option>
+          <option value="up">Upload load</option>
+          <option value="both">Up + Down load</option>
+        </select>
+        <input id="loadRate" value="20" style="width:110px" />
+        <span class="hint mono">Mbps</span>
+        <input id="loadSizeMb" value="200" style="width:110px" />
+        <span class="hint mono">MB</span>
+      </span>
+
+      <button id="startBtn" onclick="start()">Start</button>
+      <button id="stopBtn" onclick="stop()" disabled>Stop</button>
+      <button id="resetCompareBtn" onclick="resetCompareResults()">Reset Results</button>
+      <button id="exportBtn" onclick="exportPDF()" disabled>Export PDF</button>
+
+      <span id="status" class="hint mono"></span>
+    </div>
+
+    <div id="error" class="hint err"></div>
+
+    <div id="comparePanel" class="panel" style="display:none; margin-top:12px;">
+      <div class="right mono" id="compareStamp">—</div>
+      <h2>Compare Results</h2>
+      <div class="sub mono muted" id="compareMeta">Click a row to load its hop view below.</div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Mode</th>
+              <th>Port</th>
+              <th>Loss</th>
+              <th>Avg</th>
+              <th>P95</th>
+              <th>P99</th>
+              <th>Jitter</th>
+              <th>Best</th>
+              <th>Worst</th>
+              <th>Last</th>
+              <th>Sent</th>
+              <th>Rcvd</th>
+            </tr>
+          </thead>
+          <tbody id="compareBody">
+            <tr><td class="mono" colspan="12">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="cards" class="grid"></div>
+
+    <div id="activePanel" class="panel clearfix">
+      <div class="right mono" id="activeStamp">—</div>
+      <h2>Active Tests</h2>
+      <div class="sub mono muted" id="activeMeta">—</div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Target</th>
+              <th>Freq</th>
+              <th>Started (UTC)</th>
+              <th>Elapsed</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="activeBody">
+            <tr><td class="mono" colspan="6">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="runsPanel" class="panel clearfix">
+      <div class="right mono" id="runsStamp">Loading…</div>
+      <h2>Run History (Last 30 Days)</h2>
+      <div class="sub mono muted" id="runsMeta">—</div>
+
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp (UTC)</th>
+              <th>User</th>
+              <th>Target</th>
+              <th>Destination</th>
+              <th>Freq</th>
+              <th>Dur</th>
+              <th>Avg</th>
+              <th>Loss</th>
+              <th>Sent</th>
+              <th>Rcvd</th>
+            </tr>
+          </thead>
+          <tbody id="runsBody">
+            <tr><td class="mono" colspan="10">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      let ws = null;
+      const MAX_POINTS = 240;
+
+      const ANIM_MS = 320;
+      const EASING = "easeOutQuart";
+
+      const hopCharts = new Map();
+
+      const WS_TOKEN  = "{{ ws_token | default('', true) }}";
+      const USERNAME  = "{{ username | default('unknown', true) }}";
+      const LOG_PATH  = "{{ run_log_path | default('mtr_runs.log', true) }}";
+      const USE_SUDO  = {{ "true" if use_sudo else "false" }};
+
+      let lastSnapshot = null;
+
+
+      // ---- Run History refresh helpers (v1.0.4) ----
+      let _runsSig = null;
+
+      function _runsIdentitySig(runs) {
+        return JSON.stringify((runs || []).map(r => ({
+          ts: r.ts || "",
+          user: r.user || "",
+          target: r.target || "",
+          dst: r.dst || "",
+          freq: r.freq || "",
+          dur: r.dur || "",
+          status: r.status || ""
+        })));
+      }
+
+      async function pollRunsUntilChanged(days = 30, tries = 10, delayMs = 500) {
+        const startSig = _runsSig;
+        const tick = async (n) => {
+          await loadRuns(days, { soft: true });
+          if (_runsSig !== startSig || n <= 0) return;
+          setTimeout(() => tick(n - 1), delayMs);
+        };
+        tick(tries);
+      }
+
+      function refreshRunHistorySoon() {
+        // Immediate refresh, then short polling to catch delayed log append.
+        loadRuns(30);
+        pollRunsUntilChanged(30, 10, 500);
+      }
+
+      function setStatus(t){ document.getElementById("status").textContent = t || ""; }
+      function setError(t){ document.getElementById("error").textContent = t || ""; }
+
+      function logout() {
+        // Force 401 to drop Basic Auth cache
+        window.location.href = "/logout";
+      }
+
+      function setExportEnabled(enabled) {
+        document.getElementById("exportBtn").disabled = !enabled;
+      }
+
+      function escapeHtml(v) {
+        const s = String(v == null ? "" : v);
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function clearAll() {
+        document.getElementById("cards").innerHTML = "";
+        hopCharts.clear();
+        lastSnapshot = null;
+        setExportEnabled(false);
+      }
+
+      function smoothCommonOptions(extraScales) {
+        return {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: ANIM_MS, easing: EASING },
+          transitions: { active: { animation: { duration: ANIM_MS, easing: EASING } } },
+          responsiveAnimationDuration: ANIM_MS,
+          layout: { padding: { left: 22, right: 8, top: 4, bottom: 4 } },
+          interaction: { mode: "nearest", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { enabled: true } },
+          normalized: true,
+          scales: extraScales
+        };
+      }
+
+      function baseLatencyOptions() {
+        return smoothCommonOptions({
+          x: { display: false },
+          y: { beginAtZero: true, ticks: { padding: 8, maxTicksLimit: 4 } }
+        });
+      }
+      function baseLossOptions() {
+        return smoothCommonOptions({
+          x: { display: false },
+          y: { beginAtZero: true, max: 100, ticks: { padding: 8, maxTicksLimit: 4 } }
+        });
+      }
+      function baseJitterOptions() {
+        return smoothCommonOptions({
+          x: { display: false },
+          y: { beginAtZero: true, ticks: { padding: 8, maxTicksLimit: 4 } }
+        });
+      }
+
+      function orangeDataset(label) {
+        return [{
+          label,
+          data: [],
+          tension: 0.35,
+          fill: true,
+          spanGaps: false,
+          borderColor: "rgb(255,140,0)",
+          backgroundColor: "rgba(255,140,0,0.25)",
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          pointHitRadius: 12
+        }];
+      }
+
+      function createHopCard(hopKey, hopLabel) {
+        if (typeof Chart === "undefined") {
+          setError("Charts failed to load (Chart.js unavailable). Check network/CDN access and refresh.");
+          return;
+        }
+        const cards = document.getElementById("cards");
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.id = `card-${hopKey}`;
+
+        const title = document.createElement("div");
+        title.className = "title";
+        title.innerHTML = `<div><b>${hopLabel}</b></div><div class="small mono" id="meta-${hopKey}"></div>`;
+        card.appendChild(title);
+
+        const chartsWrap = document.createElement("div");
+        chartsWrap.className = "chartsWrap";
+
+        const overlay = document.createElement("div");
+        overlay.className = "overlay";
+        overlay.id = `overlay-${hopKey}`;
+        overlay.innerHTML = `<div class="pill" id="overlayText-${hopKey}">WARMUP</div>`;
+        chartsWrap.appendChild(overlay);
+
+        const charts = document.createElement("div");
+        charts.className = "charts";
+
+        function mkBox(label, id) {
+          const box = document.createElement("div");
+          box.className = "chartbox";
+          const l = document.createElement("div");
+          l.className = "small";
+          l.textContent = label;
+          const c = document.createElement("canvas");
+          c.id = id;
+          box.appendChild(l);
+          box.appendChild(c);
+          return { box, canvas: c };
+        }
+
+        const lat = mkBox("Latency (avg ms)", `lat-${hopKey}`);
+        const loss = mkBox("Loss (%)", `loss-${hopKey}`);
+        const jit = mkBox("Jitter (ms)", `jit-${hopKey}`);
+
+        charts.appendChild(lat.box);
+        charts.appendChild(loss.box);
+        charts.appendChild(jit.box);
+
+        chartsWrap.appendChild(charts);
+        card.appendChild(chartsWrap);
+        cards.appendChild(card);
+
+        const latChart = new Chart(lat.canvas.getContext("2d"), {
+          type: "line",
+          data: { labels: [], datasets: orangeDataset("avg (ms)") },
+          options: baseLatencyOptions()
+        });
+
+        const lossChart = new Chart(loss.canvas.getContext("2d"), {
+          type: "line",
+          data: { labels: [], datasets: orangeDataset("loss (%)") },
+          options: baseLossOptions()
+        });
+
+        const jitChart = new Chart(jit.canvas.getContext("2d"), {
+          type: "line",
+          data: { labels: [], datasets: orangeDataset("jitter (ms)") },
+          options: baseJitterOptions()
+        });
+
+        hopCharts.set(hopKey, {
+          latChart, lossChart, jitChart,
+          latLabels: [], latData: [],
+          lossLabels: [], lossData: [],
+          jitLabels: [], jitData: [],
+          warmupPrev: true,
+          base_snt: null,
+          base_rcvd: null,
+          prevLastMs: null
+        });
+      }
+
+      function resetHopCharts(state) {
+        state.latLabels = []; state.latData = [];
+        state.lossLabels = []; state.lossData = [];
+        state.jitLabels = []; state.jitData = [];
+        state.prevLastMs = null;
+
+        state.latChart.data.labels = [];
+        state.latChart.data.datasets[0].data = [];
+        state.latChart.update();
+
+        state.lossChart.data.labels = [];
+        state.lossChart.data.datasets[0].data = [];
+        state.lossChart.update();
+
+        state.jitChart.data.labels = [];
+        state.jitChart.data.datasets[0].data = [];
+        state.jitChart.update();
+      }
+
+      function updateWarmupOverlay(hopKey, h) {
+        const overlay = document.getElementById(`overlay-${hopKey}`);
+        const overlayText = document.getElementById(`overlayText-${hopKey}`);
+        if (!overlay || !overlayText) return;
+
+        if (h.warmup) {
+          overlay.style.display = "flex";
+          const need = h.warmup_need ?? 5;
+          const have = h.warmup_have ?? 0;
+          overlayText.textContent = `WARMUP (${Math.min(have, need)}/${need})`;
+        } else {
+          overlay.style.display = "none";
+        }
+      }
+
+      function computeLossFromDisplayed(sentDisp, rcvdDisp) {
+        if (!sentDisp || sentDisp <= 0) return null;
+        const lost = Math.max(0, sentDisp - (rcvdDisp || 0));
+        return (lost / sentDisp) * 100.0;
+      }
+
+      function computeJitter(prevLastMs, currentLastMs) {
+        if (typeof prevLastMs !== "number") return null;
+        if (typeof currentLastMs !== "number") return null;
+        return Math.abs(currentLastMs - prevLastMs);
+      }
+
+      function pushPoint(labels, data, label, value) {
+        labels.push(label);
+        data.push(value);
+        if (labels.length > MAX_POINTS) {
+          labels.shift();
+          data.shift();
+        }
+      }
+
+      function updateHop(h) {
+        const hopNum = h.hop;
+        const host = (h.host || "").trim();
+        const ip = (h.ip || "").trim();
+        const hopKey = String(hopNum);
+
+        const hopLabel = `Hop ${hopNum}: ${(host || ip || "(unknown)")}`;
+        if (!document.getElementById(`card-${hopKey}`)) createHopCard(hopKey, hopLabel);
+
+        const state = hopCharts.get(hopKey);
+        updateWarmupOverlay(hopKey, h);
+
+        if (state.warmupPrev && !h.warmup) {
+          state.base_snt = (typeof h.snt === "number") ? h.snt : 0;
+          state.base_rcvd = (typeof h.rcvd === "number") ? h.rcvd : 0;
+          resetHopCharts(state);
+        }
+        state.warmupPrev = !!h.warmup;
+
+        if (h.warmup) {
+          const meta = document.getElementById(`meta-${hopKey}`);
+          meta.textContent =
+            `ip=${ip || "-"} · last=-ms · avg=-ms · jitter=-ms · best=-ms · worst=-ms · loss=-% · sent=0 · rcvd=0`;
+          return;
+        }
+
+        const sentDisp = (state.base_snt != null) ? Math.max(0, (h.snt ?? 0) - state.base_snt) : 0;
+        const rcvdDisp = (state.base_rcvd != null) ? Math.max(0, (h.rcvd ?? 0) - state.base_rcvd) : 0;
+        const lossDisp = computeLossFromDisplayed(sentDisp, rcvdDisp);
+
+        const currentLast = (typeof h.last === "number") ? h.last : null;
+        const jitter = computeJitter(state.prevLastMs, currentLast);
+        if (typeof currentLast === "number") state.prevLastMs = currentLast;
+
+        const meta = document.getElementById(`meta-${hopKey}`);
+        meta.textContent =
+          `ip=${ip || "-"} · last=${h.last ?? "-"}ms · avg=${h.avg ?? "-"}ms · jitter=${jitter === null ? "-" : jitter.toFixed(2)}ms` +
+          ` · best=${h.best ?? "-"}ms · worst=${h.worst ?? "-"}ms` +
+          ` · loss=${lossDisp === null ? "-" : lossDisp.toFixed(2)}% · sent=${sentDisp} · rcvd=${rcvdDisp}`;
+
+        const nowLabel = new Date().toLocaleTimeString();
+
+        if (typeof h.avg === "number") {
+          pushPoint(state.latLabels, state.latData, nowLabel, h.avg);
+          state.latChart.data.labels = state.latLabels;
+          state.latChart.data.datasets[0].data = state.latData;
+          state.latChart.update("none");
+        }
+
+        if (typeof lossDisp === "number") {
+          pushPoint(state.lossLabels, state.lossData, nowLabel, lossDisp);
+          state.lossChart.data.labels = state.lossLabels;
+          state.lossChart.data.datasets[0].data = state.lossData;
+          state.lossChart.update("none");
+        }
+
+        if (typeof jitter === "number") {
+          pushPoint(state.jitLabels, state.jitData, nowLabel, jitter);
+          state.jitChart.data.labels = state.jitLabels;
+          state.jitChart.data.datasets[0].data = state.jitData;
+          state.jitChart.update("none");
+        }
+      }
+
+      function readFreq() {
+        const v = document.getElementById("freq").value;
+        const f = parseFloat(v);
+        if (!Number.isFinite(f)) return 1.0;
+        return f;
+      }
+
+      async function loadRuns(days = 30, opts = {}) {
+        const stampEl = document.getElementById("runsStamp");
+        const metaEl = document.getElementById("runsMeta");
+        const body = document.getElementById("runsBody");
+        const soft = !!(opts && opts.soft);
+
+        try {
+          if (!soft) {
+            stampEl.textContent = "Loading…";
+            metaEl.textContent = `log=${LOG_PATH} · days=${days}`;
+            body.innerHTML = `<tr><td class="mono" colspan="10">Loading…</td></tr>`;
+          }
+
+          const res = await fetch(`/api/runs?days=${encodeURIComponent(days)}`, { cache: "no-store" });
+          if (!res.ok) throw new Error("fetch failed");
+          const data = await res.json();
+          if (!data || !data.ok) throw new Error("bad response");
+
+          const runs = Array.isArray(data.runs) ? data.runs : [];
+          const newSig = _runsIdentitySig(runs);
+          const changed = (_runsSig !== newSig);
+          _runsSig = newSig;
+          stampEl.textContent = `Loaded: ${new Date().toLocaleString()}`;
+          metaEl.textContent = `log=${LOG_PATH} · days=${days} · runs=${runs.length}`;
+
+          if (soft && !changed) {
+            return;
+          }
+
+          if (runs.length === 0) {
+            body.innerHTML = `<tr><td class="mono" colspan="10">No runs in the last ${days} days</td></tr>`;
+            return;
+          }
+          body.innerHTML = runs.map(r => {
+            const ts = r.ts || "-";
+            const user = r.user || "-";
+            const target = r.target || "-";
+            const dst = r.dst || "-";
+            const freq = r.freq || "-";
+            const dur = r.dur || "-";
+            const avg = r.avg || "-";
+            const loss = r.loss || "-";
+            const sent = r.snt_eff || r.snt || "-";
+            const rcvd = r.rcvd_eff || r.rcvd || "-";
+
+            return `
+              <tr>
+                <td class="mono">${ts}</td>
+                <td class="mono">${user}</td>
+                <td class="mono">${target}</td>
+                <td class="mono">${dst}</td>
+                <td class="mono">${freq}</td>
+                <td class="mono">${dur}</td>
+                <td>${avg}</td>
+                <td>${loss}</td>
+                <td class="mono">${sent}</td>
+                <td class="mono">${rcvd}</td>
+              </tr>
+            `;
+          }).join("");
+        } catch {
+          stampEl.textContent = "Failed to load";
+          if (!body.querySelector("tr")) {
+            body.innerHTML = `<tr><td class="mono" colspan="10">Failed to load runs (check server logs)</td></tr>`;
+          }
+        }
+      }
+
+      // ---- Active tests (no flicker): only rerender when identity changes ----
+      let _activeSig = null;
+
+      function _activeIdentitySig(active) {
+        return JSON.stringify(active.map(r => ({
+          id: r.id || "",
+          user: r.user || "",
+          target: r.target || "",
+          freq: r.freq ?? null,
+          started_ts: r.started_ts || "",
+          status: r.status || ""
+        })));
+      }
+
+      function formatElapsed(sec) {
+        if (!Number.isFinite(sec) || sec < 0) return "-";
+        if (sec < 60) return `${sec.toFixed(0)}s`;
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        if (m < 60) return `${m}m ${s}s`;
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return `${h}h ${mm}m`;
+      }
+
+      function tickActiveElapsed() {
+        const tbody = document.getElementById("activeBody");
+        if (!tbody) return;
+        const now = Date.now() / 1000.0;
+        tbody.querySelectorAll('tr[data-id]').forEach(tr => {
+          const startEpoch = Number(tr.getAttribute("data-start-epoch") || "NaN");
+          if (!Number.isFinite(startEpoch)) return;
+          const elapsed = Math.max(0, now - startEpoch);
+          const cell = tr.querySelector('[data-k="elapsed"]');
+          if (cell) cell.textContent = formatElapsed(elapsed);
+        });
+      }
+
+
+      function _ensureActiveRow(tbody, r) {
+        const id = r.id || (r.user + "|" + r.target + "|" + (r.started_ts || ""));
+        let tr = tbody.querySelector(`tr[data-id="${id}"]`);
+        if (!tr) {
+          tr = document.createElement("tr");
+          tr.setAttribute("data-id", id);
+          tr.innerHTML = `
+            <td class="mono" data-k="user"></td>
+            <td class="mono" data-k="target"></td>
+            <td class="mono" data-k="freq"></td>
+            <td class="mono" data-k="started"></td>
+            <td class="mono" data-k="elapsed"></td>
+            <td class="mono" data-k="status"></td>
+          `;
+          tbody.appendChild(tr);
+        }
+        tr.querySelector('[data-k="user"]').textContent = r.user || "-";
+        tr.querySelector('[data-k="target"]').textContent = r.target || "-";
+        tr.querySelector('[data-k="freq"]').textContent = (r.freq != null) ? (Number(r.freq).toFixed(2) + "s") : "-";
+        tr.querySelector('[data-k="started"]').textContent = r.started_ts || "-";
+        tr.querySelector('[data-k="status"]').textContent = r.status || "-";
+        const _now = Date.now() / 1000.0;
+        const _e = Number(r.elapsed_s);
+        if (Number.isFinite(_e)) {
+          tr.setAttribute("data-start-epoch", String(_now - _e));
+        }
+        tr.querySelector('[data-k="elapsed"]').textContent = formatElapsed(Number(r.elapsed_s));
+}
+
+      async function loadActive() {
+        const stampEl = document.getElementById("activeStamp");
+        const metaEl = document.getElementById("activeMeta");
+        const body = document.getElementById("activeBody");
+        if (!stampEl || !metaEl || !body) return;
+
+        try {
+          const res = await fetch(`/api/active`, { cache: "no-store" });
+          if (!res.ok) throw new Error("fetch failed");
+          const data = await res.json();
+          if (!data || !data.ok) throw new Error("bad response");
+
+          const active = Array.isArray(data.active) ? data.active : [];
+          metaEl.textContent = `active=${active.length}`;
+          stampEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+
+          const sig = _activeIdentitySig(active);
+          const needRerender = (_activeSig !== sig);
+          if (needRerender) {
+            _activeSig = sig;
+            body.innerHTML = "";
+            if (active.length === 0) {
+              body.innerHTML = `<tr><td class="mono" colspan="6">No active tests</td></tr>`;
+              return;
+            }
+          }
+          if (active.length === 0) return;
+
+          active.forEach(r => _ensureActiveRow(body, r));
+        } catch {
+          stampEl.textContent = "Failed to load";
+          if (!body.querySelector("tr")) {
+            body.innerHTML = `<tr><td class="mono" colspan="6">Failed to load active tests</td></tr>`;
+          }
+        }
+      }
+
+      
+      // --- Presets / mode UI ---
+      function onPresetChange() {
+        const preset = document.getElementById("preset").value;
+        const basic = document.getElementById("basicControls");
+        const gaming = document.getElementById("gamingControls");
+        const bloat = document.getElementById("bloatControls");
+
+        if (preset === "basic") {
+          basic.style.display = "inline-flex";
+          gaming.style.display = "none";
+          bloat.style.display = "none";
+        } else if (preset === "gaming") {
+          basic.style.display = "none";
+          gaming.style.display = "inline-flex";
+          bloat.style.display = "none";
+        } else {
+          basic.style.display = "none";
+          gaming.style.display = "inline-flex";
+          bloat.style.display = "inline-flex";
+        }
+      }
+      onPresetChange();
+
+      // --- Controlled load (bufferbloat) ---
+      let loadAbort = { down: null, up: null };
+      let loadStats = {
+        down: { active: false, mbps: 0, totalMB: 0 },
+        up: { active: false, mbps: 0, totalMB: 0 }
+      };
+      let phaseStatusText = "";
+      function refreshStatusLine() {
+        const parts = [];
+        if (phaseStatusText) parts.push(phaseStatusText);
+        if (loadStats.down.active || loadStats.down.totalMB > 0) {
+          parts.push(`DL ${loadStats.down.mbps.toFixed(1)} Mbps (${loadStats.down.totalMB.toFixed(1)} MB)`);
+        }
+        if (loadStats.up.active || loadStats.up.totalMB > 0) {
+          parts.push(`UL ${loadStats.up.mbps.toFixed(1)} Mbps (${loadStats.up.totalMB.toFixed(1)} MB)`);
+        }
+        setStatus(parts.join(" · "));
+      }
+      function setPhaseStatus(text) {
+        phaseStatusText = text || "";
+        refreshStatusLine();
+      }
+      function resetLoadStats() {
+        loadStats.down = { active: false, mbps: 0, totalMB: 0 };
+        loadStats.up = { active: false, mbps: 0, totalMB: 0 };
+        refreshStatusLine();
+      }
+      async function startDownloadLoad(seconds, sizeMb, rateMbps) {
+        const ac = new AbortController();
+        loadAbort.down = ac;
+        loadStats.down.active = true;
+        loadStats.down.mbps = 0;
+        loadStats.down.totalMB = 0;
+        refreshStatusLine();
+        const url = `/api/traffic/download?size_mb=${encodeURIComponent(sizeMb)}&rate_mbps=${encodeURIComponent(rateMbps)}`;
+        const tEnd = performance.now() + (seconds * 1000);
+        let totalBytes = 0;
+        let windowBytes = 0;
+        let lastRateAt = performance.now();
+
+        // Loop downloads until time ends (so server-side throttling can maintain a steady rate)
+        try {
+          while (performance.now() < tEnd && !ac.signal.aborted) {
+            const res = await fetch(url, { signal: ac.signal, cache: "no-store" });
+            if (!res.ok || !res.body) break;
+            const reader = res.body.getReader();
+            while (performance.now() < tEnd && !ac.signal.aborted) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                totalBytes += value.byteLength;
+                windowBytes += value.byteLength;
+                loadStats.down.totalMB = totalBytes / 1_000_000;
+              }
+              const now = performance.now();
+              if (now - lastRateAt >= 500) {
+                const sec = (now - lastRateAt) / 1000.0;
+                loadStats.down.mbps = sec > 0 ? (windowBytes * 8) / (sec * 1_000_000) : 0;
+                windowBytes = 0;
+                lastRateAt = now;
+                refreshStatusLine();
+              }
+            }
+            try { reader.releaseLock(); } catch(e) {}
+          }
+        } catch (e) {
+          // Abort and network errors are expected when stopping.
+        } finally {
+          loadStats.down.active = false;
+          loadStats.down.mbps = 0;
+          refreshStatusLine();
+        }
+      }
+
+      async function startUploadLoad(seconds, rateMbps) {
+        const ac = new AbortController();
+        loadAbort.up = ac;
+        loadStats.up.active = true;
+        loadStats.up.mbps = 0;
+        loadStats.up.totalMB = 0;
+        refreshStatusLine();
+
+        const rateBps = Math.max(0.1, Number(rateMbps || 0)) * 1_000_000 / 8;
+        const chunkSize = 64 * 1024; // 64KB
+        const chunkDelayMs = Math.max(1, Math.round((chunkSize / rateBps) * 1000));
+
+        let stopped = false;
+        const tEnd = performance.now() + (seconds * 1000);
+        let totalBytes = 0;
+        let windowBytes = 0;
+        let lastRateAt = performance.now();
+
+        const stream = new ReadableStream({
+          async pull(controller) {
+            if (stopped || ac.signal.aborted || performance.now() >= tEnd) {
+              controller.close();
+              return;
+            }
+            const buf = new Uint8Array(chunkSize);
+            crypto.getRandomValues(buf);
+            controller.enqueue(buf);
+            totalBytes += chunkSize;
+            windowBytes += chunkSize;
+            loadStats.up.totalMB = totalBytes / 1_000_000;
+            const now = performance.now();
+            if (now - lastRateAt >= 500) {
+              const sec = (now - lastRateAt) / 1000.0;
+              loadStats.up.mbps = sec > 0 ? (windowBytes * 8) / (sec * 1_000_000) : 0;
+              windowBytes = 0;
+              lastRateAt = now;
+              refreshStatusLine();
+            }
+            await new Promise(r => setTimeout(r, chunkDelayMs));
+          },
+          cancel() { stopped = true; }
+        });
+
+        // NOTE: Some browsers require duplex:"half" for streaming upload.
+        await fetch("/api/traffic/upload", {
+          method: "POST",
+          body: stream,
+          signal: ac.signal,
+          headers: { "Content-Type": "application/octet-stream" },
+          duplex: "half",
+          cache: "no-store"
+        }).catch(() => {});
+        loadStats.up.active = false;
+        loadStats.up.mbps = 0;
+        refreshStatusLine();
+      }
+
+      function stopLoad() {
+        try { if (loadAbort.down) loadAbort.down.abort(); } catch(e) {}
+        try { if (loadAbort.up) loadAbort.up.abort(); } catch(e) {}
+        loadAbort = { down: null, up: null };
+      }
+
+      // --- WebSocket runner helpers ---
+      let _runSeqCancel = false;
+      let _runSeqActive = false;
+      let compareRuns = []; // {label, proto, port, finalHop, hopsSnapshot}
+      let activePhaseWs = null;
+      let activePhaseCloseTimer = null;
+
+      function setControlsRunning(running) {
+        document.getElementById("startBtn").disabled = running;
+        document.getElementById("stopBtn").disabled = !running;
+        document.getElementById("exportBtn").disabled = running || !lastSnapshot;
+      }
+
+      async function runOneTimedPhase({ target, freq, proto, port, seconds, label }) {
+        return new Promise((resolve) => {
+          let localWs = null;
+          let finalHop = null;
+          let lastHops = null;
+
+          const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/mtr?token=${encodeURIComponent(WS_TOKEN)}`;
+          localWs = new WebSocket(wsUrl);
+          activePhaseWs = localWs;
+
+          const closeTimer = setTimeout(() => {
+            try { localWs && localWs.close(); } catch(e) {}
+          }, Math.max(1, seconds) * 1000);
+          activePhaseCloseTimer = closeTimer;
+
+          localWs.onopen = () => {
+            localWs.send(JSON.stringify({ target, freq, proto, port }));
+            setPhaseStatus(`${label}: running… (${proto}${port ? ":" + port : ""})`);
+          };
+
+          localWs.onmessage = (ev) => {
+            let data = null;
+            try { data = JSON.parse(ev.data); } catch(e) { return; }
+            if (data.type === "error") {
+              setError(data.message || "Error");
+              return;
+            }
+            if (data.type === "snapshot") {
+              lastSnapshot = data;
+              lastHops = data.hops || [];
+              if (lastHops.length) finalHop = lastHops[lastHops.length - 1];
+
+              // render live hop view for the current phase
+              renderSnapshot(data);
+            }
+          };
+
+          localWs.onclose = () => {
+            clearTimeout(closeTimer);
+            if (activePhaseWs === localWs) activePhaseWs = null;
+            if (activePhaseCloseTimer === closeTimer) activePhaseCloseTimer = null;
+            resolve({ label, proto, port, finalHop, hopsSnapshot: lastHops });
+          };
+
+          localWs.onerror = () => {
+            // let it close naturally
+          };
+        });
+      }
+
+      function renderCompareTable() {
+        const panel = document.getElementById("comparePanel");
+        const body = document.getElementById("compareBody");
+        panel.style.display = "block";
+        body.innerHTML = "";
+
+        const rows = compareRuns.map((r, idx) => {
+          const h = r.finalHop || {};
+          const loss = h.loss != null ? `${h.loss.toFixed(2)}%` : "—";
+          const avg = h.avg != null ? `${h.avg.toFixed(2)}ms` : "—";
+          const p95 = h.p95 != null ? `${h.p95.toFixed(2)}ms` : "—";
+          const p99 = h.p99 != null ? `${h.p99.toFixed(2)}ms` : "—";
+          const jit = h.jitter != null ? `${h.jitter.toFixed(2)}ms` : "—";
+          const best = h.best != null ? `${h.best.toFixed(2)}ms` : "—";
+          const worst = h.worst != null ? `${h.worst.toFixed(2)}ms` : "—";
+          const last = h.last != null ? `${h.last.toFixed(2)}ms` : "—";
+          const snt = h.snt_eff != null ? h.snt_eff : (h.snt != null ? h.snt : "—");
+          const rcvd = h.rcvd_eff != null ? h.rcvd_eff : (h.rcvd != null ? h.rcvd : "—");
+          const port = r.port ? r.port : "—";
+
+          const tr = document.createElement("tr");
+          tr.style.cursor = "pointer";
+          tr.innerHTML = `
+            <td class="mono">${escapeHtml(r.label)}</td>
+            <td class="mono">${escapeHtml(String(port))}</td>
+            <td class="mono">${escapeHtml(loss)}</td>
+            <td class="mono">${escapeHtml(avg)}</td>
+            <td class="mono">${escapeHtml(p95)}</td>
+            <td class="mono">${escapeHtml(p99)}</td>
+            <td class="mono">${escapeHtml(jit)}</td>
+            <td class="mono">${escapeHtml(best)}</td>
+            <td class="mono">${escapeHtml(worst)}</td>
+            <td class="mono">${escapeHtml(last)}</td>
+            <td class="mono">${escapeHtml(String(snt))}</td>
+            <td class="mono">${escapeHtml(String(rcvd))}</td>
+          `;
+          tr.onclick = () => {
+            if (r.hopsSnapshot) {
+              // Re-render hop table for the selected run (no charts animation reset needed)
+              renderHops(r.hopsSnapshot);
+              setStatus(`Loaded: ${r.label}`);
+            }
+          };
+          return tr;
+        });
+
+        for (const tr of rows) body.appendChild(tr);
+
+        const stamp = new Date().toISOString();
+        document.getElementById("compareStamp").textContent = stamp;
+      }
+
+      function resetCompareResults() {
+        compareRuns = [];
+        const panel = document.getElementById("comparePanel");
+        const body = document.getElementById("compareBody");
+        const stamp = document.getElementById("compareStamp");
+        if (body) body.innerHTML = `<tr><td class="mono" colspan="12">—</td></tr>`;
+        if (stamp) stamp.textContent = "—";
+        if (panel) panel.style.display = "none";
+      }
+
+      // --- Start/Stop ---
+      async function start() {
+        if (_runSeqActive) return;
+
+        setError("");
+        clearAll();
+        resetLoadStats();
+        _runSeqCancel = false;
+
+        const target = document.getElementById("target").value.trim();
+        if (!target) { setError("Please enter a target IP/hostname."); return; }
+
+        const freq = parseFloat(document.getElementById("freq").value || "1.0");
+        const preset = document.getElementById("preset").value;
+
+        setControlsRunning(true);
+        _runSeqActive = true;
+
+        try {
+          if (preset === "basic") {
+            // Single WS run (until Stop)
+            const proto = document.getElementById("proto").value;
+            const portRaw = document.getElementById("port").value.trim();
+            const port = portRaw ? parseInt(portRaw, 10) : null;
+            startSingle(target, freq, proto, port);
+            return;
+          }
+
+          // Gaming / bufferbloat mode: timed sequence
+          const perSeconds = Math.max(5, parseInt(document.getElementById("perTestSeconds").value || "20", 10));
+          const udpPort = Math.max(1, Math.min(65535, parseInt(document.getElementById("udpPort").value || "443", 10)));
+          const tcpPort = Math.max(1, Math.min(65535, parseInt(document.getElementById("tcpPort").value || "443", 10)));
+
+          // Optional controlled load for bufferbloat proof
+          if (preset === "gaming_bloat") {
+            const loadMode = document.getElementById("loadMode").value;
+            const loadRate = Math.max(1, parseFloat(document.getElementById("loadRate").value || "20"));
+            const loadSize = Math.max(10, parseInt(document.getElementById("loadSizeMb").value || "200", 10));
+            const total = (perSeconds * 3) + 5;
+
+            if (loadMode === "down" || loadMode === "both") {
+              startDownloadLoad(total, loadSize, loadRate).catch(() => {});
+            }
+            if (loadMode === "up" || loadMode === "both") {
+              startUploadLoad(total, loadRate).catch(() => {});
+            }
+            setPhaseStatus(`Load started (${loadMode}, target ~${loadRate} Mbps)`);
+          }
+
+          // Small pause helps avoid closing overlap on some browsers
+          const phases = [
+            { label: "ICMP", proto: "icmp", port: null },
+            { label: "UDP",  proto: "udp",  port: udpPort },
+            { label: "TCP",  proto: "tcp",  port: tcpPort }
+          ];
+
+          for (const ph of phases) {
+            if (_runSeqCancel) break;
+            const res = await runOneTimedPhase({ target, freq, proto: ph.proto, port: ph.port, seconds: perSeconds, label: ph.label });
+            compareRuns.push(res);
+            await new Promise(r => setTimeout(r, 350));
+          }
+
+          stopLoad();
+
+          renderCompareTable();
+          setPhaseStatus("Compare complete.");
+          refreshRunHistorySoon();
+          setControlsRunning(false);
+          document.getElementById("exportBtn").disabled = !lastSnapshot;
+
+        } finally {
+          _runSeqActive = false;
+        }
+      }
+
+      function stop() {
+        _runSeqCancel = true;
+        stopLoad();
+        resetLoadStats();
+        setPhaseStatus("Stopped.");
+
+        // Stop active gaming phase websocket if present
+        try {
+          if (activePhaseCloseTimer) clearTimeout(activePhaseCloseTimer);
+        } catch (e) {}
+        activePhaseCloseTimer = null;
+        try {
+          if (activePhaseWs) activePhaseWs.close();
+        } catch (e) {}
+        activePhaseWs = null;
+
+        // Stop single WS mode if active
+        try { if (ws) ws.close(); } catch(e) {}
+        ws = null;
+
+        setControlsRunning(false);
+        refreshRunHistorySoon();
+      }
+
+
+      function renderHops(hops) {
+        const cards = document.getElementById("cards");
+        cards.innerHTML = "";
+        hopCharts.clear();
+        // Rebuild cards/charts fresh then update
+        for (const h of (hops || [])) updateHop(h);
+      }
+
+      function renderSnapshot(data) {
+        if (!data) return;
+        const hops = data.hops || [];
+        for (const h of hops) updateHop(h);
+        lastSnapshot = data;
+        setExportEnabled(true);
+      }
+
+      function startSingle(target, freq, proto, port) {
+        stop(); // ensure nothing lingering
+        setControlsRunning(true);
+        _runSeqCancel = false;
+        _runSeqActive = false;
+        resetLoadStats();
+
+        const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/mtr?token=${encodeURIComponent(WS_TOKEN)}`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ target, freq, proto, port }));
+          setPhaseStatus(`Running… (${proto}${port ? ":" + port : ""})`);
+        };
+
+        ws.onmessage = (ev) => {
+          let data = null;
+          try { data = JSON.parse(ev.data); } catch(e) { return; }
+          if (data.type === "error") {
+            setError(data.message || "Error");
+            return;
+          }
+          if (data.type === "snapshot") {
+            renderSnapshot(data);
+          }
+        };
+
+        ws.onclose = () => {
+          ws = null;
+          setControlsRunning(false);
+          setPhaseStatus("Stopped.");
+          refreshRunHistorySoon();
+        };
+      }
+
+      function exportPDF() {
+        // Convert canvases to images for reliable printing (some browsers omit canvas in print/PDF)
+        const header = document.getElementById("printHeader");
+        const meta = document.getElementById("printMeta");
+        const target = (document.getElementById("target")?.value || "").trim();
+        const freq = (document.getElementById("freq")?.value || "1.0");
+        const now = new Date();
+
+        if (meta) {
+          meta.textContent = `Generated: ${now.toLocaleString()} · Target: ${target || "-"} · Frequency: ${freq}s · User: ${USERNAME || "-"}`;
+        }
+        if (header) header.style.display = "block";
+
+        const swaps = [];
+        document.querySelectorAll("canvas").forEach((c) => {
+          try {
+            const url = c.toDataURL("image/png");
+            const img = document.createElement("img");
+            img.className = "print-chart";
+            img.src = url;
+            img.style.width = "100%";
+            img.style.height = c.style.height || "auto";
+
+            const parent = c.parentNode;
+            if (!parent) return;
+
+            // Insert image after canvas and hide canvas for print
+            parent.insertBefore(img, c.nextSibling);
+            c.style.display = "none";
+            swaps.push({ canvas: c, img });
+          } catch (e) {
+            // If conversion fails, keep canvas
+          }
+        });
+
+        function cleanup() {
+          swaps.forEach(({ canvas, img }) => {
+            try { if (img && img.parentNode) img.parentNode.removeChild(img); } catch(e) {}
+            try { if (canvas) canvas.style.display = ""; } catch(e) {}
+          });
+          if (header) header.style.display = "none";
+          window.removeEventListener("afterprint", cleanup);
+        }
+
+        window.addEventListener("afterprint", cleanup);
+
+        // Give the DOM a moment to paint images before print dialog
+        setTimeout(() => window.print(), 50);
+      }
+
+      // initial load
+      window.addEventListener("DOMContentLoaded", () => {
+        loadRuns(30);
+        loadActive();
+        setInterval(loadActive, 2000);
+        setInterval(tickActiveElapsed, 1000);
+      });
+</script>
+  
+  <script src="/static/pdf_export.js?v=4"></script>
+{% endblock %}

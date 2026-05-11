@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .fw-intro { color: var(--muted); font-size: 0.9rem; margin: 0 0 12px; max-width: 60rem; line-height: 1.45; }
+  .fw-panel { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--card); margin-bottom: 12px; }
+  .fw-panel h2 { margin: 0 0 10px; font-size: 1rem; }
+  .fw-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .fw-row input { min-width: 320px; max-width: 100%; }
+.fw-row select { min-width: 120px; }
+  .fw-actions button { margin-right: 8px; }
+  .fw-raw { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: var(--code-bg); white-space: pre-wrap; }
+  .fw-tablewrap { overflow: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table.fw-table { width: 100%; border-collapse: collapse; }
+  .fw-table th, .fw-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+  .fw-table th { background: var(--code-bg); }
+</style>
+
+<h1>Firewall (UFW)</h1>
+<p class="fw-intro">
+  Admin-only UFW control. Supported target formats:
+  <code>1.2.3.4</code>, <code>1.2.3.0/24</code>, or range <code>1.2.3.10-1.2.3.20</code>.
+  You can set direction (<code>in</code>/<code>out</code>), port, and protocol.
+  This page uses a root-owned wrapper script through sudo (non-interactive).
+</p>
+
+<div id="fwErr" class="err" style="display:none;margin-bottom:10px;"></div>
+
+<section class="fw-panel">
+  <h2>Add rule</h2>
+  <div class="fw-row fw-actions">
+    <input id="fwTarget" type="text" placeholder="IP, CIDR, or range (start-end)" />
+    <select id="fwDirection" title="Direction">
+      <option value="in">Inbound</option>
+      <option value="out">Outbound</option>
+    </select>
+    <input id="fwPort" type="text" placeholder="Port (any or 1-65535)" style="min-width:170px;" />
+    <select id="fwProto" title="Protocol">
+      <option value="any">Any proto</option>
+      <option value="tcp">TCP</option>
+      <option value="udp">UDP</option>
+    </select>
+    <button id="fwAllowBtn" type="button">Allow</button>
+    <button id="fwDenyBtn" type="button">Deny</button>
+    <button id="fwRefreshBtn" type="button">Refresh</button>
+  </div>
+</section>
+
+<section class="fw-panel">
+  <h2>Numbered rules</h2>
+  <div class="fw-tablewrap">
+    <table class="fw-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Rule</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="fwRules"></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="fw-panel">
+  <h2>Raw status</h2>
+  <div id="fwRaw" class="fw-raw mono">Loading...</div>
+</section>
+
+<script>
+  function setErr(msg) {
+    var el = document.getElementById("fwErr");
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function api(path, method, body) {
+    var opts = { method: method || "GET", credentials: "same-origin", headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    var r = await fetch(path, opts);
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok || !j.ok) {
+      throw new Error(j.detail || j.error || ("HTTP " + r.status));
+    }
+    return j;
+  }
+
+  async function refreshStatus() {
+    setErr("");
+    try {
+      var j = await api("/api/firewall/status", "GET");
+      var st = j.status || {};
+      document.getElementById("fwRaw").textContent = st.raw || "";
+      var rules = st.rules || [];
+      var tb = document.getElementById("fwRules");
+      tb.innerHTML = "";
+      if (!rules.length) {
+        tb.innerHTML = "<tr><td colspan='3' class='hint'>No numbered rules found.</td></tr>";
+        return;
+      }
+      rules.forEach(function (r) {
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td class='mono'>" + escapeHtml(r.number) + "</td>" +
+          "<td class='mono'>" + escapeHtml(r.text) + "</td>" +
+          "<td><button type='button' data-del='" + escapeHtml(r.number) + "'>Delete</button></td>";
+        tb.appendChild(tr);
+      });
+      tb.querySelectorAll("button[data-del]").forEach(function (btn) {
+        btn.addEventListener("click", async function () {
+          var n = parseInt(btn.getAttribute("data-del"), 10);
+          if (!confirm("Delete firewall rule #" + n + "?")) return;
+          try {
+            await api("/api/firewall/rules/" + encodeURIComponent(n), "DELETE");
+            await refreshStatus();
+          } catch (e) {
+            setErr(String(e));
+          }
+        });
+      });
+    } catch (e) {
+      setErr(String(e));
+      document.getElementById("fwRaw").textContent = "";
+      document.getElementById("fwRules").innerHTML = "";
+    }
+  }
+
+  async function addRule(mode) {
+    setErr("");
+    var target = (document.getElementById("fwTarget").value || "").trim();
+    var direction = (document.getElementById("fwDirection").value || "in").trim();
+    var port = (document.getElementById("fwPort").value || "any").trim() || "any";
+    var protocol = (document.getElementById("fwProto").value || "any").trim();
+    if (!target) {
+      setErr("Enter a target first.");
+      return;
+    }
+    try {
+      await api("/api/firewall/" + mode, "POST", {
+        target: target,
+        direction: direction,
+        port: port,
+        protocol: protocol
+      });
+      document.getElementById("fwTarget").value = "";
+      document.getElementById("fwPort").value = "";
+      await refreshStatus();
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+
+  document.getElementById("fwAllowBtn").addEventListener("click", function () { addRule("allow"); });
+  document.getElementById("fwDenyBtn").addEventListener("click", function () { addRule("deny"); });
+  document.getElementById("fwRefreshBtn").addEventListener("click", refreshStatus);
+  refreshStatus();
+</script>
+{% endblock %}

@@ -1,0 +1,438 @@
+# Port bindings use ${MTR_PUBLISH_HOST:-127.0.0.1}. Compose reads that from the project .env file for
+# interpolation (not from env_file .env.compose). Clone writes .env with MTR_PUBLISH_HOST=0.0.0.0 on standby.
+services:
+  core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime_core
+    container_name: mtr-core
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: core
+      COMPOSE_PROJECT_NAME: mtr-web-live
+      COMPOSE_FILE: /app/docker-compose.yml
+    command: ["uvicorn", "main_core:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9002:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/wibernetdev/.ssh:/home/wibernetdev/.ssh:ro
+      # Match host wall clock for clone/DR log timestamps (Linux; Docker Desktop may differ).
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  mtr_live:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-live
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: mtr_live
+    command: ["uvicorn", "main_mtr_live:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9009:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/mtr-live', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  download_test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-download-test
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: download_test
+    command: ["uvicorn", "main_download_test:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9010:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/download-test', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  fieldtech:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-fieldtech
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: fieldtech
+    command: ["uvicorn", "main_fieldtech:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9011:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/fieldtech', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  ipam:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-ipam
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: ipam
+    command: ["uvicorn", "main_ipam:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9012:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/ipam', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  monitoring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-monitoring
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: monitoring
+    command: ["uvicorn", "main_monitoring:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9004:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/monitoring', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  location_sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-location-sync
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: location_sync
+    command: ["uvicorn", "main_location_sync:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9008:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/location-sync', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  routers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-routers
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: routers
+    command: ["uvicorn", "main_routers:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9003:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/routers', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  backhauls:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-backhauls
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: backhauls
+    command: ["uvicorn", "main_backhauls:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9005:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/backhauls', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  stock_management:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-stock-management
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: stock_management
+    command: ["uvicorn", "main_stock_management:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9006:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/stock-management', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  purchase_orders:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-purchase-orders
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: purchase_orders
+    command: ["uvicorn", "main_purchase_orders:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9007:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/purchase-orders', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  whatsapp_signups:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: mtr-whatsapp-signups
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+      - .env.compose.standby
+    environment:
+      APP_ROLE: whatsapp_signups
+    command: ["uvicorn", "main_whatsapp_signups:app", "--host", "0.0.0.0", "--port", "9000"]
+    ports:
+      - "${MTR_PUBLISH_HOST:-127.0.0.1}:9013:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/whatsapp-signups', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - mtr_net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: mtr-postgres
+    restart: unless-stopped
+    env_file:
+      - .env.compose
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mtr}
+      POSTGRES_USER: ${POSTGRES_USER:-mtr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - mtr_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: mtr-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - mtr_net
+
+volumes:
+  app_data:
+  app_logs:
+  postgres_data:
+  redis_data:
+
+networks:
+  mtr_net:
+    driver: bridge
