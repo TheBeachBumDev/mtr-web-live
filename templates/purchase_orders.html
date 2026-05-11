@@ -283,6 +283,49 @@
     padding: 14px;
   }
   .po-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .po-type-picker__panel { width: min(720px, 94vw); }
+  .po-type-picker__options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .po-type-picker__option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    text-align: left;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    cursor: pointer;
+  }
+  .po-type-picker__option:hover,
+  .po-type-picker__option:focus-visible {
+    border-color: var(--accent, #60a5fa);
+    outline: none;
+  }
+  .po-type-picker__option strong { font-size: 0.98rem; }
+  .po-type-picker__option span {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+  .po-modal .po-field--manual-only,
+  .po-modal .po-field--quote-only { display: none; }
+  .po-modal[data-mode="custom"] .po-field--standard-only,
+  .po-modal[data-mode="quote"] .po-field--standard-only { display: none; }
+  .po-modal[data-mode="custom"] .po-field--manual-only,
+  .po-modal[data-mode="quote"] .po-field--manual-only { display: flex; }
+  .po-modal[data-mode="quote"] .po-field--quote-only { display: block; }
+  .po-quote-import__status {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.45;
+  }
   .po-badge {
     display: inline-block;
     border: 1px solid var(--line);
@@ -786,32 +829,69 @@
   {% endif %}
 </div>
 
-<div id="poCreateModal" class="po-modal" aria-hidden="true">
+<div id="poTypePickerModal" class="po-modal" aria-hidden="true" style="z-index:1200;">
+  <div class="po-modal__panel po-type-picker__panel">
+    <div class="po-modal__head">
+      <h3 style="margin:0">Choose purchase order type</h3>
+      <button id="poTypePickerCloseBtn" type="button">Close</button>
+    </div>
+    <p class="hint" style="margin:0;">Pick how you want to create this purchase order. You can change line items and details in the next step.</p>
+    <div class="po-type-picker__options">
+      <button type="button" class="po-type-picker__option" data-po-type="standard">
+        <strong>Standard purchase order</strong>
+        <span>Use stock suppliers, departments, request type, urgency, and catalog line items.</span>
+      </button>
+      <button type="button" class="po-type-picker__option" data-po-type="custom">
+        <strong>Custom purchase order</strong>
+        <span>Simpler form with manual supplier, department, and line items.</span>
+      </button>
+      <button type="button" class="po-type-picker__option" data-po-type="quote">
+        <strong>Generate from uploaded quote</strong>
+        <span>Upload a quote PDF or image, then review a pre-filled draft.</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="poCreateModal" class="po-modal" data-mode="standard" aria-hidden="true" style="z-index:1250;">
   <div class="po-modal__panel">
     <div class="po-modal__head">
-      <h3 style="margin:0">Create / Edit PO</h3>
+      <h3 id="poCreateModalTitle" style="margin:0">Create / Edit PO</h3>
       <button id="poCloseCreateBtn" type="button">Close</button>
     </div>
+    <div class="po-field po-field--quote-only po-field--full">
+      <label for="poQuoteUpload">Upload quote (PDF or image)</label>
+      <input id="poQuoteUpload" type="file" accept="application/pdf,image/*" />
+      <p id="poQuoteImportStatus" class="po-quote-import__status">Upload a PDF quote to pre-fill the form, then review before saving.</p>
+    </div>
     <div class="po-form-grid">
-      <div class="po-field">
+      <div class="po-field po-field--standard-only">
         <label for="poSupplier">Supplier</label>
         <select id="poSupplier"></select>
       </div>
-      <div class="po-field">
+      <div class="po-field po-field--manual-only">
+        <label for="poSupplierText">Supplier *</label>
+        <input id="poSupplierText" type="text" placeholder="Supplier name" />
+      </div>
+      <div class="po-field po-field--standard-only">
         <label for="poDepartment">Department *</label>
         <select id="poDepartment"></select>
       </div>
+      <div class="po-field po-field--manual-only">
+        <label for="poDepartmentText">Department *</label>
+        <input id="poDepartmentText" type="text" placeholder="Department name" />
+      </div>
       {% if is_admin %}
-      <div class="po-field">
+      <div class="po-field po-field--standard-only">
         <label for="poDepartmentNew">New department</label>
         <input id="poDepartmentNew" placeholder="Name to add" />
       </div>
-      <div class="po-form-grid__action">
+      <div class="po-form-grid__action po-field--standard-only">
         <button id="poDepartmentAddBtn" type="button">+ Add</button>
       </div>
       {% endif %}
     </div>
-    <div class="po-form-grid">
+    <div class="po-form-grid po-field--standard-only">
       <div class="po-field">
         <label for="poCategory">Category</label>
         <input id="poCategory" placeholder="General" />
@@ -829,7 +909,7 @@
         </select>
       </div>
     </div>
-    <div class="po-form-grid">
+    <div class="po-form-grid po-field--standard-only">
       <div class="po-field">
         <label for="poRequestType">Request type</label>
         <select id="poRequestType">
@@ -928,6 +1008,7 @@
   let poListPage = 1;
   /** True after "Create PO" until an existing PO is selected or a new draft is saved. Prevents Submit from using a stale id. */
   let poComposingNew = false;
+  let poCreationMode = "standard";
   let poEventSource = null;
   let poRefreshTimer = null;
   let poListRenderVersion = 0;
@@ -1009,6 +1090,13 @@
     return null;
   };
   const loadSupplierProductSuggestions = async () => {
+    if (poCreationMode !== "standard") {
+      supplierProductSuggestions = [];
+      supplierProductCatalog = [];
+      rebuildProductPriceMap();
+      renderItemDescriptionSuggestions();
+      return;
+    }
     const supplierId = Number(document.getElementById("poSupplier").value || "0");
     if (!supplierId) {
       supplierProductSuggestions = [];
@@ -1069,6 +1157,39 @@
     document.getElementById("poSubtotal").textContent = `R ${subtotal.toFixed(2)}`;
     document.getElementById("poTaxAmount").textContent = `R ${tax.toFixed(2)}`;
     document.getElementById("poGrandTotal").innerHTML = `<b>R ${grand.toFixed(2)}</b>`;
+  };
+  const applyQuoteSuggestion = (suggestion) => {
+    const s = suggestion || {};
+    const supplier = String(s.supplier_name || "").trim();
+    const department = String(s.department_name || "").trim();
+    const notes = String(s.notes || "").trim();
+    if (supplier) document.getElementById("poSupplierText").value = supplier;
+    if (department) document.getElementById("poDepartmentText").value = department;
+    if (notes) document.getElementById("poNotes").value = notes;
+    itemsBody().innerHTML = "";
+    const items = Array.isArray(s.items) ? s.items : [];
+    if (items.length) {
+      items.forEach((it) => addItemRow(it || {}));
+    } else {
+      addItemRow();
+    }
+    recalcTotals();
+  };
+  const parseQuoteUpload = async (file) => {
+    const fd = new FormData();
+    fd.append("upload", file);
+    const r = await fetch("/api/po/quote/parse", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) {
+      let detail = d.detail;
+      if (Array.isArray(detail)) {
+        detail = detail.map((x) => (x && x.msg) || JSON.stringify(x)).join("; ");
+      } else if (detail != null && typeof detail === "object") {
+        detail = JSON.stringify(detail);
+      }
+      throw new Error(detail || d.error || ("HTTP " + r.status));
+    }
+    return d;
   };
   const parseItems = () => {
     const out = [];
@@ -1595,9 +1716,12 @@
       ${rejCommentExtra}
       ${postponeExtra}
     `;
+    applyCreateModalMode(poModeFromRequestType(po.request_type));
     document.getElementById("poSupplier").value = po.supplier_id || "";
-    await loadSupplierProductSuggestions();
+    document.getElementById("poSupplierText").value = po.supplier_name || "";
     document.getElementById("poDepartment").value = po.department_id || "";
+    document.getElementById("poDepartmentText").value = po.department_name || "";
+    await loadSupplierProductSuggestions();
     document.getElementById("poCategory").value = po.category || "";
     document.getElementById("poRequestType").value = po.request_type || "stock_item";
     document.getElementById("poCustomerId").value = po.customer_id || "";
@@ -1656,18 +1780,8 @@
       };
     }
   };
-  const poPayload = () => ({
-    supplier_id: document.getElementById("poSupplier").value || null,
-    department_id: document.getElementById("poDepartment").value || null,
-    category: document.getElementById("poCategory").value || "",
-    request_type: document.getElementById("poRequestType").value || "stock_item",
-    customer_id: document.getElementById("poCustomerId").value || null,
-    payment_status: document.getElementById("poPaymentStatus").value || "",
-    date_required: document.getElementById("poDateRequired").value || "",
-    urgency: document.getElementById("poUrgency").value || "standard",
-    notes: document.getElementById("poNotes").value || "",
-    items: parseItems(),
-    tax: (() => {
+  const poPayload = () => {
+    const tax = (() => {
       let subtotal = 0;
       itemsBody().querySelectorAll("tr").forEach(tr => {
         const qty = Number(tr.querySelector(".po-item-qty").value || "0");
@@ -1675,8 +1789,47 @@
         subtotal += (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
       });
       return subtotal * 0.15;
-    })(),
-  });
+    })();
+    const base = {
+      notes: document.getElementById("poNotes").value || "",
+      items: parseItems(),
+      tax,
+    };
+    if (poCreationMode === "custom") {
+      return Object.assign(base, {
+        request_type: "custom",
+        supplier_name: (document.getElementById("poSupplierText").value || "").trim(),
+        department_name: (document.getElementById("poDepartmentText").value || "").trim(),
+        category: "",
+        date_required: "",
+        urgency: "standard",
+        customer_id: null,
+        payment_status: "",
+      });
+    }
+    if (poCreationMode === "quote") {
+      return Object.assign(base, {
+        request_type: "quote_import",
+        supplier_name: (document.getElementById("poSupplierText").value || "").trim(),
+        department_name: (document.getElementById("poDepartmentText").value || "").trim(),
+        category: "",
+        date_required: "",
+        urgency: "standard",
+        customer_id: null,
+        payment_status: "",
+      });
+    }
+    return Object.assign(base, {
+      supplier_id: document.getElementById("poSupplier").value || null,
+      department_id: document.getElementById("poDepartment").value || null,
+      category: document.getElementById("poCategory").value || "",
+      request_type: document.getElementById("poRequestType").value || "stock_item",
+      customer_id: document.getElementById("poCustomerId").value || null,
+      payment_status: document.getElementById("poPaymentStatus").value || "",
+      date_required: document.getElementById("poDateRequired").value || "",
+      urgency: document.getElementById("poUrgency").value || "standard",
+    });
+  };
   const act = async (fn) => {
     try {
       await fn();
@@ -1728,13 +1881,44 @@
     if (!document.hidden) scheduleRealtimeRefresh(0);
   });
   const modal = document.getElementById("poCreateModal");
+  const typePickerModal = document.getElementById("poTypePickerModal");
+  const poModeFromRequestType = (requestType) => {
+    const rt = String(requestType || "").toLowerCase();
+    if (rt === "custom") return "custom";
+    if (rt === "quote_import") return "quote";
+    return "standard";
+  };
+  const poModeTitle = (mode) => {
+    if (mode === "custom") return "Custom purchase order";
+    if (mode === "quote") return "Purchase order from uploaded quote";
+    return "Standard purchase order";
+  };
+  const applyCreateModalMode = (mode) => {
+    poCreationMode = mode || "standard";
+    modal.setAttribute("data-mode", poCreationMode);
+    const title = document.getElementById("poCreateModalTitle");
+    if (title) title.textContent = poModeTitle(poCreationMode);
+    const quoteStatus = document.getElementById("poQuoteImportStatus");
+  const quoteUpload = document.getElementById("poQuoteUpload");
+    if (quoteStatus && poCreationMode !== "quote") {
+      quoteStatus.textContent = "Automatic quote extraction is not available yet. Upload a file for reference, then complete the form manually.";
+    }
+    if (quoteUpload && poCreationMode !== "quote") quoteUpload.value = "";
+    toggleCustomerFields();
+    loadSupplierProductSuggestions().catch(() => {});
+  };
   const openCreateModal = () => modal.classList.add("is-open");
   const closeCreateModal = () => modal.classList.remove("is-open");
-  const prepareNewPoModal = () => {
+  const openTypePickerModal = () => typePickerModal.classList.add("is-open");
+  const closeTypePickerModal = () => typePickerModal.classList.remove("is-open");
+  const prepareNewPoModal = (mode = "standard") => {
     poComposingNew = true;
     selectedPoId = 0;
+    applyCreateModalMode(mode);
     document.getElementById("poSupplier").value = "";
     document.getElementById("poDepartment").value = "";
+    document.getElementById("poSupplierText").value = "";
+    document.getElementById("poDepartmentText").value = "";
     document.getElementById("poCategory").value = "";
     document.getElementById("poDateRequired").value = "";
     document.getElementById("poNotes").value = "";
@@ -1746,13 +1930,43 @@
     if (dn) dn.value = "";
     itemsBody().innerHTML = "";
     addItemRow();
-    toggleCustomerFields();
-    loadSupplierProductSuggestions().catch(() => {});
   };
-  document.getElementById("poOpenCreateBtn").onclick = () => {
-    prepareNewPoModal();
+  const startNewPo = (mode) => {
+    prepareNewPoModal(mode);
+    closeTypePickerModal();
     openCreateModal();
   };
+  document.getElementById("poOpenCreateBtn").onclick = () => {
+    openTypePickerModal();
+  };
+  document.getElementById("poTypePickerCloseBtn").onclick = () => closeTypePickerModal();
+  document.querySelectorAll("[data-po-type]").forEach(btn => {
+    btn.onclick = () => startNewPo(btn.getAttribute("data-po-type") || "standard");
+  });
+  const quoteUploadInput = document.getElementById("poQuoteUpload");
+  if (quoteUploadInput) {
+    quoteUploadInput.addEventListener("change", () => {
+      const file = quoteUploadInput.files && quoteUploadInput.files[0];
+      const quoteStatus = document.getElementById("poQuoteImportStatus");
+      if (!quoteStatus) return;
+      if (!file) {
+        quoteStatus.textContent = "Upload a PDF quote to pre-fill the form, then review before saving.";
+        return;
+      }
+      quoteStatus.textContent = `Reading ${file.name}…`;
+      parseQuoteUpload(file).then((d) => {
+        applyQuoteSuggestion(d.suggestion || {});
+        const warnings = Array.isArray(d.warnings) ? d.warnings.filter(Boolean) : [];
+        if (warnings.length) {
+          quoteStatus.textContent = warnings.join(" ");
+          return;
+        }
+        quoteStatus.textContent = `Loaded suggestions from ${file.name}. Review all fields before creating the draft.`;
+      }).catch((e) => {
+        quoteStatus.textContent = e.message || String(e);
+      });
+    });
+  }
   document.getElementById("poCloseCreateBtn").onclick = () => closeCreateModal();
   document.getElementById("poAddItemBtn").onclick = () => addItemRow();
   document.getElementById("poSupplier").addEventListener("change", () => {

@@ -54,7 +54,7 @@ _COMPOSE_SERVICE_META: Dict[str, Dict[str, str]] = {
         "container": "mtr-core",
         "upstream": "127.0.0.1:9002",
         "data": "PostgreSQL (shared)",
-        "path_extra": ", /api/* (role-scoped on core container)",
+        "path_extra": ", /users*, /firewall*, /backups*, /resources*, /audit-log*, /api/users*, /api/firewall*, /api/backups*, /api/resources*, /api/compose*, /api/clone*, /api/dr*, /api/audit*",
     },
     "mtr_live": {
         "container": "mtr-live",

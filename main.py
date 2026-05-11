@@ -39,6 +39,7 @@ from scripts import clone_schedule
 from scripts import dr_runner
 from notifications.service import dispatch_due_notifications
 from po_pdf import build_purchase_order_pdf
+import po_quote_import
 from urllib.parse import parse_qs, quote, urlparse
 import html
 from dataclasses import dataclass, field
@@ -1003,15 +1004,6 @@ def _edge_allowed_path(path: str) -> bool:
             "/firewall*",
             "/backups*",
             "/resources*",
-            "/stock-management*",
-            "/sales-log*",
-            "/location-sync*",
-            "/monitoring*",
-            "/api/monitoring*",
-            "/backhauls*",
-            "/api/backhauls*",
-            "/routers*",
-            "/api/routers*",
             "/api/users*",
             "/api/firewall*",
             "/api/backups*",
@@ -1019,13 +1011,8 @@ def _edge_allowed_path(path: str) -> bool:
             "/api/compose*",
             "/api/clone*",
             "/api/dr*",
-            "/api/stock*",
             "/audit-log*",
             "/api/audit*",
-            "/purchase-orders*",
-            "/api/po*",
-            "/api/location-sync*",
-            "/api/push*",
         ),
         "mtr_live": (
             "/mtr-live*",
@@ -1243,8 +1230,8 @@ async def auth_session_middleware(request: Request, call_next):
         return _access_denied(request, path)
 
     if not _edge_allowed_path(path):
-        if getattr(request.state, "is_admin", False):
-            # Admins are not limited to this container's APP_ROLE tab subset.
+        if getattr(request.state, "is_admin", False) and APP_ROLE != "core":
+            # Non-core roles: admins may use portable ops paths outside this container's tab subset.
             pass
         elif path == "/":
             landing = {
@@ -3213,6 +3200,22 @@ def api_po_events_health():
     }
 
 
+@app.post("/api/po/quote/parse")
+async def api_po_quote_parse(request: Request, upload: UploadFile = File(...)):
+    if not int(getattr(request.state, "user_id", 0) or 0):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    blob = await upload.read()
+    try:
+        parsed = po_quote_import.parse_quote_upload(
+            upload.filename or "quote",
+            upload.content_type or "",
+            blob,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, **parsed}
+
+
 @app.post("/api/po")
 def api_po_create(payload: Dict[str, Any] = Body(...), request: Request = None):
     p = payload or {}
@@ -3231,6 +3234,8 @@ def api_po_create(payload: Dict[str, Any] = Body(...), request: Request = None):
             urgency=str(p.get("urgency") or ""),
             items=list(p.get("items") or []),
             tax_override=float(p["tax"]) if p.get("tax") not in (None, "") else None,
+            department_name=str(p.get("department_name") or ""),
+            supplier_name=str(p.get("supplier_name") or ""),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -3257,6 +3262,8 @@ def api_po_update(po_id: int, payload: Dict[str, Any] = Body(...), request: Requ
             urgency=str(p.get("urgency") or ""),
             items=list(p.get("items") or []),
             tax_override=float(p["tax"]) if p.get("tax") not in (None, "") else None,
+            department_name=str(p.get("department_name") or ""),
+            supplier_name=str(p.get("supplier_name") or ""),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

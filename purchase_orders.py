@@ -45,9 +45,13 @@ REMINDER_24H = int(os.getenv("PO_REMINDER_24H_SEC", "86400"))
 REMINDER_48H = int(os.getenv("PO_REMINDER_48H_SEC", "172800"))
 PO_DOCS_DIR = os.getenv("PO_DOCS_DIR", "/app/data/po-docs")
 PO_ATTACHMENTS_DIR = os.getenv("PO_ATTACHMENTS_DIR", "/app/data/po-attachments")
-PO_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs"}
+PO_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs", "custom", "quote_import"}
 PO_PAYMENT_STATUSES = {"paid", "unpaid"}
 PO_URGENCY = {"urgent", "asap", "standard"}
+
+
+def _is_manual_po_request_type(request_type: str) -> bool:
+    return str(request_type or "").strip().lower() in {"custom", "quote_import"}
 
 
 def _now() -> str:
@@ -112,6 +116,7 @@ def init_db() -> None:
                 """
             )
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS department_name TEXT")
+            c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_display_name TEXT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'stock_item'")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS customer_id BIGINT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_status TEXT")
@@ -557,7 +562,7 @@ def _po_row(c, po_id: int):
         """
         SELECT
           po.*,
-          su.name AS supplier_name,
+          COALESCE(su.name, po.supplier_display_name) AS supplier_name,
           COALESCE(po.department_name, d.name) AS department_name,
           u.username AS requested_by_username,
           pu.username AS postponed_by_username
@@ -762,6 +767,63 @@ def _next_po_number(c) -> str:
     return f"PO-{y}-{seq:04d}"
 
 
+def _resolve_po_header(
+    c,
+    request_type: str,
+    supplier_id: Optional[int],
+    department_id: Optional[int],
+    department_name_in: str,
+    supplier_name_in: str,
+) -> Tuple[Optional[int], str, Optional[int], str]:
+    rt = str(request_type or "").strip().lower()
+    if rt not in PO_REQUEST_TYPES:
+        raise ValueError("Request type is required")
+    if _is_manual_po_request_type(rt):
+        department_name = str(department_name_in or "").strip()
+        if not department_name:
+            raise ValueError("Department is required")
+        supplier_display_name = str(supplier_name_in or "").strip()
+        if not supplier_display_name:
+            raise ValueError("Supplier is required")
+        return None, department_name, None, supplier_display_name
+    if not department_id:
+        raise ValueError("Department is required")
+    dr = c.execute("SELECT name FROM po_departments WHERE id = ? AND active = 1", (int(department_id),)).fetchone()
+    department_name = str(dr["name"]) if dr else ""
+    if not department_name:
+        raise ValueError("Valid department is required")
+    return (int(supplier_id) if supplier_id else None), department_name, None, ""
+
+
+def _resolve_po_request_fields(
+    request_type: str,
+    customer_id: Optional[int],
+    payment_status: str,
+    date_required: str,
+    urgency: str,
+) -> Tuple[Optional[int], str, str, str]:
+    rt = str(request_type or "").strip().lower()
+    if _is_manual_po_request_type(rt):
+        return None, "", "", "standard"
+    cid = int(customer_id or 0) if customer_id not in (None, "") else 0
+    pay = str(payment_status or "").strip().lower()
+    if rt == "customer_item":
+        if cid <= 0:
+            raise ValueError("Customer ID is required for Customer Item")
+        if pay not in PO_PAYMENT_STATUSES:
+            raise ValueError("Paid/Unpaid is required for Customer Item")
+    else:
+        cid = 0
+        pay = ""
+    drq = str(date_required or "").strip()
+    if not drq:
+        raise ValueError("Date required is mandatory")
+    urg = str(urgency or "").strip().lower()
+    if urg not in PO_URGENCY:
+        raise ValueError("Urgency is required")
+    return (cid if cid > 0 else None), pay, drq, urg
+
+
 def create_draft(
     requested_by_user_id: int,
     supplier_id: Optional[int],
@@ -775,58 +837,43 @@ def create_draft(
     urgency: str,
     items: List[Dict[str, Any]],
     tax_override: Optional[float] = None,
+    department_name: str = "",
+    supplier_name: str = "",
 ) -> int:
     subtotal, tax, total, cooked = _calc_totals(items)
     if tax_override is not None:
         tax = _money(tax_override)
         total = _money(subtotal + tax)
     c = _conn()
-    department_name = ""
-    if not department_id:
-        c.close()
-        raise ValueError("Department is required")
-    dr = c.execute("SELECT name FROM po_departments WHERE id = ? AND active = 1", (int(department_id),)).fetchone()
-    department_name = str(dr["name"]) if dr else ""
-    if not department_name:
-        c.close()
-        raise ValueError("Valid department is required")
-    rt = str(request_type or "").strip().lower()
-    if rt not in PO_REQUEST_TYPES:
-        c.close()
-        raise ValueError("Request type is required")
-    cid = int(customer_id or 0) if customer_id not in (None, "") else 0
-    pay = str(payment_status or "").strip().lower()
-    if rt == "customer_item":
-        if cid <= 0:
-            c.close()
-            raise ValueError("Customer ID is required for Customer Item")
-        if pay not in PO_PAYMENT_STATUSES:
-            c.close()
-            raise ValueError("Paid/Unpaid is required for Customer Item")
-    else:
-        cid = 0
-        pay = ""
-    drq = str(date_required or "").strip()
-    if not drq:
-        c.close()
-        raise ValueError("Date required is mandatory")
-    urg = str(urgency or "").strip().lower()
-    if urg not in PO_URGENCY:
-        c.close()
-        raise ValueError("Urgency is required")
-    department_id = None  # keep PO independent from IPAM location IDs
     try:
+        supplier_id, department_name, _, supplier_display_name = _resolve_po_header(
+            c,
+            request_type,
+            supplier_id,
+            department_id,
+            department_name,
+            supplier_name,
+        )
+        rt = str(request_type or "").strip().lower()
+        cid, pay, drq, urg = _resolve_po_request_fields(
+            rt,
+            customer_id,
+            payment_status,
+            date_required,
+            urgency,
+        )
         ts = _now()
         cur = c.execute(
             """
             INSERT INTO purchase_orders(
-          requested_by_user_id, supplier_id, department_id, department_name, status, subtotal, tax, total, notes, category, request_type, customer_id, payment_status, date_required, urgency, current_approval_step, created_at
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+          requested_by_user_id, supplier_id, supplier_display_name, department_id, department_name, status, subtotal, tax, total, notes, category, request_type, customer_id, payment_status, date_required, urgency, current_approval_step, created_at
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             RETURNING id
             """,
             (
                 int(requested_by_user_id),
-                int(supplier_id) if supplier_id else None,
+                supplier_id,
+                supplier_display_name or None,
                 None,
                 department_name,
                 PO_STATUS_DRAFT,
@@ -836,7 +883,7 @@ def create_draft(
                 notes or "",
                 category or "",
                 rt,
-                (cid if cid > 0 else None),
+                cid,
                 pay,
                 drq,
                 urg,
@@ -886,6 +933,8 @@ def update_draft(
     urgency: str,
     items: List[Dict[str, Any]],
     tax_override: Optional[float] = None,
+    department_name: str = "",
+    supplier_name: str = "",
 ) -> bool:
     c = _conn()
     try:
@@ -901,45 +950,37 @@ def update_draft(
         if tax_override is not None:
             tax = _money(tax_override)
             total = _money(subtotal + tax)
-        if not department_id:
-            raise ValueError("Department is required")
-        dr = c.execute("SELECT name FROM po_departments WHERE id = ? AND active = 1", (int(department_id),)).fetchone()
-        department_name = str(dr["name"]) if dr else ""
-        if not department_name:
-            raise ValueError("Valid department is required")
+        supplier_id, department_name, _, supplier_display_name = _resolve_po_header(
+            c,
+            request_type,
+            supplier_id,
+            department_id,
+            department_name,
+            supplier_name,
+        )
         rt = str(request_type or "").strip().lower()
-        if rt not in PO_REQUEST_TYPES:
-            raise ValueError("Request type is required")
-        cid = int(customer_id or 0) if customer_id not in (None, "") else 0
-        pay = str(payment_status or "").strip().lower()
-        if rt == "customer_item":
-            if cid <= 0:
-                raise ValueError("Customer ID is required for Customer Item")
-            if pay not in PO_PAYMENT_STATUSES:
-                raise ValueError("Paid/Unpaid is required for Customer Item")
-        else:
-            cid = 0
-            pay = ""
-        drq = str(date_required or "").strip()
-        if not drq:
-            raise ValueError("Date required is mandatory")
-        urg = str(urgency or "").strip().lower()
-        if urg not in PO_URGENCY:
-            raise ValueError("Urgency is required")
+        cid, pay, drq, urg = _resolve_po_request_fields(
+            rt,
+            customer_id,
+            payment_status,
+            date_required,
+            urgency,
+        )
         c.execute(
             """
             UPDATE purchase_orders
-            SET supplier_id = ?, department_id = ?, department_name = ?, category = ?, notes = ?, request_type = ?, customer_id = ?, payment_status = ?, date_required = ?, urgency = ?, subtotal = ?, tax = ?, total = ?
+            SET supplier_id = ?, supplier_display_name = ?, department_id = ?, department_name = ?, category = ?, notes = ?, request_type = ?, customer_id = ?, payment_status = ?, date_required = ?, urgency = ?, subtotal = ?, tax = ?, total = ?
             WHERE id = ?
             """,
             (
-                int(supplier_id) if supplier_id else None,
+                supplier_id,
+                supplier_display_name or None,
                 None,
                 department_name,
                 category or "",
                 notes or "",
                 rt,
-                (cid if cid > 0 else None),
+                cid,
                 pay,
                 drq,
                 urg,
@@ -1574,7 +1615,7 @@ def list_pos(
             SELECT po.id, po.po_number, po.status, po.total, po.created_at, po.submitted_at, po.current_approval_step,
                    po.request_type, po.customer_id, po.payment_status, po.date_required, po.urgency,
                    po.resume_at, po.postponed_at,
-                   su.name AS supplier_name, COALESCE(po.department_name, d.name) AS department_name, u.username AS requested_by_username
+                   COALESCE(su.name, po.supplier_display_name) AS supplier_name, COALESCE(po.department_name, d.name) AS department_name, u.username AS requested_by_username
             FROM purchase_orders po
             LEFT JOIN stock_suppliers su ON su.id = po.supplier_id
             LEFT JOIN po_departments d ON d.id = po.department_id

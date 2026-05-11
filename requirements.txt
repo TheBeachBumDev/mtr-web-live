@@ -8,6 +8,7 @@ websockets>=12,<14
 
 # PDF export (lazy-imported in main.py)
 reportlab>=4.0,<4.3
+pypdf>=5,<7
 
 # Push + crypto + SSH (legacy / optional)
 cryptography>=41,<44
