@@ -39,7 +39,7 @@ from scripts import clone_schedule
 from scripts import dr_runner
 from notifications.service import dispatch_due_notifications, _hydrate_po_email_notification
 from po_email_actions import execute_email_action, get_email_action_context, render_email_action_page
-from po_pdf import build_purchase_order_pdf
+from po_pdf import build_purchase_order_pdf, purchase_order_pdf_filename
 import po_quote_import
 from urllib.parse import parse_qs, quote, urlparse
 import html
@@ -3318,7 +3318,7 @@ def api_po_submit(po_id: int, request: Request):
         out_name = f"v{version}.pdf"
         out_path = out_dir / out_name
         out_path.write_bytes(pdf_bytes)
-        purchase_orders.save_po_pdf(po_id, user_id, out_name, str(out_path), pdf_bytes)
+        purchase_orders.save_po_pdf(po_id, user_id, purchase_order_pdf_filename(po), str(out_path), pdf_bytes)
     except Exception:
         pass
     dispatch = {"total": 0, "processed": 0, "failed": 0}
@@ -3471,14 +3471,19 @@ def api_po_document(po_id: int, version_no: int, request: Request):
             out_name = f"v{next_version}.pdf"
             out_path = out_dir / out_name
             out_path.write_bytes(rendered)
-            purchase_orders.save_po_pdf(po_id, user_id, out_name, str(out_path), rendered)
-            return FileResponse(path=str(out_path), filename=out_name, media_type="application/pdf")
+            download_name = purchase_order_pdf_filename(po)
+            purchase_orders.save_po_pdf(po_id, user_id, download_name, str(out_path), rendered)
+            return FileResponse(path=str(out_path), filename=download_name, media_type="application/pdf")
     except Exception:
         pass
     p = str(doc.get("file_path") or "")
     if not p or not os.path.isfile(p):
         raise HTTPException(status_code=404, detail="File missing")
-    return FileResponse(path=p, filename=str(doc.get("file_name") or f"PO-{po_id}-v{version_no}.pdf"), media_type="application/pdf")
+    return FileResponse(
+        path=p,
+        filename=str(doc.get("file_name") or purchase_order_pdf_filename(po)),
+        media_type="application/pdf",
+    )
 
 
 @app.post("/api/po/{po_id}/generate-pdf")
@@ -3498,7 +3503,7 @@ def api_po_generate_pdf(po_id: int, request: Request):
     out_name = f"v{version}.pdf"
     out_path = out_dir / out_name
     out_path.write_bytes(pdf_bytes)
-    purchase_orders.save_po_pdf(po_id, user_id, out_name, str(out_path), pdf_bytes)
+    purchase_orders.save_po_pdf(po_id, user_id, purchase_order_pdf_filename(po), str(out_path), pdf_bytes)
     return {"ok": True, "version": version, "path": str(out_path)}
 
 
@@ -3523,7 +3528,7 @@ def api_po_place_order(po_id: int, request: Request):
     out_name = f"v{version}.pdf"
     out_path = out_dir / out_name
     out_path.write_bytes(pdf_bytes)
-    purchase_orders.save_po_pdf(po_id, user_id, out_name, str(out_path), pdf_bytes)
+    purchase_orders.save_po_pdf(po_id, user_id, purchase_order_pdf_filename(po), str(out_path), pdf_bytes)
     if status != "sent_to_supplier":
         purchase_orders.update_lifecycle_status(po_id, user_id, "sent_to_supplier", "Placed order")
     _publish_po_event(po_id, "placed")

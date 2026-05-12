@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from typing import Any, Dict, List
 
 from reportlab.lib import colors
@@ -7,6 +8,22 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+
+COMPANY_LINES = (
+    "Wibersolutions (PTY) Ltd",
+    "Unit 3 Southern Cross Village",
+    "Capricorn Park",
+    "Muizenberg 7950",
+    "VAT registration: 4650279450",
+)
+
+
+def purchase_order_pdf_filename(po: Dict[str, Any]) -> str:
+    po_number = str(po.get("po_number") or "").strip()
+    if not po_number:
+        po_number = f"PO-{int(po.get('id') or 0)}"
+    safe = re.sub(r"[^\w\-.]+", "-", po_number).strip("-") or "draft"
+    return f"Wibernet-{safe}.pdf"
 
 
 def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:
@@ -62,6 +79,18 @@ def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:
     y = h - 16 * mm
 
     _draw_logo(c, w, h, x)
+    company_y = y
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(x, company_y, COMPANY_LINES[0])
+    company_y -= 4.5 * mm
+    c.setFont("Helvetica", 8.5)
+    c.setFillColor(colors.HexColor("#334155"))
+    for line in COMPANY_LINES[1:]:
+        c.drawString(x, company_y, line)
+        company_y -= 4.2 * mm
+    c.setFillColor(colors.black)
+    y = company_y - 6 * mm
+
     c.setFont("Helvetica-Bold", 18)
     c.drawString(x, y, "Purchase Order")
     c.setFillColor(colors.HexColor("#4a5568"))

@@ -1488,6 +1488,11 @@
     if (cur && Number(cur.version_no || 0) > 0) return cur;
     return docs.slice().sort((a, b) => Number(b.version_no || 0) - Number(a.version_no || 0))[0] || null;
   };
+  const poPdfDownloadName = (po) => {
+    const raw = String((po && po.po_number) || "").trim() || `PO-${Number(po && po.id || 0)}`;
+    const safe = raw.replace(/[^\w\-.]+/g, "-").replace(/^-+|-+$/g, "") || "draft";
+    return `Wibernet-${safe}.pdf`;
+  };
   const poDocumentUrl = (po) => {
     const st = String((po && po.status) || "").toLowerCase();
     if (st !== "sent_to_supplier") return "";
@@ -1674,7 +1679,7 @@
           if (!d) return;
           const a = document.createElement("a");
           a.href = d;
-          a.download = `PO-${po.id}.pdf`;
+          a.download = poPdfDownloadName(po);
           document.body.appendChild(a);
           a.click();
           a.remove();
@@ -1805,7 +1810,7 @@
         if (!docUrl) return;
         const a = document.createElement("a");
         a.href = docUrl;
-        a.download = `PO-${po.id}.pdf`;
+        a.download = poPdfDownloadName(po);
         document.body.appendChild(a);
         a.click();
         a.remove();
