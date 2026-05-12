@@ -1,7 +1,7 @@
 import io
 import os
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -15,6 +15,7 @@ COMPANY_LINES = (
     "Capricorn Park",
     "Muizenberg 7950",
     "VAT registration: 4650279450",
+    "Please send all invoices to creditors@wibersolutions.co.za",
 )
 
 
@@ -24,28 +25,6 @@ def purchase_order_pdf_filename(po: Dict[str, Any]) -> str:
         po_number = f"PO-{int(po.get('id') or 0)}"
     safe = re.sub(r"[^\w\-.]+", "-", po_number).strip("-") or "draft"
     return f"Wibernet-{safe}.pdf"
-
-
-def po_invoice_recipients() -> List[str]:
-    raw = (os.getenv("PO_INVOICE_EMAIL", "creditors@wibersolutions.co.za") or "").strip()
-    return [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
-
-
-def deliver_po_invoice_email(po: Dict[str, Any], pdf_bytes: bytes, filename: str) -> Tuple[bool, str]:
-    recipients = po_invoice_recipients()
-    if not recipients:
-        return False, "No invoice recipients configured"
-    from notifications.channels.email_smtp import send_po_invoice_email
-
-    last_error = ""
-    for recipient in recipients:
-        ok, _, err = send_po_invoice_email(recipient, po, pdf_bytes, filename)
-        if not ok:
-            last_error = err or f"Failed sending invoice to {recipient}"
-            break
-    if last_error:
-        return False, last_error
-    return True, ""
 
 
 def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:

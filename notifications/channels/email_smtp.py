@@ -1,7 +1,7 @@
 import os
 import smtplib
 from email.message import EmailMessage
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 
 
 def _smtp_transport_mode(port: int, use_tls: bool) -> Tuple[bool, bool]:
@@ -66,37 +66,4 @@ def send_email(notification: Dict, destination_email: str) -> Tuple[bool, str, s
         msg.add_alternative(html_body, subtype="html")
     else:
         msg.set_content(body)
-    return _send_message(msg)
-
-
-def send_po_invoice_email(
-    destination_email: str,
-    po: Dict[str, Any],
-    pdf_bytes: bytes,
-    filename: str,
-) -> Tuple[bool, str, str]:
-    _, _, _, _, from_addr, _ = _smtp_settings()
-    if not destination_email:
-        return False, "", "No destination email"
-    if not pdf_bytes:
-        return False, "", "No invoice PDF attached"
-    po_number = str(po.get("po_number") or po.get("id") or "").strip() or "PO"
-    supplier = str(po.get("supplier_name") or "-").strip() or "-"
-    total = po.get("total")
-    try:
-        total_text = f"R {float(total or 0):,.2f}"
-    except Exception:
-        total_text = str(total or "-")
-    subject = f"Wibernet purchase order invoice: {po_number}"
-    body = (
-        f"Attached is purchase order {po_number} for {supplier}.\n"
-        f"Total: {total_text}\n"
-    )
-    msg = EmailMessage()
-    msg["From"] = from_addr
-    msg["To"] = destination_email
-    msg["Subject"] = subject
-    msg.set_content(body)
-    safe_name = str(filename or "Wibernet-invoice.pdf").strip() or "Wibernet-invoice.pdf"
-    msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=safe_name)
     return _send_message(msg)
