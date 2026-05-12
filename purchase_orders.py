@@ -163,6 +163,9 @@ def init_db() -> None:
                 )
                 """
             )
+            from po_email_actions import ensure_po_email_action_tokens_table
+
+            ensure_po_email_action_tokens_table(c)
         except Exception:
             pass
         c.commit()

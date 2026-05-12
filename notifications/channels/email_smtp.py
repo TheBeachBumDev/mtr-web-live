@@ -31,10 +31,15 @@ def send_email(notification: Dict, destination_email: str) -> Tuple[bool, str, s
     msg["To"] = destination_email
     msg["Subject"] = str(notification.get("title") or "PO Notification")
     body = str(notification.get("message") or "")
+    html_body = str(notification.get("html_body") or "").strip()
     action = str(notification.get("action_url") or "")
-    if action:
+    if action and not html_body:
         body = body + "\n\nAction: " + action
-    msg.set_content(body)
+    if html_body:
+        msg.set_content(body or "Purchase order notification")
+        msg.add_alternative(html_body, subtype="html")
+    else:
+        msg.set_content(body)
     use_ssl, use_starttls = _smtp_transport_mode(port, use_tls)
     try:
         if use_ssl:

@@ -5,6 +5,45 @@ import purchase_orders
 import push_notifications
 from notifications.channels.email_smtp import send_email
 from notifications.channels.whatsapp import send_whatsapp
+from notifications.po_email import APPROVAL_EMAIL_EVENTS, build_approval_email, sample_po_for_email
+from po_email_actions import build_action_links_for_notification
+
+
+def _po_step_name(po: Dict) -> str:
+    step = int(po.get("current_approval_step") or 0)
+    approvals = list(po.get("approvals") or [])
+    if step > 0:
+        for row in approvals:
+            if int(row.get("step_number") or 0) == step:
+                return str(row.get("step_name") or "Approver")
+    for row in approvals:
+        if str(row.get("status") or "") == "pending":
+            return str(row.get("step_name") or "Approver")
+    return "Approver"
+
+
+def _hydrate_po_email_notification(notification: Dict) -> Dict:
+    if str(notification.get("channel") or "").strip().lower() != "email":
+        return notification
+    if str(notification.get("event_type") or "") not in APPROVAL_EMAIL_EVENTS:
+        return notification
+    po_id = int(notification.get("purchase_order_id") or 0)
+    if po_id > 0:
+        try:
+            po = purchase_orders.get_po(po_id)
+        except ValueError:
+            return notification
+        action_links = build_action_links_for_notification(notification)
+    else:
+        po = sample_po_for_email()
+        action_links = build_action_links_for_notification(notification)
+    title, plain, html_body, view_url = build_approval_email(po, _po_step_name(po), action_links)
+    out = dict(notification)
+    out["title"] = title
+    out["message"] = plain
+    out["html_body"] = html_body
+    out["action_url"] = view_url
+    return out
 
 
 def dispatch_notification(notification: Dict) -> None:
@@ -31,7 +70,8 @@ def dispatch_notification(notification: Dict) -> None:
         return
     if channel == "email":
         pref = _notification_user_pref(int(notification.get("user_id") or 0))
-        ok, mid, body = send_email(notification, str(pref.get("email") or ""))
+        payload = _hydrate_po_email_notification(notification)
+        ok, mid, body = send_email(payload, str(pref.get("email") or ""))
         purchase_orders.mark_notification_state(nid, "sent" if ok else "failed", provider_message_id=mid, response_body=body)
         return
     if channel == "whatsapp":

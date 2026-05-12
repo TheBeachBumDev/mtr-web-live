@@ -37,7 +37,8 @@ import db_runtime
 from scripts import clone_runner
 from scripts import clone_schedule
 from scripts import dr_runner
-from notifications.service import dispatch_due_notifications
+from notifications.service import dispatch_due_notifications, _hydrate_po_email_notification
+from po_email_actions import execute_email_action, get_email_action_context, render_email_action_page
 from po_pdf import build_purchase_order_pdf
 import po_quote_import
 from urllib.parse import parse_qs, quote, urlparse
@@ -49,7 +50,7 @@ try:
     import redis.asyncio as redis_async
 except Exception:
     redis_async = None
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Body, UploadFile, File, Query
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, Depends, HTTPException, status, Body, UploadFile, File, Query, Form
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
@@ -1171,6 +1172,9 @@ async def security_headers_middleware(request: Request, call_next):
 @app.middleware("http")
 async def auth_session_middleware(request: Request, call_next):
     path = request.url.path or "/"
+
+    if path.startswith("/po/email-action"):
+        return await call_next(request)
 
     if path in PUBLIC_PATHS:
         return await call_next(request)
@@ -3587,8 +3591,74 @@ def api_po_notification_test(request: Request, payload: Dict[str, Any] = Body(..
         channel=str(p.get("channel") or "app"),
         actor_username=str(getattr(request.state, "username", "admin")),
     )
+    if str(p.get("channel") or "").strip().lower() == "email":
+        enriched = _hydrate_po_email_notification(
+            {
+                "id": int(nid),
+                "user_id": user_id,
+                "purchase_order_id": None,
+                "event_type": "test_po_approval",
+                "title": preview.get("title") or "",
+                "message": preview.get("message") or "",
+                "action_url": preview.get("action_url") or "",
+                "channel": "email",
+            }
+        )
+        preview = {
+            key: enriched.get(key)
+            for key in ("title", "message", "action_url", "html_body")
+            if enriched.get(key) is not None
+        }
     result = dispatch_due_notifications(limit=50)
     return {"ok": True, "notification_id": nid, "preview": preview, "dispatch": result}
+
+
+@app.get("/po/email-action/{token}", response_class=HTMLResponse)
+def po_email_action_get(token: str):
+    ctx, err = get_email_action_context(token)
+    if err:
+        return HTMLResponse(
+            f"<!doctype html><html><body style='font-family:system-ui;padding:2rem'><h1>Link unavailable</h1><p>{html.escape(err)}</p></body></html>",
+            status_code=400,
+        )
+    row = ctx["token_row"]
+    return HTMLResponse(render_email_action_page(token, ctx["po"], row["action"]))
+
+
+@app.post("/po/email-action/{token}", response_class=HTMLResponse)
+def po_email_action_post(
+    token: str,
+    comments: str = Form(""),
+    resume_at: str = Form(""),
+    confirm: str = Form(""),
+):
+    ctx, err = get_email_action_context(token)
+    if err:
+        return HTMLResponse(
+            f"<!doctype html><html><body style='font-family:system-ui;padding:2rem'><h1>Link unavailable</h1><p>{html.escape(err)}</p></body></html>",
+            status_code=400,
+        )
+    row = ctx["token_row"]
+    po = ctx["po"]
+    action = str(row.get("action") or "")
+    if not str(confirm or "").strip():
+        return HTMLResponse(render_email_action_page(token, po, action, error="Confirmation is required."))
+    ok, message, evt = execute_email_action(
+        token,
+        {"comments": comments, "resume_at": resume_at},
+    )
+    if ok:
+        try:
+            dispatch_due_notifications(limit=100)
+        except Exception:
+            pass
+        if evt:
+            try:
+                _publish_po_event(int(po.get("id") or 0), evt)
+            except Exception:
+                pass
+        return HTMLResponse(render_email_action_page(token, po, action, message=message))
+    return HTMLResponse(render_email_action_page(token, po, action, error=message), status_code=400)
 
 
 @app.get("/download/purchase-orders-user-guide")
