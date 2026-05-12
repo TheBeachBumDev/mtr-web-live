@@ -36,6 +36,22 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  .po-section__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    margin-bottom: 12px;
+  }
+  .po-section__head h4 {
+    margin: 0;
+  }
+  .po-section-status {
+    font-size: 0.92rem;
+    font-weight: 500;
+    line-height: 1.35;
+    min-height: 1.25em;
+  }
   .po-admin-intro {
     margin: 0 0 14px 0;
     max-width: 52rem;
@@ -728,7 +744,10 @@
   </section>
 
   <section class="po-card">
-    <h4>Approval Role Assignments (Admin)</h4>
+    <div class="po-section__head">
+      <h4>Approval Role Assignments (Admin)</h4>
+      <span id="poRoleMsg" class="po-section-status" role="status" aria-live="polite"></span>
+    </div>
     <p class="hint po-admin-intro">
       Choose a <strong>department</strong>, then set who acts as <strong>Manager</strong>, <strong>Finance</strong>, and <strong>Director</strong> for purchase orders that use that department.
       Primary approvers receive approval tasks; backup approvers are used when the primary is unavailable.
@@ -1050,6 +1069,15 @@
     el.textContent = t || "";
     el.style.color = ok ? "#4ade80" : "#fb7185";
   };
+  const roleMsg = (t, ok = true) => {
+    const el = document.getElementById("poRoleMsg");
+    const top = document.getElementById("poMsg");
+    if (top) top.textContent = "";
+    if (!el) return;
+    el.textContent = t || "";
+    el.style.color = ok ? "#4ade80" : "#fb7185";
+    if (t) el.scrollIntoView({behavior: "smooth", block: "nearest"});
+  };
   const j = async (url, opts = {}) => {
     const r = await fetch(url, Object.assign({headers: {"Content-Type":"application/json"}}, opts));
     const d = await r.json().catch(() => ({}));
@@ -1215,6 +1243,7 @@
     s.innerHTML = '<option value="">-- supplier --</option>' + d.suppliers.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
     dep.innerHTML = '<option value="">-- department --</option>' + d.departments.map(x => `<option value="${x.id}">${x.name}</option>`).join("");
     await loadSupplierProductSuggestions();
+    await ensureRoleDepartments();
   };
   const loadRules = async () => {
     const rows = document.getElementById("poRuleRows");
@@ -1226,29 +1255,6 @@
     dep.innerHTML = '<option value="">All departments</option>' + (d.departments || []).map(x => `<option value="${x.id}">${x.name}</option>`).join("");
     appr.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
     bkp.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
-    const roleDep = document.getElementById("poRoleDepartment");
-    if (roleDep) {
-      const oldVal = roleDep.value || "";
-      roleDep.innerHTML = '<option value="">-- department --</option>' + (d.departments || []).map(x => `<option value="${x.id}">${x.name}</option>`).join("");
-      if (oldVal && Array.from(roleDep.options).some(o => o.value === oldVal)) roleDep.value = oldVal;
-      if (!roleDep.value && roleDep.options.length > 1) roleDep.value = roleDep.options[1].value;
-    }
-    const roleAssignment = {};
-    const rolePairs = [
-      ["manager", "poRoleManager", "poRoleManagerBackup"],
-      ["finance", "poRoleFinance", "poRoleFinanceBackup"],
-      ["director", "poRoleDirector", "poRoleDirectorBackup"],
-    ];
-    for (const [rk, primId, bkpId] of rolePairs) {
-      const prim = document.getElementById(primId);
-      const bk = document.getElementById(bkpId);
-      if (!prim || !bk) continue;
-      prim.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
-      bk.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
-      const ra = roleAssignment[rk] || {};
-      if (ra.user_id) prim.value = String(ra.user_id);
-      if (ra.backup_user_id) bk.value = String(ra.backup_user_id);
-    }
     rows.innerHTML = (d.rules || []).map(r => `
       <tr>
         <td data-label="ID">${r.id}</td>
@@ -1266,14 +1272,29 @@
       btn.onclick = () => act(async () => {
         await fetch(`/api/po/rules/${btn.getAttribute("data-rule-del")}`, {method:"DELETE"});
         await loadRules();
+        await loadRoleAssignments();
       });
     });
+    await loadRoleAssignments();
+  };
+  const ensureRoleDepartments = async () => {
+    const roleDep = document.getElementById("poRoleDepartment");
+    if (!roleDep) return;
+    const d = await j("/api/po/role-assignments?department_id=0");
+    const oldVal = roleDep.value || "";
+    roleDep.innerHTML = '<option value="">-- department --</option>' + (d.departments || []).map(x => `<option value="${x.id}">${escHtml(x.name)}</option>`).join("");
+    if (oldVal && Array.from(roleDep.options).some(o => o.value === oldVal)) roleDep.value = oldVal;
+    else if (!roleDep.value && roleDep.options.length > 1) roleDep.value = roleDep.options[1].value;
   };
   const loadRoleAssignments = async () => {
     const roleDep = document.getElementById("poRoleDepartment");
     if (!roleDep) return;
+    if (roleDep.options.length <= 1) await ensureRoleDepartments();
     const depId = Number(roleDep.value || 0);
-    if (!depId) return;
+    if (!depId) {
+      roleMsg("Select a department to view or edit role assignments.", false);
+      return;
+    }
     const d = await j(`/api/po/role-assignments?department_id=${encodeURIComponent(depId)}`);
     const roleAssignment = d.assignments || {};
     const rolePairs = [
@@ -1285,11 +1306,11 @@
       const prim = document.getElementById(primId);
       const bk = document.getElementById(bkpId);
       if (!prim || !bk) continue;
-      prim.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
-      bk.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${x.username}</option>`).join("");
+      prim.innerHTML = (d.approvers || []).map(x => `<option value="${x.id}">${escHtml(x.username)}</option>`).join("");
+      bk.innerHTML = '<option value="">No backup</option>' + (d.approvers || []).map(x => `<option value="${x.id}">${escHtml(x.username)}</option>`).join("");
       const ra = roleAssignment[rk] || {};
-      if (ra.user_id) prim.value = String(ra.user_id);
-      if (ra.backup_user_id) bk.value = String(ra.backup_user_id);
+      prim.value = ra.user_id ? String(ra.user_id) : "";
+      bk.value = ra.backup_user_id ? String(ra.backup_user_id) : "";
     }
   };
   const loadNotificationSettings = async () => {
@@ -1332,7 +1353,18 @@
       };
       tr.querySelector(".nt-save").onclick = () => act(async () => save());
       tr.querySelector(".nt-test-app").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "app"})}); });
-      tr.querySelector(".nt-test-email").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "email"})}); });
+      tr.querySelector(".nt-test-email").onclick = async () => {
+        try {
+          await save();
+          const r = await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "email"})});
+          const p = r.preview || {};
+          const action = p.action_url ? ("\n\nAction: " + p.action_url) : "";
+          const body = String(p.message || "") + action;
+          msg((p.title || "Sample PO approval email") + (body ? ": " + body.replace(/\n/g, " ") : ""), true);
+        } catch (e) {
+          msg(e.message || String(e), false);
+        }
+      };
       tr.querySelector(".nt-test-wa").onclick = () => act(async () => { await save(); await j("/api/po/notifications/test", {method:"POST", body: JSON.stringify({user_id: uid, channel: "whatsapp"})}); });
     });
   };
@@ -1993,25 +2025,45 @@
       })
     });
     await loadRules();
-  });
-  const roleSaveBtn = document.getElementById("poRoleSaveBtn");
-  if (roleSaveBtn) roleSaveBtn.onclick = () => act(async () => {
-    const depId = Number(document.getElementById("poRoleDepartment")?.value || 0);
-    if (!depId) throw new Error("Select department for role assignments");
-    await j("/api/po/role-assignments", {
-      method: "PUT",
-      body: JSON.stringify({
-        department_id: depId,
-        manager: {user_id: document.getElementById("poRoleManager").value || null, backup_user_id: document.getElementById("poRoleManagerBackup").value || null},
-        finance: {user_id: document.getElementById("poRoleFinance").value || null, backup_user_id: document.getElementById("poRoleFinanceBackup").value || null},
-        director: {user_id: document.getElementById("poRoleDirector").value || null, backup_user_id: document.getElementById("poRoleDirectorBackup").value || null},
-      })
-    });
     await loadRoleAssignments();
   });
+  const saveRoleAssignments = async () => {
+    const roleDep = document.getElementById("poRoleDepartment");
+    const saveBtn = document.getElementById("poRoleSaveBtn");
+    const depId = Number(roleDep?.value || 0);
+    if (!depId) throw new Error("Select department for role assignments");
+    const depName = roleDep && roleDep.selectedIndex >= 0
+      ? String(roleDep.options[roleDep.selectedIndex].text || "").trim()
+      : "department";
+    if (saveBtn) saveBtn.disabled = true;
+    roleMsg("Saving role assignments…", true);
+    try {
+      await j("/api/po/role-assignments", {
+        method: "PUT",
+        body: JSON.stringify({
+          department_id: depId,
+          manager: {user_id: document.getElementById("poRoleManager").value || null, backup_user_id: document.getElementById("poRoleManagerBackup").value || null},
+          finance: {user_id: document.getElementById("poRoleFinance").value || null, backup_user_id: document.getElementById("poRoleFinanceBackup").value || null},
+          director: {user_id: document.getElementById("poRoleDirector").value || null, backup_user_id: document.getElementById("poRoleDirectorBackup").value || null},
+        })
+      });
+      await loadRoleAssignments();
+      roleMsg("Saved role assignments for " + depName + ".", true);
+    } catch (e) {
+      roleMsg(e.message || String(e), false);
+      throw e;
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  };
+  const roleSaveBtn = document.getElementById("poRoleSaveBtn");
+  if (roleSaveBtn) roleSaveBtn.onclick = () => {
+    saveRoleAssignments().catch(() => {});
+  };
   const roleDepSel = document.getElementById("poRoleDepartment");
   if (roleDepSel) roleDepSel.addEventListener("change", () => {
-    loadRoleAssignments().catch(e => msg(e.message || String(e), false));
+    roleMsg("Loading role assignments…", true);
+    loadRoleAssignments().catch(e => roleMsg(e.message || String(e), false));
   });
   const ntSave = document.getElementById("poNtSaveTimingBtn");
   if (ntSave) ntSave.onclick = () => act(async () => {
@@ -2105,7 +2157,7 @@
   addItemRow();
   toggleCustomerFields();
   connectPoEvents();
-  loadLookups().then(loadList).then(loadRules).then(loadRoleAssignments).then(loadNotificationSettings).catch(e => msg(e.message || String(e), false));
+  loadLookups().then(loadList).then(loadRules).then(loadNotificationSettings).catch(e => msg(e.message || String(e), false));
 })();
 </script>
 {% endblock %}

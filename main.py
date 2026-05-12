@@ -3582,13 +3582,13 @@ def api_po_notification_test(request: Request, payload: Dict[str, Any] = Body(..
     user_id = int(p.get("user_id") or 0)
     if user_id <= 0:
         raise HTTPException(status_code=400, detail="user_id required")
-    nid = purchase_orders.enqueue_test_notification(
+    nid, preview = purchase_orders.enqueue_test_notification(
         user_id=user_id,
         channel=str(p.get("channel") or "app"),
         actor_username=str(getattr(request.state, "username", "admin")),
     )
     result = dispatch_due_notifications(limit=50)
-    return {"ok": True, "notification_id": nid, "dispatch": result}
+    return {"ok": True, "notification_id": nid, "preview": preview, "dispatch": result}
 
 
 @app.get("/download/purchase-orders-user-guide")

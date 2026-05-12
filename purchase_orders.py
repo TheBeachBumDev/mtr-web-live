@@ -618,6 +618,19 @@ def _apply_implicit_channels(c, user_id: int) -> List[str]:
     return out or ["app"]
 
 
+def _approval_required_notification_content(
+    po_id: int,
+    po_number: str,
+    total: Decimal,
+    supplier_name: str,
+    step_name: str,
+) -> Tuple[str, str, str]:
+    title = "PO Approval Required"
+    url = f"/purchase-orders?po_id={int(po_id)}"
+    msg = f"PO {po_number} | Amount: R{total:.2f} | Supplier: {supplier_name or '-'} | Step: {step_name}"
+    return title, msg, url
+
+
 def _cancel_pending_approval_notifications(c, po_id: int) -> None:
     """Stop reminders/escalations hitting approvers after decline/changes/etc."""
     ts = _now()
@@ -640,9 +653,9 @@ def _cancel_pending_approval_notifications(c, po_id: int) -> None:
 def _enqueue_notifications_for_approval(c, po_id: int, po_number: str, total: Decimal, supplier_name: str, approver_id: int, step_name: str) -> None:
     now = datetime.utcnow()
     channels = _apply_implicit_channels(c, approver_id)
-    title = "PO Approval Required"
-    url = f"/purchase-orders?po_id={int(po_id)}"
-    msg = f"PO {po_number} | Amount: R{total:.2f} | Supplier: {supplier_name or '-'} | Step: {step_name}"
+    title, msg, url = _approval_required_notification_content(
+        int(po_id), po_number, total, supplier_name, step_name
+    )
     rem4, rem24, rem48 = _load_notification_timing(c)
     for ch in channels:
         c.execute(
@@ -2121,22 +2134,39 @@ def set_user_notification_preference(
         c.close()
 
 
-def enqueue_test_notification(user_id: int, channel: str, actor_username: str = "admin") -> int:
+def enqueue_test_notification(user_id: int, channel: str, actor_username: str = "admin") -> Tuple[int, Dict[str, str]]:
     ch = (channel or "app").strip().lower()
     if ch not in {"app", "email", "whatsapp"}:
         ch = "app"
+    if ch == "email":
+        title, message, action_url = _approval_required_notification_content(
+            0,
+            "PO-DEV-SAMPLE",
+            Decimal("12450.00"),
+            "Sample Supplier Ltd",
+            "Manager",
+        )
+        event_type = "test_po_approval"
+    else:
+        title = "PO Test Notification"
+        message = f"Test notification from PO settings by {actor_username}"
+        action_url = "/purchase-orders"
+        event_type = "test"
     c = _conn()
     try:
         cur = c.execute(
             """
             INSERT INTO notifications(
               user_id, purchase_order_id, event_type, title, message, action_url, channel, schedule_at, state, created_at
-            ) VALUES(?, NULL, 'test', 'PO Test Notification', ?, '/purchase-orders', ?, ?, 'pending', ?)
+            ) VALUES(?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?)
             RETURNING id
             """,
             (
                 int(user_id),
-                f"Test notification from PO settings by {actor_username}",
+                event_type,
+                title,
+                message,
+                action_url,
                 ch,
                 _now(),
                 _now(),
@@ -2144,6 +2174,6 @@ def enqueue_test_notification(user_id: int, channel: str, actor_username: str = 
         )
         nid = int(cur.fetchone()[0])
         c.commit()
-        return nid
+        return nid, {"title": title, "message": message, "action_url": action_url}
     finally:
         c.close()
