@@ -28,6 +28,7 @@
   .sm-badge { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 11px; }
   .sm-badge.new { border-color: #2563eb; color: #1d4ed8; }
   .sm-badge.returned { border-color: #ca8a04; color: #a16207; }
+  .sm-badge.pre_allocated { border-color: #7c3aed; color: #6d28d9; }
   .sm-assigned-vendors { margin-top: 10px; display: grid; gap: 8px; }
   .sm-section-title { margin: 0; font-size: 16px; line-height: 1.2; }
   .sm-scrap-log { margin-top: 10px; display: grid; gap: 8px; }
@@ -185,7 +186,10 @@
     </div>
     <div class="sm-actions">
       <div></div>
-      <div><button type="button" id="smAssignSaveBtn">Assign</button></div>
+      <div class="sm-inline-actions">
+        <button type="button" id="smAssignPreAllocateBtn" title="Hold in stock for this customer for 14 days">Pre allocate</button>
+        <button type="button" id="smAssignSaveBtn">Assign</button>
+      </div>
     </div>
   </div>
 </div>
@@ -245,6 +249,7 @@
     var currentProductId = 0;
     var currentProductName = "";
     var currentAssignItemId = 0;
+    var currentAssignIsPreAllocated = false;
     var currentMiscProductId = 0;
     var currentMiscProductName = "";
     var miscAssignable = [];
@@ -285,6 +290,8 @@
       byId("smAssignCustomerNameWrap").style.display = isHighSite ? "none" : "";
       byId("smAssignCustomerAddressWrap").style.display = isHighSite ? "none" : "";
       byId("smAssignHighSiteWrap").style.display = isHighSite ? "" : "none";
+      var preBtn = byId("smAssignPreAllocateBtn");
+      if (preBtn) preBtn.disabled = isHighSite || currentAssignIsPreAllocated;
       setAssignLookupMsg("");
       if (isHighSite) {
         byId("smAssignCustomerId").value = "";
@@ -406,15 +413,30 @@
               if (!productMatches && !filteredItems.length && !filteredLots.length) return "";
             }
             var itemsHtml = filteredItems.map(function (it) {
+              var isPreAllocated = String(it.lifecycle_status || "") === "pre_allocated";
+              var preAllocMeta = isPreAllocated
+                ? (" | Customer: " + e(it.pre_allocated_customer_name || "-") +
+                  (it.pre_allocated_customer_invoice_number ? (" | Invoice: " + e(it.pre_allocated_customer_invoice_number)) : "") +
+                  (it.pre_allocated_expires_at ? (" | Expires: " + e(it.pre_allocated_expires_at)) : ""))
+                : "";
               return "<div class='sm-item sm-head-row'>" +
                 "<span>SN: " + e(it.serial_number) +
                 (it.batch_invoice_number ? " | Invoice: " + e(it.batch_invoice_number) : "") +
                 (it.date_in_stock ? " | Date in Stock: " + e(it.date_in_stock) : "") +
                 (it.value_ex_vat != null ? " | Value ex VAT: " + e(it.value_ex_vat) : "") +
                 (it.comment ? " | Comment: " + e(it.comment) : "") +
+                preAllocMeta +
                 " | <span class='sm-badge " + e(it.lifecycle_status || "new") + "'>" + e(it.lifecycle_status || "new") + "</span></span>" +
                 "<div class='sm-inline-actions'>" +
-                "<button type='button' data-act='assign-customer' data-item-id='" + it.id + "' data-item-sn='" + e(it.serial_number) + "'>Assign to Customer</button>" +
+                "<button type='button' data-act='assign-customer' data-item-id='" + it.id + "' data-item-sn='" + e(it.serial_number) + "'" +
+                (isPreAllocated
+                  ? (" data-pre-allocated='1' data-customer-id='" + e(it.pre_allocated_customer_id == null ? "" : it.pre_allocated_customer_id) + "'" +
+                    " data-customer-name='" + e(it.pre_allocated_customer_name || "") + "'" +
+                    " data-customer-address='" + e(it.pre_allocated_customer_address || "") + "'" +
+                    " data-customer-invoice='" + e(it.pre_allocated_customer_invoice_number || "") + "'")
+                  : "") +
+                ">Assign to Customer</button>" +
+                (isPreAllocated ? "<button type='button' data-act='release-pre-allocation' data-item-id='" + it.id + "'>Return to stock</button>" : "") +
                 (IS_ADMIN ? "<button type='button' data-edit-item='" + it.id + "' data-item-sn='" + e(it.serial_number) + "'>Edit</button>" : "") +
                 "</div>" +
                 "</div>";
@@ -830,13 +852,15 @@
       closeMiscModal();
       await refresh();
     }
-    function openAssignModal(itemId, serialNumber) {
+    function openAssignModal(itemId, serialNumber, prefill) {
+      var pf = prefill || {};
       currentAssignItemId = Number(itemId || 0);
+      currentAssignIsPreAllocated = !!pf.pre_allocated;
       byId("smAssignSerial").value = String(serialNumber || "");
-      byId("smAssignCustomerId").value = "";
-      byId("smAssignCustomerName").value = "";
-      byId("smAssignCustomerAddress").value = "";
-      byId("smAssignCustomerInvoiceNo").value = "";
+      byId("smAssignCustomerId").value = currentAssignIsPreAllocated ? String(pf.customer_id || "") : "";
+      byId("smAssignCustomerName").value = currentAssignIsPreAllocated ? String(pf.customer_name || "") : "";
+      byId("smAssignCustomerAddress").value = currentAssignIsPreAllocated ? String(pf.customer_address || "") : "";
+      byId("smAssignCustomerInvoiceNo").value = currentAssignIsPreAllocated ? String(pf.customer_invoice_number || "") : "";
       byId("smAssignTargetType").value = "customer";
       fillLocationSelect(byId("smAssignHighSiteLocation"));
       syncAssignTargetUi();
@@ -846,6 +870,7 @@
     function closeAssignModal() {
       byId("smAssignModalWrap").style.display = "none";
       currentAssignItemId = 0;
+      currentAssignIsPreAllocated = false;
     }
     function setMiscAssignLookupMsg(msg) {
       var el = byId("smMiscAssignLookupMsg");
@@ -1000,6 +1025,33 @@
         clearTimeout(timeoutId);
       }
     }
+    function assignCustomerPayload() {
+      var cid = (byId("smAssignCustomerId").value || "").trim();
+      var cname = (byId("smAssignCustomerName").value || "").trim();
+      var caddr = (byId("smAssignCustomerAddress").value || "").trim();
+      var cinv = (byId("smAssignCustomerInvoiceNo").value || "").trim();
+      if (!cid) throw new Error("Customer ID required");
+      if (!cname) throw new Error("Lookup customer first");
+      return {
+        customer_id: Number(cid),
+        customer_name: cname,
+        customer_address: caddr,
+        customer_invoice_number: cinv
+      };
+    }
+    async function savePreAllocate() {
+      if (!currentAssignItemId) throw new Error("No stock item selected");
+      var customer = assignCustomerPayload();
+      await api("/api/stock/items/" + encodeURIComponent(currentAssignItemId) + "/assign", "POST", {
+        assignment_target: "pre_allocate",
+        customer_invoice_number: customer.customer_invoice_number,
+        customer_id: customer.customer_id,
+        customer_name: customer.customer_name,
+        customer_address: customer.customer_address
+      });
+      closeAssignModal();
+      await refresh();
+    }
     async function saveAssign() {
       if (!currentAssignItemId) throw new Error("No stock item selected");
       var targetType = (byId("smAssignTargetType").value || "customer").trim();
@@ -1146,6 +1198,7 @@
     byId("smAssignCloseBtn").addEventListener("click", function () { closeAssignModal(); });
     byId("smAssignLookupBtn").addEventListener("click", function () { lookupAssignCustomer().catch(function (e) { showErr(String(e)); }); });
     byId("smAssignTargetType").addEventListener("change", syncAssignTargetUi);
+    byId("smAssignPreAllocateBtn").addEventListener("click", function () { savePreAllocate().catch(function (e) { showErr(String(e)); }); });
     byId("smAssignSaveBtn").addEventListener("click", function () { saveAssign().catch(function (e) { showErr(String(e)); }); });
     byId("smProductsSearch").addEventListener("input", function () { renderSuppliers(suppliersCache); });
     byId("smAssignedSearch").addEventListener("input", function () { renderAssignedVendors(assignedCache); });
@@ -1168,7 +1221,17 @@
       v = t.getAttribute("data-add-misc-lot"); if (v) return openMiscModal(v, t.getAttribute("data-product-name") || "");
       var act = t.getAttribute("data-act");
       if (act === "remove-row") { var tr = t.closest("tr"); if (tr) tr.remove(); return; }
-      if (act === "assign-customer") return openAssignModal(t.getAttribute("data-item-id"), t.getAttribute("data-item-sn"));
+      if (act === "assign-customer") return openAssignModal(
+        t.getAttribute("data-item-id"),
+        t.getAttribute("data-item-sn"),
+        {
+          pre_allocated: String(t.getAttribute("data-pre-allocated") || "") === "1",
+          customer_id: t.getAttribute("data-customer-id") || "",
+          customer_name: t.getAttribute("data-customer-name") || "",
+          customer_address: t.getAttribute("data-customer-address") || "",
+          customer_invoice_number: t.getAttribute("data-customer-invoice") || ""
+        }
+      );
       if (act === "add-misc-for-target") return openMiscAssignModalForTarget(
         t.getAttribute("data-target-type") || "customer",
         t.getAttribute("data-customer-id") || "",
@@ -1181,6 +1244,13 @@
       if (act === "return-item") return api("/api/stock/items/" + encodeURIComponent(t.getAttribute("data-item-id")) + "/return", "POST")
         .then(function () { return refresh(); })
         .catch(function (e) { showErr(String(e)); });
+      if (act === "release-pre-allocation") {
+        var releaseId = t.getAttribute("data-item-id");
+        if (!window.confirm("Return this pre-allocated item to stock?")) return;
+        return api("/api/stock/items/" + encodeURIComponent(releaseId) + "/release-pre-allocation", "POST")
+          .then(function () { return refresh(); })
+          .catch(function (e) { showErr(String(e)); });
+      }
       if (act === "scrap-item") {
         var iid = t.getAttribute("data-item-id");
         var why = prompt("Scrap reason (optional):", "") || "";

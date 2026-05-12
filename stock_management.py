@@ -1,13 +1,32 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 import json
 
 import db_runtime
 
 
+PRE_ALLOCATION_HOLD_DAYS = 14
+
+
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def _expires_after_days(days: int) -> str:
+    return (datetime.utcnow() + timedelta(days=max(1, int(days)))).isoformat(timespec="seconds") + "Z"
+
+
+def _parse_utc_iso(ts: str) -> Optional[datetime]:
+    s = str(ts or "").strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        return datetime.fromisoformat(s).replace(tzinfo=None)
+    except Exception:
+        return None
 
 
 def _conn() -> sqlite3.Connection:
@@ -35,9 +54,9 @@ def _resolve_assignment_target(
     location_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     tgt = str(assignment_target or "customer").strip().lower()
-    if tgt not in ("customer", "high_site"):
+    if tgt not in ("customer", "high_site", "pre_allocate"):
         raise ValueError("Invalid assignment target")
-    if tgt == "customer":
+    if tgt in ("customer", "pre_allocate"):
         cid = int(customer_id or 0)
         cname = str(customer_name or "").strip()
         caddr = str(customer_address or "").strip()
@@ -46,7 +65,7 @@ def _resolve_assignment_target(
         if not cname:
             raise ValueError("Customer name required")
         return {
-            "target": "customer",
+            "target": tgt,
             "customer_id": cid,
             "customer_name": cname,
             "customer_address": caddr,
@@ -255,6 +274,7 @@ def init_db() -> None:
                 "ALTER TABLE stock_product_items ADD COLUMN IF NOT EXISTS assigned_location_name TEXT",
                 "ALTER TABLE stock_product_items ADD COLUMN IF NOT EXISTS assigned_at TEXT",
                 "ALTER TABLE stock_product_items ADD COLUMN IF NOT EXISTS returned_at TEXT",
+                "ALTER TABLE stock_product_items ADD COLUMN IF NOT EXISTS pre_allocated_expires_at TEXT",
             ):
                 conn.execute(stmt)
             for stmt in (
@@ -439,6 +459,7 @@ def init_db() -> None:
                 ("assigned_location_name", "TEXT"),
                 ("assigned_at", "TEXT"),
                 ("returned_at", "TEXT"),
+                ("pre_allocated_expires_at", "TEXT"),
             ):
                 if coldef[0] not in existing:
                     conn.execute(f"ALTER TABLE stock_product_items ADD COLUMN {coldef[0]} {coldef[1]}")
@@ -480,9 +501,63 @@ def init_db() -> None:
         conn.close()
 
 
+def _expire_due_pre_allocations(conn: sqlite3.Connection) -> int:
+    now = datetime.utcnow()
+    rows = conn.execute(
+        """
+        SELECT id, assigned_customer_id, assigned_customer_name, assigned_customer_address, pre_allocated_expires_at
+        FROM stock_product_items
+        WHERE COALESCE(lifecycle_status, '') = 'pre_allocated'
+          AND COALESCE(pre_allocated_expires_at, '') <> ''
+        """
+    ).fetchall()
+    expired = 0
+    ts = _now()
+    for row in rows:
+        expires_at = _parse_utc_iso(str(row["pre_allocated_expires_at"] or ""))
+        if expires_at is None or expires_at > now:
+            continue
+        iid = int(row["id"])
+        conn.execute(
+            """
+            UPDATE stock_product_items
+            SET lifecycle_status = 'new',
+                assigned_customer_id = NULL,
+                assigned_customer_name = NULL,
+                assigned_customer_address = NULL,
+                assigned_customer_invoice_number = NULL,
+                assignment_target = 'customer',
+                assigned_location_id = NULL,
+                assigned_location_name = NULL,
+                assigned_at = NULL,
+                pre_allocated_expires_at = NULL
+            WHERE id = ?
+            """,
+            (iid,),
+        )
+        conn.execute(
+            """
+            INSERT INTO stock_item_lifecycle_log(
+                item_id, action, from_status, to_status, customer_id, customer_name, customer_address, created_at
+            ) VALUES(?, 'pre_allocation_expired', 'pre_allocated', 'new', ?, ?, ?, ?)
+            """,
+            (
+                iid,
+                int(row["assigned_customer_id"]) if row["assigned_customer_id"] is not None else None,
+                str(row["assigned_customer_name"] or ""),
+                str(row["assigned_customer_address"] or ""),
+                ts,
+            ),
+        )
+        expired += 1
+    return expired
+
+
 def list_suppliers() -> List[Dict[str, Any]]:
     conn = _conn()
     try:
+        _expire_due_pre_allocations(conn)
+        conn.commit()
         suppliers = conn.execute(
             "SELECT id, name, created_at FROM stock_suppliers ORDER BY name COLLATE NOCASE ASC"
         ).fetchall()
@@ -508,7 +583,9 @@ def list_suppliers() -> List[Dict[str, Any]]:
                 batch_invoice_number, date_in_stock, date_issued, quotation_no, invoice_no,
                 client_customer_id, client_name, address,
                 technician_user_ids_json, technician_names_json, comment,
-                lifecycle_status
+                lifecycle_status,
+                assigned_customer_id, assigned_customer_name, assigned_customer_address,
+                assigned_customer_invoice_number, assigned_at, pre_allocated_expires_at
             FROM stock_product_items
             WHERE COALESCE(lifecycle_status, 'new') <> 'assigned'
             ORDER BY created_at DESC
@@ -535,6 +612,12 @@ def list_suppliers() -> List[Dict[str, Any]]:
                     "technician_names": json.loads(str(ir["technician_names_json"] or "[]")),
                     "comment": str(ir["comment"] or ""),
                     "lifecycle_status": str(ir["lifecycle_status"] or "new"),
+                    "pre_allocated_customer_id": int(ir["assigned_customer_id"]) if ir["assigned_customer_id"] is not None else None,
+                    "pre_allocated_customer_name": str(ir["assigned_customer_name"] or ""),
+                    "pre_allocated_customer_address": str(ir["assigned_customer_address"] or ""),
+                    "pre_allocated_customer_invoice_number": str(ir["assigned_customer_invoice_number"] or ""),
+                    "pre_allocated_at": str(ir["assigned_at"] or ""),
+                    "pre_allocated_expires_at": str(ir["pre_allocated_expires_at"] or ""),
                 }
             )
         misc_lot_rows = conn.execute(
@@ -1390,7 +1473,8 @@ def assign_item_to_customer(
                 assigned_location_id = ?,
                 assigned_location_name = ?,
                 assigned_at = ?,
-                returned_at = NULL
+                returned_at = NULL,
+                pre_allocated_expires_at = NULL
             WHERE id = ?
             """,
             (
@@ -1419,6 +1503,140 @@ def assign_item_to_customer(
                 target["customer_id"],
                 target["location_name"] if target["target"] == "high_site" else target["customer_name"],
                 target["customer_address"],
+                ts,
+            ),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def pre_allocate_item_to_customer(
+    item_id: int,
+    customer_id: int = 0,
+    customer_name: str = "",
+    customer_address: str = "",
+    customer_invoice_number: str = "",
+) -> bool:
+    iid = int(item_id)
+    target = _resolve_assignment_target(
+        assignment_target="pre_allocate",
+        customer_id=customer_id,
+        customer_name=customer_name,
+        customer_address=customer_address,
+    )
+    cinv = (customer_invoice_number or "").strip()
+    if iid <= 0:
+        raise ValueError("Invalid item id")
+    conn = _conn()
+    try:
+        _expire_due_pre_allocations(conn)
+        row = conn.execute("SELECT lifecycle_status FROM stock_product_items WHERE id = ?", (iid,)).fetchone()
+        if not row:
+            raise ValueError("Item not found")
+        prev = str(row["lifecycle_status"] or "new")
+        if prev == "assigned":
+            raise ValueError("Item is already assigned")
+        if prev == "pre_allocated":
+            raise ValueError("Item is already pre-allocated")
+        ts = _now()
+        expires_at = _expires_after_days(PRE_ALLOCATION_HOLD_DAYS)
+        conn.execute(
+            """
+            UPDATE stock_product_items
+            SET lifecycle_status = 'pre_allocated',
+                assigned_customer_id = ?,
+                assigned_customer_name = ?,
+                assigned_customer_address = ?,
+                assigned_customer_invoice_number = ?,
+                assignment_target = 'pre_allocate',
+                assigned_location_id = NULL,
+                assigned_location_name = NULL,
+                assigned_at = ?,
+                returned_at = NULL,
+                pre_allocated_expires_at = ?
+            WHERE id = ?
+            """,
+            (
+                target["customer_id"],
+                target["customer_name"],
+                target["customer_address"],
+                cinv,
+                ts,
+                expires_at,
+                iid,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO stock_item_lifecycle_log(
+                item_id, action, from_status, to_status, customer_id, customer_name, customer_address, created_at
+            ) VALUES(?, 'pre_allocated_to_customer', ?, 'pre_allocated', ?, ?, ?, ?)
+            """,
+            (
+                iid,
+                prev,
+                target["customer_id"],
+                target["customer_name"],
+                target["customer_address"],
+                ts,
+            ),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def release_pre_allocated_item(item_id: int) -> bool:
+    iid = int(item_id)
+    if iid <= 0:
+        raise ValueError("Invalid item id")
+    conn = _conn()
+    try:
+        _expire_due_pre_allocations(conn)
+        row = conn.execute(
+            """
+            SELECT lifecycle_status, assigned_customer_id, assigned_customer_name, assigned_customer_address
+            FROM stock_product_items WHERE id = ?
+            """,
+            (iid,),
+        ).fetchone()
+        if not row:
+            raise ValueError("Item not found")
+        prev = str(row["lifecycle_status"] or "new")
+        if prev != "pre_allocated":
+            raise ValueError("Only pre-allocated items can be returned to stock")
+        ts = _now()
+        conn.execute(
+            """
+            UPDATE stock_product_items
+            SET lifecycle_status = 'new',
+                assigned_customer_id = NULL,
+                assigned_customer_name = NULL,
+                assigned_customer_address = NULL,
+                assigned_customer_invoice_number = NULL,
+                assignment_target = 'customer',
+                assigned_location_id = NULL,
+                assigned_location_name = NULL,
+                assigned_at = NULL,
+                pre_allocated_expires_at = NULL
+            WHERE id = ?
+            """,
+            (iid,),
+        )
+        conn.execute(
+            """
+            INSERT INTO stock_item_lifecycle_log(
+                item_id, action, from_status, to_status, customer_id, customer_name, customer_address, created_at
+            ) VALUES(?, 'pre_allocation_released', 'pre_allocated', 'new', ?, ?, ?, ?)
+            """,
+            (
+                iid,
+                int(row["assigned_customer_id"]) if row["assigned_customer_id"] is not None else None,
+                str(row["assigned_customer_name"] or ""),
+                str(row["assigned_customer_address"] or ""),
                 ts,
             ),
         )

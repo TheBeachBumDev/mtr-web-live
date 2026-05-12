@@ -2789,20 +2789,30 @@ def api_stock_assign_item(request: Request, item_id: int, payload: Dict[str, Any
     customer_address = str(p.get("customer_address") or "")
     customer_invoice_number = str(p.get("customer_invoice_number") or "")
     try:
-        stock_management.assign_item_to_customer(
-            item_id=int(item_id),
-            customer_id=customer_id,
-            customer_name=customer_name,
-            customer_address=customer_address,
-            customer_invoice_number=customer_invoice_number,
-            assignment_target=assignment_target,
-            location_id=int(location_id) if location_id not in (None, "") else None,
-        )
+        if assignment_target == "pre_allocate":
+            stock_management.pre_allocate_item_to_customer(
+                item_id=int(item_id),
+                customer_id=customer_id,
+                customer_name=customer_name,
+                customer_address=customer_address,
+                customer_invoice_number=customer_invoice_number,
+            )
+        else:
+            stock_management.assign_item_to_customer(
+                item_id=int(item_id),
+                customer_id=customer_id,
+                customer_name=customer_name,
+                customer_address=customer_address,
+                customer_invoice_number=customer_invoice_number,
+                assignment_target=assignment_target,
+                location_id=int(location_id) if location_id not in (None, "") else None,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    audit_action = "stock.item.pre_allocate" if assignment_target == "pre_allocate" else "stock.item.assign"
     audit_log.record_request(
         request,
-        "stock.item.assign",
+        audit_action,
         target_type="item_id",
         target_id=str(item_id),
         detail={
@@ -2858,6 +2868,22 @@ def api_stock_return_item(request: Request, item_id: int):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     audit_log.record_request(request, "stock.item.return", target_type="item_id", target_id=str(item_id), detail={})
+    return {"ok": True}
+
+
+@app.post("/api/stock/items/{item_id}/release-pre-allocation")
+def api_stock_release_pre_allocation(request: Request, item_id: int):
+    try:
+        stock_management.release_pre_allocated_item(int(item_id))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    audit_log.record_request(
+        request,
+        "stock.item.release_pre_allocation",
+        target_type="item_id",
+        target_id=str(item_id),
+        detail={},
+    )
     return {"ok": True}
 
 
