@@ -4177,6 +4177,25 @@ def api_users_update(request: Request, user_id: int, payload: Dict[str, Any] = B
     return {"ok": True}
 
 
+@app.post("/api/users/{user_id}/reset-2fa")
+def api_users_reset_2fa(request: Request, user_id: int):
+    require_admin(request)
+    trow = auth_users.get_user_by_id(int(user_id))
+    if not trow:
+        raise HTTPException(status_code=404, detail="User not found")
+    tun = str(trow.get("username") or "")
+    if not auth_users.reset_user_twofa(int(user_id)):
+        raise HTTPException(status_code=404, detail="User not found")
+    audit_log.record_request(
+        request,
+        "user.2fa.reset",
+        target_type="user",
+        target_id=tun or str(user_id),
+        detail={"user_id": int(user_id)},
+    )
+    return {"ok": True}
+
+
 @app.get("/api/firewall/status")
 def api_firewall_status(request: Request):
     require_admin(request)

@@ -57,7 +57,7 @@
 <p class="ur-intro">
   Admins can create accounts and choose which tabs each user sees. <strong>Admin</strong> users always have full access.
   New installs seed one admin from <code class="mono">APP_USER</code> / <code class="mono">APP_PASS</code> into <code class="mono">data/auth.db</code> on first start.
-  <strong>Home</strong> (<code class="mono">/</code>) is always enabled for non-admins and cannot be removed. <strong>MTR Live</strong> (<code class="mono">/mtr-live</code>) is a separate tab for the live hop dashboard; new users with no pages selected get both Home and MTR Live.
+  <strong>Home</strong> (<code class="mono">/</code>) is always enabled for non-admins and cannot be removed.
 </p>
 
 <div class="ur-panel">
@@ -221,6 +221,14 @@
         patchUser(u.id, { email: em, mobile: mo });
       };
       cell.appendChild(bContact);
+      var b2fa = document.createElement("button");
+      b2fa.type = "button";
+      b2fa.textContent = "Reset 2FA";
+      b2fa.onclick = function () {
+        if (!confirm("Reset two-factor authentication for " + u.username + "? They will need to enroll again at next sign-in.")) return;
+        resetUser2fa(u.id);
+      };
+      cell.appendChild(b2fa);
       if (!u.is_admin) {
         var b3 = document.createElement("button");
         b3.type = "button";
@@ -274,6 +282,24 @@
       patchUser(u.id, { pages: gatherChecked("urPagesEdit") });
       box.remove();
     };
+  }
+
+  async function resetUser2fa(id) {
+    setErr("");
+    try {
+      var r = await fetch("/api/users/" + encodeURIComponent(id) + "/reset-2fa", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || j.error || ("HTTP " + r.status));
+        return;
+      }
+      await refresh();
+    } catch (e) {
+      setErr(String(e));
+    }
   }
 
   async function patchUser(id, body) {

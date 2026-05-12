@@ -67,9 +67,8 @@ def page_landing_path(page_key: str) -> str:
         "resources": "/resources",
     }.get(page_key, "/")
 
-# `home` and `mtr_live` are paired: anyone who may open `/` also gets the MTR Live dashboard
-# in session (nav + `/mtr-live`, APIs), so the tab appears even if `pages_json` predates `mtr_live`.
-IMPLICIT_PAGE_GRANTS: Tuple[Tuple[Set[str], Set[str]], ...] = (({"home"}, {"mtr_live"}),)
+# Optional RBAC expansions applied at session/nav time (stored pages_json is authoritative).
+IMPLICIT_PAGE_GRANTS: Tuple[Tuple[Set[str], Set[str]], ...] = ()
 
 _APP_USER = os.getenv("APP_USER", "admin")
 _APP_PASS = os.getenv("APP_PASS", "change-me")
@@ -190,7 +189,6 @@ def init_db() -> None:
         if n == 0:
             _bootstrap_from_env()
         _grant_home_to_non_admins_missing_it()
-        _grant_mtr_live_to_non_admins_with_home()
         return
     conn = _conn()
     conn.execute(
@@ -238,7 +236,6 @@ def init_db() -> None:
     if n == 0:
         _bootstrap_from_env()
     _grant_home_to_non_admins_missing_it()
-    _grant_mtr_live_to_non_admins_with_home()
 
 
 def _bootstrap_from_env() -> None:
@@ -288,37 +285,6 @@ def _grant_home_to_non_admins_missing_it() -> None:
             if "home" in pages:
                 continue
             new_pages = sorted(set(pages) | {"home"})
-            conn.execute(
-                "UPDATE app_users SET pages_json = ?, updated_at = ? WHERE id = ?",
-                (json.dumps(new_pages), ts, uid),
-            )
-        conn.commit()
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-    finally:
-        conn.close()
-
-
-def _grant_mtr_live_to_non_admins_with_home() -> None:
-    """
-    Idempotent: non-admins who already had `home` (legacy main dashboard) get `mtr_live`
-    so they keep access after `/` becomes the separate Home landing.
-    """
-    conn = _conn()
-    try:
-        rows = conn.execute(
-            "SELECT id, pages_json FROM app_users WHERE is_admin = 0"
-        ).fetchall()
-        ts = _now()
-        for r in rows:
-            uid = int(r["id"])
-            pages = _parse_pages_json(str(r["pages_json"] or "[]"))
-            if "home" not in pages or "mtr_live" in pages:
-                continue
-            new_pages = sorted(set(pages) | {"mtr_live"})
             conn.execute(
                 "UPDATE app_users SET pages_json = ?, updated_at = ? WHERE id = ?",
                 (json.dumps(new_pages), ts, uid),
@@ -473,7 +439,7 @@ def create_user(
     hp = hash_password(password)
     pg_set = sorted(set(pages or []) & ALL_PAGE_KEYS)
     if not is_admin:
-        pg_set = sorted(set(pg_set) | {"home", "mtr_live"})
+        pg_set = sorted(set(pg_set) | {"home"})
     pg = json.dumps(pg_set)
     ts = _now()
     conn = _conn()
@@ -546,8 +512,6 @@ def update_user(
             will_admin = bool(is_admin)
         if not will_admin:
             pg_set = sorted(set(pg_set) | {"home"})
-            if "home" in pg_set:
-                pg_set = sorted(set(pg_set) | {"mtr_live"})
         parts.append("pages_json = ?")
         vals.append(json.dumps(pg_set))
     if email is not None:
@@ -640,6 +604,30 @@ def set_user_twofa_temp_secret(user_id: int, secret: str) -> bool:
         conn.execute(
             "UPDATE app_users SET twofa_temp_secret = ?, updated_at = ? WHERE id = ?",
             ((secret or "").strip(), _now(), int(user_id)),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def reset_user_twofa(user_id: int) -> bool:
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT id FROM app_users WHERE id = ?", (int(user_id),)).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            """
+            UPDATE app_users
+            SET twofa_enabled = 0,
+                twofa_secret = NULL,
+                twofa_temp_secret = NULL,
+                twofa_backup_codes_json = '[]',
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (_now(), int(user_id)),
         )
         conn.commit()
         return True
