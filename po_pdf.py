@@ -1,7 +1,7 @@
 import io
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
