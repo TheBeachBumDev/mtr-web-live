@@ -4,6 +4,17 @@ from email.message import EmailMessage
 from typing import Dict, Tuple
 
 
+def _smtp_transport_mode(port: int, use_tls: bool) -> Tuple[bool, bool]:
+    ssl_env = (os.getenv("SMTP_SSL", "") or "").strip()
+    if ssl_env == "1":
+        return True, False
+    if ssl_env == "0":
+        return False, use_tls
+    if int(port) == 465:
+        return True, False
+    return False, use_tls
+
+
 def send_email(notification: Dict, destination_email: str) -> Tuple[bool, str, str]:
     host = (os.getenv("SMTP_HOST", "") or "").strip()
     port = int((os.getenv("SMTP_PORT", "587") or "587").strip() or "587")
@@ -24,9 +35,14 @@ def send_email(notification: Dict, destination_email: str) -> Tuple[bool, str, s
     if action:
         body = body + "\n\nAction: " + action
     msg.set_content(body)
+    use_ssl, use_starttls = _smtp_transport_mode(port, use_tls)
     try:
-        with smtplib.SMTP(host, port, timeout=10) as s:
-            if use_tls:
+        if use_ssl:
+            client: smtplib.SMTP = smtplib.SMTP_SSL(host, port, timeout=10)
+        else:
+            client = smtplib.SMTP(host, port, timeout=10)
+        with client as s:
+            if use_starttls:
                 s.starttls()
             if user:
                 s.login(user, password)
