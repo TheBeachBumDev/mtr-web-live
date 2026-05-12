@@ -39,7 +39,7 @@ from scripts import clone_schedule
 from scripts import dr_runner
 from notifications.service import dispatch_due_notifications, _hydrate_po_email_notification
 from po_email_actions import execute_email_action, get_email_action_context, render_email_action_page
-from po_pdf import build_purchase_order_pdf, purchase_order_pdf_filename
+from po_pdf import build_purchase_order_pdf, deliver_po_invoice_email, purchase_order_pdf_filename
 import po_quote_import
 from urllib.parse import parse_qs, quote, urlparse
 import html
@@ -3503,7 +3503,12 @@ def api_po_generate_pdf(po_id: int, request: Request):
     out_name = f"v{version}.pdf"
     out_path = out_dir / out_name
     out_path.write_bytes(pdf_bytes)
-    purchase_orders.save_po_pdf(po_id, user_id, purchase_order_pdf_filename(po), str(out_path), pdf_bytes)
+    download_name = purchase_order_pdf_filename(po)
+    purchase_orders.save_po_pdf(po_id, user_id, download_name, str(out_path), pdf_bytes)
+    try:
+        deliver_po_invoice_email(po, pdf_bytes, download_name)
+    except Exception:
+        pass
     return {"ok": True, "version": version, "path": str(out_path)}
 
 
@@ -3528,7 +3533,12 @@ def api_po_place_order(po_id: int, request: Request):
     out_name = f"v{version}.pdf"
     out_path = out_dir / out_name
     out_path.write_bytes(pdf_bytes)
-    purchase_orders.save_po_pdf(po_id, user_id, purchase_order_pdf_filename(po), str(out_path), pdf_bytes)
+    download_name = purchase_order_pdf_filename(po)
+    purchase_orders.save_po_pdf(po_id, user_id, download_name, str(out_path), pdf_bytes)
+    try:
+        deliver_po_invoice_email(po, pdf_bytes, download_name)
+    except Exception:
+        pass
     if status != "sent_to_supplier":
         purchase_orders.update_lifecycle_status(po_id, user_id, "sent_to_supplier", "Placed order")
     _publish_po_event(po_id, "placed")
