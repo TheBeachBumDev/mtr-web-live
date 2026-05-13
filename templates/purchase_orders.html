@@ -181,6 +181,31 @@
     box-sizing: border-box;
   }
   .po-col-resize { min-width: 0; max-width: 100%; }
+  .po-vat-basis-card {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+    margin: 0 0 10px 0;
+    background: color-mix(in srgb, var(--card) 94%, var(--line) 6%);
+  }
+  .po-vat-basis-card__title {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .po-vat-basis-card__hint {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .po-line-items-toolbar label {
+    font-size: 13px;
+    font-weight: 500;
+  }
   .po-items { width: 100%; overflow: hidden; margin-top: 6px; }
   .po-items table { min-width: 0; width: 100%; }
   .po-list { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -960,10 +985,24 @@
     </div>
     <div class="po-row po-row--items-head po-items po-items-wrap">
       <span class="wide">Line items</span>
+      <div class="po-vat-basis-card" role="group" aria-labelledby="poVatBasisTitle">
+        <p id="poVatBasisTitle" class="po-vat-basis-card__title">VAT basis for all lines</p>
+        <p class="po-vat-basis-card__hint">One setting for the whole PO: choose whether the unit price column is excluding or including VAT. Line subtotals stay ex-VAT; totals include tax per line.</p>
+        <div class="po-line-items-toolbar" style="display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center;">
+          <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+            <input type="radio" name="poPriceBasis" id="poPriceBasisEx" value="ex" checked />
+            <span>Ex VAT</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+            <input type="radio" name="poPriceBasis" id="poPriceBasisInc" value="inc" />
+            <span>Inc VAT</span>
+          </label>
+        </div>
+      </div>
       <datalist id="poItemDescOptions"></datalist>
       <table class="po-items-table po-stack-table">
         <thead>
-          <tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Line Total</th><th></th></tr>
+          <tr><th>Description</th><th>Qty</th><th id="poUnitPriceTh">Unit price (Ex VAT)</th><th id="poLineTotalTh">Line (Ex VAT)</th><th></th></tr>
         </thead>
         <tbody id="poItemsBody"></tbody>
       </table>
@@ -1139,35 +1178,126 @@
     supplierProductSuggestions = supplierProductCatalog.map(p => p.name);
     renderItemDescriptionSuggestions();
   };
+  const PO_DEFAULT_VAT = 0.15;
+  let _poPriceBasisIncLast = false;
+  const isPriceBasisInc = () => !!(document.getElementById("poPriceBasisInc") && document.getElementById("poPriceBasisInc").checked);
+  const fractionTaxFromRaw = (raw) => {
+    let t = Number(raw);
+    if (!Number.isFinite(t) || t < 0) return PO_DEFAULT_VAT;
+    if (t > 1) t = t / 100;
+    return t;
+  };
+  const fractionTaxFromItem = (item) => fractionTaxFromRaw(item && item.tax_rate);
+  const rowEffectiveTax = (tr) => {
+    const ds = tr && tr.dataset ? tr.dataset.lineTaxRate : null;
+    if (ds != null && String(ds).trim() !== "") return fractionTaxFromRaw(ds);
+    return PO_DEFAULT_VAT;
+  };
+  const parseQtyLoose = (s) => {
+    const only = String(s || "").replace(/\D/g, "");
+    if (!only) return null;
+    const n = parseInt(only, 10);
+    if (!Number.isFinite(n) || n < 1) return null;
+    return n;
+  };
+  const parseQtySubmit = (s) => {
+    const q = parseQtyLoose(s);
+    return q == null ? 1 : q;
+  };
+  const unitDisplayToEx = (tr, unitDisplay) => {
+    const u = Number(unitDisplay);
+    if (!Number.isFinite(u) || u < 0) return 0;
+    if (isPriceBasisInc()) {
+      const t = rowEffectiveTax(tr);
+      const denom = 1 + t;
+      return denom > 0 ? u / denom : u;
+    }
+    return u;
+  };
+  const formatPoMoney = (n) => (Number.isFinite(n) ? n : 0).toFixed(2);
+  const refreshAllPoLineCalcs = () => {
+    itemsBody().querySelectorAll("tr").forEach((row) => {
+      const fn = row._poRecalcRow;
+      if (typeof fn === "function") fn();
+    });
+  };
+  const syncPoPriceBasisLastFromDom = () => { _poPriceBasisIncLast = isPriceBasisInc(); };
+  const updatePoBasisHeaders = () => {
+    const inc = isPriceBasisInc();
+    const ut = document.getElementById("poUnitPriceTh");
+    const lt = document.getElementById("poLineTotalTh");
+    if (ut) ut.textContent = inc ? "Unit price (Inc VAT)" : "Unit price (Ex VAT)";
+    if (lt) lt.textContent = "Line subtotal (Ex VAT)";
+  };
+  const onPoPriceBasisChange = () => {
+    const nowInc = isPriceBasisInc();
+    itemsBody().querySelectorAll("tr").forEach((row) => {
+      const inp = row.querySelector(".po-item-unit");
+      if (!inp) return;
+      const t = rowEffectiveTax(row);
+      const v = Number(inp.value);
+      if (!Number.isFinite(v)) return;
+      if (_poPriceBasisIncLast !== nowInc) {
+        if (nowInc && !_poPriceBasisIncLast) inp.value = formatPoMoney(v * (1 + t));
+        if (!nowInc && _poPriceBasisIncLast) inp.value = formatPoMoney(v / (1 + t));
+      }
+    });
+    _poPriceBasisIncLast = nowInc;
+    updatePoBasisHeaders();
+    refreshAllPoLineCalcs();
+    recalcTotals();
+  };
+  const resetPoPriceBasisToEx = () => {
+    const ex = document.getElementById("poPriceBasisEx");
+    const inc = document.getElementById("poPriceBasisInc");
+    if (ex) ex.checked = true;
+    if (inc) inc.checked = false;
+    syncPoPriceBasisLastFromDom();
+    updatePoBasisHeaders();
+  };
   const addItemRow = (item = {}) => {
     const tr = document.createElement("tr");
+    const lineTax = fractionTaxFromItem(item);
+    tr.dataset.lineTaxRate = String(lineTax);
+    const qtyInit = Math.max(1, Math.round(Number(item.quantity ?? 1) || 1));
+    const exUnit = Number(item.unit_price ?? 0);
+    const displayUnit = isPriceBasisInc() ? exUnit * (1 + lineTax) : exUnit;
     tr.innerHTML = `
       <td data-label="Description"><div class="po-col-resize"><input class="po-item-desc" list="poItemDescOptions" value="${String(item.description || "").replace(/"/g, "&quot;")}" placeholder="Item description" /></div></td>
-      <td data-label="Qty"><div class="po-col-resize"><input class="po-item-qty" type="number" min="1" step="1" value="${Math.max(1, Math.round(Number(item.quantity ?? 1) || 1))}" /></div></td>
-      <td data-label="Unit price"><div class="po-col-resize"><input class="po-item-unit" type="number" min="0" step="0.01" value="${Number(item.unit_price ?? 0)}" /></div></td>
+      <td data-label="Qty"><div class="po-col-resize"><input class="po-item-qty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${qtyInit}" /></div></td>
+      <td data-label="Unit price"><div class="po-col-resize"><input class="po-item-unit" type="number" min="0" step="0.01" value="${formatPoMoney(displayUnit)}" /></div></td>
       <td data-label="Line total"><span class="po-item-line-total">R 0.00</span></td>
       <td class="po-item-actions po-td--stack-wide" data-label="Remove"><button type="button" class="po-item-del">Remove</button></td>
     `;
     tr.querySelector(".po-item-del").onclick = () => { tr.remove(); recalcTotals(); };
+    const qtyInput = tr.querySelector(".po-item-qty");
     const autoFillUnitPrice = () => {
       const desc = tr.querySelector(".po-item-desc").value || "";
       const m = matchProductCatalogEntry(desc);
       if (!m || m.unit_price == null) return;
-      tr.querySelector(".po-item-unit").value = Number(m.unit_price).toFixed(2);
+      const up = Number(m.unit_price);
+      const t = rowEffectiveTax(tr);
+      tr.querySelector(".po-item-unit").value = isPriceBasisInc() ? formatPoMoney(up * (1 + t)) : formatPoMoney(up);
     };
     const recalc = () => {
-      const qtyInput = tr.querySelector(".po-item-qty");
-      const qtyNorm = Math.max(1, Math.round(Number(qtyInput.value || "1") || 1));
-      if (String(qtyInput.value) !== String(qtyNorm)) qtyInput.value = String(qtyNorm);
-      const qty = Number(tr.querySelector(".po-item-qty").value || "0");
-      const unit = Number(tr.querySelector(".po-item-unit").value || "0");
-      const line = (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+      const qLo = parseQtyLoose(qtyInput.value);
+      const qEff = qLo == null ? 0 : qLo;
+      const unitEx = unitDisplayToEx(tr, tr.querySelector(".po-item-unit").value || "0");
+      const line = qEff * unitEx;
       tr.querySelector(".po-item-line-total").textContent = `R ${line.toFixed(2)}`;
       recalcTotals();
     };
+    tr._poRecalcRow = recalc;
+    qtyInput.addEventListener("input", () => {
+      qtyInput.value = String(qtyInput.value || "").replace(/\D/g, "");
+      recalc();
+    });
+    qtyInput.addEventListener("blur", () => {
+      if (parseQtyLoose(qtyInput.value) == null) qtyInput.value = "1";
+      recalc();
+    });
     tr.querySelector(".po-item-desc").addEventListener("change", () => { autoFillUnitPrice(); recalc(); });
     tr.querySelector(".po-item-desc").addEventListener("blur", () => { autoFillUnitPrice(); recalc(); });
-    tr.querySelector(".po-item-qty").addEventListener("input", recalc);
     tr.querySelector(".po-item-unit").addEventListener("input", recalc);
     itemsBody().appendChild(tr);
     autoFillUnitPrice();
@@ -1175,12 +1305,17 @@
   };
   const recalcTotals = () => {
     let subtotal = 0;
-    itemsBody().querySelectorAll("tr").forEach(tr => {
-      const qty = Number(tr.querySelector(".po-item-qty").value || "0");
-      const unit = Number(tr.querySelector(".po-item-unit").value || "0");
-      subtotal += (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+    let tax = 0;
+    itemsBody().querySelectorAll("tr").forEach((row) => {
+      const desc = (row.querySelector(".po-item-desc") && row.querySelector(".po-item-desc").value || "").trim();
+      if (!desc) return;
+      const qSave = parseQtySubmit(row.querySelector(".po-item-qty") && row.querySelector(".po-item-qty").value);
+      const unitEx = unitDisplayToEx(row, row.querySelector(".po-item-unit") && row.querySelector(".po-item-unit").value || "0");
+      const lineSub = qSave * unitEx;
+      const trt = rowEffectiveTax(row);
+      subtotal += lineSub;
+      tax += lineSub * trt;
     });
-    const tax = subtotal * 0.15;
     const grand = subtotal + tax;
     document.getElementById("poSubtotal").textContent = `R ${subtotal.toFixed(2)}`;
     document.getElementById("poTaxAmount").textContent = `R ${tax.toFixed(2)}`;
@@ -1195,6 +1330,7 @@
     if (department) document.getElementById("poDepartmentText").value = department;
     if (notes) document.getElementById("poNotes").value = notes;
     itemsBody().innerHTML = "";
+    resetPoPriceBasisToEx();
     const items = Array.isArray(s.items) ? s.items : [];
     if (items.length) {
       items.forEach((it) => addItemRow(it || {}));
@@ -1223,14 +1359,16 @@
     const out = [];
     itemsBody().querySelectorAll("tr").forEach(tr => {
       const description = tr.querySelector(".po-item-desc").value.trim();
-      const quantity = Math.max(1, Math.round(Number(tr.querySelector(".po-item-qty").value || "1") || 1));
-      const unit_price = Number(tr.querySelector(".po-item-unit").value || "0");
+      const quantity = parseQtySubmit(tr.querySelector(".po-item-qty").value);
+      const rawUnit = Number(tr.querySelector(".po-item-unit").value || "0");
+      const tax_rate = rowEffectiveTax(tr);
+      const unit_price = unitDisplayToEx(tr, rawUnit);
       if (!description) return;
       out.push({
         description,
         quantity: Number.isFinite(quantity) ? quantity : 1,
         unit_price: Number.isFinite(unit_price) ? unit_price : 0,
-        tax_rate: 0,
+        tax_rate,
       });
     });
     if (out.length === 0) throw new Error("Add at least one line item");
@@ -1767,6 +1905,7 @@
     document.getElementById("poUrgency").value = po.urgency || "standard";
     toggleCustomerFields();
     document.getElementById("poNotes").value = po.notes || "";
+    resetPoPriceBasisToEx();
     itemsBody().innerHTML = "";
     (po.items || []).forEach(x => addItemRow(x));
     if ((po.items || []).length === 0) addItemRow();
@@ -1819,13 +1958,15 @@
   };
   const poPayload = () => {
     const tax = (() => {
-      let subtotal = 0;
+      let taxSum = 0;
       itemsBody().querySelectorAll("tr").forEach(tr => {
-        const qty = Number(tr.querySelector(".po-item-qty").value || "0");
-        const unit = Number(tr.querySelector(".po-item-unit").value || "0");
-        subtotal += (Number.isFinite(qty) ? qty : 0) * (Number.isFinite(unit) ? unit : 0);
+        const desc = (tr.querySelector(".po-item-desc") && tr.querySelector(".po-item-desc").value || "").trim();
+        if (!desc) return;
+        const qSave = parseQtySubmit(tr.querySelector(".po-item-qty") && tr.querySelector(".po-item-qty").value);
+        const unitEx = unitDisplayToEx(tr, tr.querySelector(".po-item-unit") && tr.querySelector(".po-item-unit").value || "0");
+        taxSum += qSave * unitEx * rowEffectiveTax(tr);
       });
-      return subtotal * 0.15;
+      return taxSum;
     })();
     const base = {
       notes: document.getElementById("poNotes").value || "",
@@ -1965,6 +2106,7 @@
     document.getElementById("poPaymentStatus").value = "";
     const dn = document.getElementById("poDepartmentNew");
     if (dn) dn.value = "";
+    resetPoPriceBasisToEx();
     itemsBody().innerHTML = "";
     addItemRow();
   };
@@ -2159,6 +2301,12 @@
     await j("/api/po/notifications/dispatch", {method:"POST", body: JSON.stringify({limit:100})});
   });
   document.getElementById("poRefreshBtn").onclick = () => act(async () => {});
+  ["poPriceBasisEx", "poPriceBasisInc"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", onPoPriceBasisChange);
+  });
+  syncPoPriceBasisLastFromDom();
+  updatePoBasisHeaders();
   addItemRow();
   toggleCustomerFields();
   connectPoEvents();
