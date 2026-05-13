@@ -48,6 +48,8 @@ PO_ATTACHMENTS_DIR = os.getenv("PO_ATTACHMENTS_DIR", "/app/data/po-attachments")
 PO_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs", "custom", "quote_import"}
 PO_PAYMENT_STATUSES = {"paid", "unpaid"}
 PO_URGENCY = {"urgent", "asap", "standard"}
+# Default VAT fraction (e.g. South Africa 15%). Used when persisting new lines and when inferring legacy rows saved with tax_rate=0.
+PO_DEFAULT_VAT_FRAC = Decimal("0.15")
 
 
 def _is_manual_po_request_type(request_type: str) -> bool:
@@ -540,6 +542,39 @@ def _calc_line_item(item: Dict[str, Any]) -> Dict[str, Any]:
         "tax_rate": float(tax_rate),
         "tax_amount": float(tax_amount),
         "line_total": float(line_total),
+    }
+
+
+def _po_item_row_for_response(r: Any) -> Dict[str, Any]:
+    """Build one line item for API, PDF, and emails.
+
+    Amounts are always derived from stored ex-VAT ``unit_price`` (the Inc/Ex UI toggle only affects how
+    users type values before save; the database always holds the ex-VAT unit). ``tax_rate`` and per-line
+    tax follow ``_calc_line_item``.
+
+    Legacy rows were often saved with ``tax_rate`` 0 and no per-line tax; if the stored ``line_total``
+    equals the ex-VAT subtotal (within rounding), we infer ``PO_DEFAULT_VAT_FRAC`` for display so PDFs
+    and emails show VAT like the header totals.
+    """
+    desc = str(r["description"] or "")
+    qty = r["quantity"]
+    unit = r["unit_price"]
+    tr = r["tax_rate"]
+    stored_line = _money(r["line_total"] or 0)
+    cooked = _calc_line_item({"description": desc, "quantity": qty, "unit_price": unit, "tax_rate": tr})
+    if float(cooked["tax_rate"]) <= 0 and float(cooked["tax_amount"]) <= 0:
+        sub_ex = _money(cooked["quantity"]) * _money(cooked["unit_price"])
+        if sub_ex > 0 and stored_line <= sub_ex + Decimal("0.02"):
+            cooked = _calc_line_item({"description": desc, "quantity": qty, "unit_price": unit, "tax_rate": PO_DEFAULT_VAT_FRAC})
+    return {
+        "id": int(r["id"]),
+        "description": desc,
+        "quantity": float(cooked["quantity"]),
+        "unit_price": float(_money(cooked["unit_price"])),
+        "tax_rate": float(cooked["tax_rate"]),
+        "tax_amount": float(_money(cooked["tax_amount"])),
+        "line_total": float(_money(cooked["line_total"])),
+        "created_at": str(r["created_at"] or ""),
     }
 
 
@@ -1769,19 +1804,7 @@ def get_po(po_id: int) -> Dict[str, Any]:
             "resume_from_status": str(po.get("resume_from_status") or ""),
             "resume_from_step": int(po["resume_from_step"]) if po.get("resume_from_step") is not None else None,
             "postponed_comment": str(po.get("postponed_comment") or ""),
-            "items": [
-                {
-                    "id": int(r["id"]),
-                    "description": str(r["description"]),
-                    "quantity": float(r["quantity"] or 0),
-                    "unit_price": float(_money(r["unit_price"] or 0)),
-                    "tax_rate": float(r["tax_rate"] or 0),
-                    "tax_amount": float(_money(r["tax_amount"] or 0)),
-                    "line_total": float(_money(r["line_total"] or 0)),
-                    "created_at": str(r["created_at"] or ""),
-                }
-                for r in items
-            ],
+            "items": [_po_item_row_for_response(r) for r in items],
             "approvals": [
                 {
                     "id": int(r["id"]),
