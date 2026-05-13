@@ -56,6 +56,7 @@
 <h1>Users</h1>
 <p class="ur-intro">
   Admins can create accounts and choose which tabs each user sees. <strong>Admin</strong> users always have full access.
+  <strong>PO admin</strong> (non-admin users) can open any purchase order but may approve, decline, request changes, or postpone only when they are the current primary or backup approver on that PO.
   New installs seed one admin from <code class="mono">APP_USER</code> / <code class="mono">APP_PASS</code> into <code class="mono">data/auth.db</code> on first start.
   <strong>Home</strong> (<code class="mono">/</code>) is always enabled for non-admins and cannot be removed.
 </p>
@@ -85,6 +86,9 @@
     </div>
     <div class="ur-inline-check">
       <label><input type="checkbox" id="urAdmin" /> Admin (full access)</label>
+    </div>
+    <div class="ur-inline-check">
+      <label><input type="checkbox" id="urPoAdmin" /> PO admin (see all purchase orders; approve only when assigned)</label>
     </div>
     <div>
       <button type="button" id="urAddBtn">Create</button>
@@ -181,9 +185,11 @@
     users.forEach(function (u) {
       var tr = document.createElement("tr");
       var pagesStr = u.is_admin ? "—" : (u.pages && u.pages.length ? u.pages.join(", ") : "home (default)");
+      var roleLabel = u.is_admin ? "<b>Admin</b>" : "User";
+      if (!u.is_admin && u.po_admin) roleLabel += " · <span class=\"muted\">PO admin</span>";
       tr.innerHTML =
         "<td class=\"mono\">" + escapeHtml(u.username) + "</td>" +
-        "<td>" + (u.is_admin ? "<b>Admin</b>" : "User") + "</td>" +
+        "<td>" + roleLabel + "</td>" +
         "<td class=\"muted small\">" + (u.twofa_enabled ? "Enabled" : "Enrollment required") + "</td>" +
         "<td class=\"muted small\">" + escapeHtml(u.email || "-") + "</td>" +
         "<td class=\"muted small\">" + escapeHtml(u.mobile || "-") + "</td>" +
@@ -247,6 +253,15 @@
           patchUser(u.id, { is_admin: false, pages: ["home", "mtr_live"] });
         };
         cell.appendChild(b4);
+      }
+      if (!u.is_admin) {
+        var bpo = document.createElement("button");
+        bpo.type = "button";
+        bpo.textContent = u.po_admin ? "Revoke PO admin" : "Grant PO admin";
+        bpo.onclick = function () {
+          patchUser(u.id, { po_admin: !u.po_admin });
+        };
+        cell.appendChild(bpo);
       }
       var b5 = document.createElement("button");
       b5.type = "button";
@@ -347,6 +362,7 @@
       return;
     }
     var isAdm = document.getElementById("urAdmin").checked;
+    var poAdm = document.getElementById("urPoAdmin").checked;
     var pages = gatherChecked("urPagesNew");
     var email = (document.getElementById("urEmail").value || "").trim();
     var mobile = (document.getElementById("urMobile").value || "").trim();
@@ -359,6 +375,7 @@
           username: username,
           password: password,
           is_admin: isAdm,
+          po_admin: poAdm && !isAdm,
           pages: pages,
           email: email,
           mobile: mobile,
@@ -373,6 +390,7 @@
       document.getElementById("urPass").value = "";
       document.getElementById("urPass2").value = "";
       document.getElementById("urAdmin").checked = false;
+      document.getElementById("urPoAdmin").checked = false;
       document.getElementById("urEmail").value = "";
       document.getElementById("urMobile").value = "";
       renderPageChecks("urPagesNew", "n", [], false);
@@ -387,6 +405,9 @@
     document.querySelectorAll("#urPagesNew input[type=checkbox]").forEach(function (c) {
       c.disabled = dis;
     });
+    var po = document.getElementById("urPoAdmin");
+    po.disabled = dis;
+    if (dis) po.checked = false;
   });
 
   renderPageChecks("urPagesNew", "n", [], false);

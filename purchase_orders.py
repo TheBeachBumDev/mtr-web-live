@@ -1140,6 +1140,43 @@ def _complete_step_if_ready(c, po_id: int, step_number: int) -> bool:
     return int(open_rows["n"] or 0) == 0
 
 
+def _pending_approval_row_for_actor(
+    c: Any,
+    po_id: int,
+    step: int,
+    actor_user_id: int,
+    *,
+    force_admin: bool,
+) -> Optional[Any]:
+    """Row on the current step this actor may act on: primary approver or backup. If force_admin, any pending row on the step."""
+    pid = int(po_id)
+    st = int(step)
+    aid = int(actor_user_id)
+    row = c.execute(
+        """
+        SELECT id
+        FROM purchase_order_approvals
+        WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
+          AND (approver_user_id = ? OR (backup_approver_user_id IS NOT NULL AND backup_approver_user_id = ?))
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        (pid, st, aid, aid),
+    ).fetchone()
+    if row or not force_admin:
+        return row
+    return c.execute(
+        """
+        SELECT id
+        FROM purchase_order_approvals
+        WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
+        ORDER BY id ASC
+        LIMIT 1
+        """,
+        (pid, st),
+    ).fetchone()
+
+
 def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin: bool = False) -> str:
     c = _conn()
     try:
@@ -1149,26 +1186,7 @@ def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin
         if str(po["status"]) in TERMINAL_STATUSES:
             return str(po["status"])
         step = int(po["current_approval_step"] or 0)
-        row = c.execute(
-            """
-            SELECT id, step_number, step_name
-            FROM purchase_order_approvals
-            WHERE purchase_order_id = ? AND step_number = ? AND approver_user_id = ? AND status = 'pending'
-            LIMIT 1
-            """,
-            (int(po_id), int(step), int(actor_user_id)),
-        ).fetchone()
-        if not row and force_admin:
-            row = c.execute(
-                """
-                SELECT id, step_number, step_name
-                FROM purchase_order_approvals
-                WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
-                ORDER BY id ASC
-                LIMIT 1
-                """,
-                (int(po_id), int(step)),
-            ).fetchone()
+        row = _pending_approval_row_for_actor(c, int(po_id), step, int(actor_user_id), force_admin=force_admin)
         if not row:
             raise ValueError("No pending approval assigned to this user")
         ts = _now()
@@ -1244,26 +1262,7 @@ def reject_po(po_id: int, actor_user_id: int, comments: str, force_admin: bool =
         if not po:
             raise ValueError("PO not found")
         step = int(po["current_approval_step"] or 0)
-        row = c.execute(
-            """
-            SELECT id
-            FROM purchase_order_approvals
-            WHERE purchase_order_id = ? AND step_number = ? AND approver_user_id = ? AND status = 'pending'
-            LIMIT 1
-            """,
-            (int(po_id), int(step), int(actor_user_id)),
-        ).fetchone()
-        if not row and force_admin:
-            row = c.execute(
-                """
-                SELECT id
-                FROM purchase_order_approvals
-                WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
-                ORDER BY id ASC
-                LIMIT 1
-                """,
-                (int(po_id), int(step)),
-            ).fetchone()
+        row = _pending_approval_row_for_actor(c, int(po_id), step, int(actor_user_id), force_admin=force_admin)
         if not row:
             raise ValueError("No pending approval assigned to this user")
         ts = _now()
@@ -1297,26 +1296,7 @@ def request_changes(po_id: int, actor_user_id: int, comments: str, force_admin: 
         if not po:
             raise ValueError("PO not found")
         step = int(po["current_approval_step"] or 0)
-        row = c.execute(
-            """
-            SELECT id
-            FROM purchase_order_approvals
-            WHERE purchase_order_id = ? AND step_number = ? AND approver_user_id = ? AND status = 'pending'
-            LIMIT 1
-            """,
-            (int(po_id), int(step), int(actor_user_id)),
-        ).fetchone()
-        if not row and force_admin:
-            row = c.execute(
-                """
-                SELECT id
-                FROM purchase_order_approvals
-                WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
-                ORDER BY id ASC
-                LIMIT 1
-                """,
-                (int(po_id), int(step)),
-            ).fetchone()
+        row = _pending_approval_row_for_actor(c, int(po_id), step, int(actor_user_id), force_admin=force_admin)
         if not row:
             raise ValueError("No pending approval assigned to this user")
         ts = _now()
@@ -1374,26 +1354,7 @@ def postpone_po(
         if not po:
             raise ValueError("PO not found")
         step = int(po["current_approval_step"] or 0)
-        row = c.execute(
-            """
-            SELECT id
-            FROM purchase_order_approvals
-            WHERE purchase_order_id = ? AND step_number = ? AND approver_user_id = ? AND status = 'pending'
-            LIMIT 1
-            """,
-            (int(po_id), int(step), int(actor_user_id)),
-        ).fetchone()
-        if not row and force_admin:
-            row = c.execute(
-                """
-                SELECT id
-                FROM purchase_order_approvals
-                WHERE purchase_order_id = ? AND step_number = ? AND status = 'pending'
-                ORDER BY id ASC
-                LIMIT 1
-                """,
-                (int(po_id), int(step)),
-            ).fetchone()
+        row = _pending_approval_row_for_actor(c, int(po_id), step, int(actor_user_id), force_admin=force_admin)
         if not row:
             raise ValueError("No pending approval assigned to this user")
         ts = _now()
@@ -1606,7 +1567,7 @@ def add_attachment(po_id: int, actor_user_id: int, file_name: str, file_path: st
 
 
 def _po_list_where(
-    is_admin: bool,
+    see_all_pos: bool,
     user_id: int,
     status: str,
     search: str,
@@ -1616,7 +1577,7 @@ def _po_list_where(
     if status:
         where.append("po.status = ?")
         vals.append(status.strip().lower())
-    if not is_admin:
+    if not see_all_pos:
         where.append("po.requested_by_user_id = ?")
         vals.append(int(user_id))
     needle = (search or "").strip().lower()
@@ -1637,14 +1598,14 @@ def _po_list_where(
 
 
 def count_pos(
-    is_admin: bool,
+    see_all_pos: bool,
     user_id: int,
     status: str = "",
     search: str = "",
 ) -> int:
     c = _conn()
     try:
-        where, vals = _po_list_where(is_admin, user_id, status, search)
+        where, vals = _po_list_where(see_all_pos, user_id, status, search)
         sql = """
             SELECT COUNT(*) AS n
             FROM purchase_orders po
@@ -1662,7 +1623,7 @@ def count_pos(
 
 def list_pos(
     username: str,
-    is_admin: bool,
+    see_all_pos: bool,
     user_id: int,
     status: str = "",
     limit: int = 200,
@@ -1671,7 +1632,7 @@ def list_pos(
 ) -> List[Dict[str, Any]]:
     c = _conn()
     try:
-        where, vals = _po_list_where(is_admin, user_id, status, search)
+        where, vals = _po_list_where(see_all_pos, user_id, status, search)
         sql = """
             SELECT po.id, po.po_number, po.status, po.total, po.created_at, po.submitted_at, po.current_approval_step,
                    po.request_type, po.customer_id, po.payment_status, po.date_required, po.urgency,

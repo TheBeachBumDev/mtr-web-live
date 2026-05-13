@@ -1022,12 +1022,12 @@
       <button id="poCreateBtn" type="button">Create Draft</button>
       <button id="poUpdateBtn" type="button">Update Draft</button>
       <button id="poSubmitBtn" type="button">Submit</button>
-      {% if is_admin %}
-      <button id="poApproveBtn" type="button">Approve</button>
+      <button id="poApproveBtn" type="button" style="display:none;">Approve</button>
       <button id="poPlaceOrderBtn" type="button" style="display:none;">Place Order</button>
-      <button id="poChangesBtn" type="button">Request Changes</button>
-      <button id="poPostponeBtn" type="button">Postpone</button>
-      <button id="poRejectBtn" type="button">Reject</button>
+      <button id="poChangesBtn" type="button" style="display:none;">Request Changes</button>
+      <button id="poPostponeBtn" type="button" style="display:none;">Postpone</button>
+      <button id="poRejectBtn" type="button" style="display:none;">Reject</button>
+      {% if is_admin %}
       <button id="poCancelBtn" type="button">Cancel (Admin)</button>
       {% endif %}
       <button id="poViewPdfBtn" type="button" style="display:none;">View PDF</button>
@@ -1102,7 +1102,6 @@
   };
   const CURRENT_USERNAME = {{ username | tojson }};
   const IS_ADMIN = {{ is_admin | tojson }};
-  const IS_PO_SUPER_ADMIN = String(CURRENT_USERNAME || "").toLowerCase() === "admin";
   const msg = (t, ok = true) => {
     const el = document.getElementById("poMsg");
     el.textContent = t || "";
@@ -1592,7 +1591,6 @@
     if (!APPROVAL_ACTIVE_STATUSES.has(st)) return false;
     const pend = pendingCurrentStep(po);
     if (!pend.length) return false;
-    if (IS_PO_SUPER_ADMIN) return true;
     const me = String(CURRENT_USERNAME || "").toLowerCase();
     return pend.some(a => {
       const primary = String(a.approver_username || "").toLowerCase();
@@ -1717,10 +1715,10 @@
       const canEditRow = (poStatus === "draft" || poStatus === "changes_requested");
       const isOwner = String(po.requested_by_username || "").toLowerCase() === String(CURRENT_USERNAME || "").toLowerCase();
       const rowEditBtn = canEditRow ? `<button type="button" data-po-open="${po.id}">Edit</button>` : "";
-      const approvalActionsAllowed = {% if is_admin %}canApprovePo(detail){% else %}false{% endif %};
-      const rowApproveBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-approve="${po.id}">Approve</button>` : ""){% else %}""{% endif %};
-      const rowPostponeBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-postpone="${po.id}">Postpone</button>` : ""){% else %}""{% endif %};
-      const rowDeclineBtn = {% if is_admin %}(approvalActionsAllowed ? `<button type="button" data-po-decline="${po.id}">Decline</button>` : ""){% else %}""{% endif %};
+      const approvalActionsAllowed = canApprovePo(detail);
+      const rowApproveBtn = approvalActionsAllowed ? `<button type="button" data-po-approve="${po.id}">Approve</button>` : "";
+      const rowPostponeBtn = approvalActionsAllowed ? `<button type="button" data-po-postpone="${po.id}">Postpone</button>` : "";
+      const rowDeclineBtn = approvalActionsAllowed ? `<button type="button" data-po-decline="${po.id}">Decline</button>` : "";
       const rowPlaceBtn = (isApproved && ({% if is_admin %}true{% else %}false{% endif %} || isOwner)) ? `<button type="button" data-po-place="${po.id}">Place Order</button>` : "";
       const rowDeleteBtn = (poStatus === "draft") ? `<button type="button" data-po-del="${po.id}">Delete</button>` : "";
       const docUrl = poDocumentUrl(detail);
@@ -1929,10 +1927,21 @@
     const rejectBtn = document.getElementById("poRejectBtn");
     const postponeAdminBtn = document.getElementById("poPostponeBtn");
     const approvalLiveModal = APPROVAL_ACTIVE_STATUSES.has(String(po.status || "").toLowerCase());
-    if (changesBtn) changesBtn.style.display = approvalLiveModal ? "" : "none";
-    if (rejectBtn) rejectBtn.style.display = approvalLiveModal ? "" : "none";
+    const okAct = canApprovePo(po);
+    if (changesBtn) {
+      changesBtn.style.display = approvalLiveModal ? "" : "none";
+      changesBtn.disabled = !okAct;
+      changesBtn.title = okAct ? "Request changes from requester" : waitingOnText(po);
+    }
+    if (rejectBtn) {
+      rejectBtn.style.display = approvalLiveModal ? "" : "none";
+      rejectBtn.disabled = !okAct;
+      rejectBtn.title = okAct ? "Decline this PO" : waitingOnText(po);
+    }
     if (postponeAdminBtn) {
       postponeAdminBtn.style.display = approvalLiveModal ? "" : "none";
+      postponeAdminBtn.disabled = !okAct;
+      postponeAdminBtn.title = okAct ? "Postpone approvals" : waitingOnText(po);
       postponeAdminBtn.onclick = () => openPostponeModal(selectedPoId);
     }
     const docUrl = poDocumentUrl(po);

@@ -18,7 +18,7 @@ import subprocess
 import tarfile
 import ipam
 import monitoring
-from access_control import require_admin
+from access_control import require_admin, require_login
 from app_config import APP_ROLE
 import edge_routers
 import location_sync
@@ -1364,6 +1364,7 @@ async def auth_session_middleware(request: Request, call_next):
             return RedirectResponse(url="/2fa/setup", status_code=302)
     request.state.user_id = int((urow or {}).get("id") or 0)
     request.state.is_admin = is_adm
+    request.state.po_admin = bool((urow or {}).get("po_admin"))
     request.state.allowed_pages = allowed
     request.state.standby_banner = _standby_banner_message()
     request.state.nav_items = _nav_with_published_ports(request, _nav_items_for_request(request))
@@ -3240,6 +3241,22 @@ def api_po_set_role_assignments(payload: Dict[str, Any] = Body(...), request: Re
     return {"ok": True, "assignments": purchase_orders.list_role_assignments(department_id=department_id)}
 
 
+def _break_glass_po_force(request: Request) -> bool:
+    """Legacy: global admin with username ``admin`` may act on a pending step without being the named approver."""
+    if not bool(getattr(request.state, "is_admin", False)):
+        return False
+    return str(getattr(request.state, "username", "") or "").strip().lower() == "admin"
+
+
+def _po_can_read(request: Request, po: Dict[str, Any]) -> bool:
+    if bool(getattr(request.state, "is_admin", False)):
+        return True
+    if bool(getattr(request.state, "po_admin", False)):
+        return True
+    uid = int(getattr(request.state, "user_id", 0) or 0)
+    return int(po.get("requested_by_user_id") or 0) == uid
+
+
 @app.get("/api/po/list")
 def api_po_list(
     request: Request,
@@ -3251,14 +3268,16 @@ def api_po_list(
     username = getattr(request.state, "username", "unknown")
     user_id = int(getattr(request.state, "user_id", 0) or 0)
     is_admin = bool(getattr(request.state, "is_admin", False))
+    po_admin = bool(getattr(request.state, "po_admin", False))
     page = max(1, int(page))
     page_size = max(1, min(50, int(page_size)))
     offset = (page - 1) * page_size
     search = (q or "").strip()
-    total = purchase_orders.count_pos(is_admin=is_admin, user_id=user_id, status=status, search=search)
+    see_all = is_admin or po_admin
+    total = purchase_orders.count_pos(see_all_pos=see_all, user_id=user_id, status=status, search=search)
     rows = purchase_orders.list_pos(
         username=username,
-        is_admin=is_admin,
+        see_all_pos=see_all,
         user_id=user_id,
         status=status,
         limit=page_size,
@@ -3275,9 +3294,8 @@ def api_po_list(
 
 
 def _api_po_postpone_impl(po_id: int, payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
-    require_admin(request)
+    require_login(request)
     user_id = int(getattr(request.state, "user_id", 0) or 0)
-    username = str(getattr(request.state, "username", "") or "").strip().lower()
     p = payload or {}
     comments = str(p.get("comments") or "")
     resume_at = str(p.get("resume_at") or "")
@@ -3291,7 +3309,7 @@ def _api_po_postpone_impl(po_id: int, payload: Dict[str, Any], request: Request)
             user_id,
             comments,
             resume_at,
-            force_admin=(username == "admin"),
+            force_admin=_break_glass_po_force(request),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -3330,9 +3348,7 @@ def api_po_detail(po_id: int, request: Request):
         po = purchase_orders.get_po(po_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    is_admin = bool(getattr(request.state, "is_admin", False))
-    user_id = int(getattr(request.state, "user_id", 0) or 0)
-    if not is_admin and int(po.get("requested_by_user_id") or 0) != user_id:
+    if not _po_can_read(request, po):
         raise HTTPException(status_code=403, detail="Forbidden")
     return {"ok": True, "purchase_order": po}
 
@@ -3491,13 +3507,11 @@ def api_po_submit(po_id: int, request: Request):
 
 @app.post("/api/po/{po_id}/approve")
 def api_po_approve(po_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
-    require_admin(request)
+    require_login(request)
     user_id = int(getattr(request.state, "user_id", 0) or 0)
-    username = str(getattr(request.state, "username", "") or "").strip().lower()
     comments = str((payload or {}).get("comments") or "")
-    super_admin_override = username == "admin"
     try:
-        new_status = purchase_orders.approve_step(po_id, user_id, comments, force_admin=super_admin_override)
+        new_status = purchase_orders.approve_step(po_id, user_id, comments, force_admin=_break_glass_po_force(request))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     dispatch = {"total": 0, "processed": 0, "failed": 0}
@@ -3511,14 +3525,13 @@ def api_po_approve(po_id: int, payload: Dict[str, Any] = Body(...), request: Req
 
 @app.post("/api/po/{po_id}/reject")
 def api_po_reject(po_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
-    require_admin(request)
+    require_login(request)
     user_id = int(getattr(request.state, "user_id", 0) or 0)
-    username = str(getattr(request.state, "username", "") or "").strip().lower()
     comments = str((payload or {}).get("comments") or "")
     if not comments.strip():
         raise HTTPException(status_code=400, detail="Comments are required when declining a PO")
     try:
-        purchase_orders.reject_po(po_id, user_id, comments, force_admin=(username == "admin"))
+        purchase_orders.reject_po(po_id, user_id, comments, force_admin=_break_glass_po_force(request))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     dispatch = {"total": 0, "processed": 0, "failed": 0}
@@ -3532,14 +3545,13 @@ def api_po_reject(po_id: int, payload: Dict[str, Any] = Body(...), request: Requ
 
 @app.post("/api/po/{po_id}/changes")
 def api_po_changes(po_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
-    require_admin(request)
+    require_login(request)
     user_id = int(getattr(request.state, "user_id", 0) or 0)
-    username = str(getattr(request.state, "username", "") or "").strip().lower()
     comments = str((payload or {}).get("comments") or "")
     if not comments.strip():
         raise HTTPException(status_code=400, detail="Comments are required when putting a PO on hold")
     try:
-        purchase_orders.request_changes(po_id, user_id, comments, force_admin=(username == "admin"))
+        purchase_orders.request_changes(po_id, user_id, comments, force_admin=_break_glass_po_force(request))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     dispatch = {"total": 0, "processed": 0, "failed": 0}
@@ -3589,6 +3601,15 @@ def api_po_delete(po_id: int, request: Request):
 @app.post("/api/po/{po_id}/attachments")
 async def api_po_attachment(po_id: int, request: Request, upload: UploadFile = File(...)):
     user_id = int(getattr(request.state, "user_id", 0) or 0)
+    is_admin = bool(getattr(request.state, "is_admin", False))
+    try:
+        po = purchase_orders.get_po(po_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    if not _po_can_read(request, po):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not is_admin and int(po.get("requested_by_user_id") or 0) != int(user_id):
+        raise HTTPException(status_code=403, detail="Only the requester can add attachments to this PO")
     safe_name = os.path.basename(upload.filename or "attachment.bin")
     target_dir = Path("/app/data/po-attachments") / str(int(po_id))
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -3608,9 +3629,7 @@ def api_po_document(po_id: int, version_no: int, request: Request):
         po = purchase_orders.get_po(po_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    is_admin = bool(getattr(request.state, "is_admin", False))
-    user_id = int(getattr(request.state, "user_id", 0) or 0)
-    if not is_admin and int(po.get("requested_by_user_id") or 0) != user_id:
+    if not _po_can_read(request, po):
         raise HTTPException(status_code=403, detail="Forbidden")
     if str(po.get("status") or "").lower() != "sent_to_supplier":
         raise HTTPException(status_code=400, detail="PDF is only available after the PO is placed (ordered)")
@@ -4279,6 +4298,7 @@ def api_users_create(request: Request, payload: Dict[str, Any] = Body(...)):
             str(p.get("username") or ""),
             str(p.get("password") or ""),
             is_admin=bool(p.get("is_admin")),
+            po_admin=bool(p.get("po_admin")) and not bool(p.get("is_admin")),
             pages=p.get("pages") if isinstance(p.get("pages"), list) else [],
             email=str(p.get("email") or ""),
             mobile=str(p.get("mobile") or ""),
@@ -4324,6 +4344,10 @@ def api_users_update(request: Request, user_id: int, payload: Dict[str, Any] = B
         kw["mobile"] = str(p.get("mobile") or "")
     if "twofa_exempt" in p:
         kw["twofa_exempt"] = bool(p.get("twofa_exempt"))
+    if "po_admin" in p:
+        kw["po_admin"] = bool(p.get("po_admin"))
+    if "is_admin" in p and bool(p.get("is_admin")):
+        kw["po_admin"] = False
     trow = auth_users.get_user_by_id(int(user_id))
     tun = str((trow or {}).get("username") or "")
     try:
@@ -4341,7 +4365,7 @@ def api_users_update(request: Request, user_id: int, payload: Dict[str, Any] = B
                     pass
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    chg = [k for k in ("password", "is_admin", "pages", "email", "mobile", "twofa_exempt") if k in p]
+    chg = [k for k in ("password", "is_admin", "po_admin", "pages", "email", "mobile", "twofa_exempt") if k in p]
     udet: Dict[str, Any] = {"user_id": int(user_id), "fields": chg}
     if "password" in p:
         udet["password_changed"] = True

@@ -178,6 +178,7 @@ def init_db() -> None:
             conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS twofa_temp_secret TEXT")
             conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS twofa_backup_codes_json TEXT NOT NULL DEFAULT '[]'")
             conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS twofa_exempt INTEGER NOT NULL DEFAULT 0")
+            conn.execute("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS po_admin INTEGER NOT NULL DEFAULT 0")
             conn.commit()
         except Exception:
             pass
@@ -206,6 +207,7 @@ def init_db() -> None:
             twofa_temp_secret TEXT,
             twofa_backup_codes_json TEXT NOT NULL DEFAULT '[]',
             twofa_exempt INTEGER NOT NULL DEFAULT 0,
+            po_admin INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
@@ -228,6 +230,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE app_users ADD COLUMN twofa_backup_codes_json TEXT NOT NULL DEFAULT '[]'")
         if "twofa_exempt" not in names:
             conn.execute("ALTER TABLE app_users ADD COLUMN twofa_exempt INTEGER NOT NULL DEFAULT 0")
+        if "po_admin" not in names:
+            conn.execute("ALTER TABLE app_users ADD COLUMN po_admin INTEGER NOT NULL DEFAULT 0")
     except Exception:
         pass
     conn.commit()
@@ -302,7 +306,7 @@ def _grant_home_to_non_admins_missing_it() -> None:
 def list_users() -> List[Dict[str, Any]]:
     conn = _conn()
     rows = conn.execute(
-        "SELECT id, username, is_admin, pages_json, email, mobile, twofa_enabled, twofa_exempt, created_at FROM app_users ORDER BY username COLLATE NOCASE ASC"
+        "SELECT id, username, is_admin, po_admin, pages_json, email, mobile, twofa_enabled, twofa_exempt, created_at FROM app_users ORDER BY username COLLATE NOCASE ASC"
     ).fetchall()
     conn.close()
     out: List[Dict[str, Any]] = []
@@ -313,6 +317,7 @@ def list_users() -> List[Dict[str, Any]]:
                 "id": int(r["id"]),
                 "username": str(r["username"]),
                 "is_admin": _row_admin_flag(r),
+                "po_admin": int(r.get("po_admin", 0) or 0) == 1,
                 "pages": pages,
                 "email": str(r["email"] or ""),
                 "mobile": str(r["mobile"] or ""),
@@ -330,7 +335,7 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         return None
     conn = _conn()
     row = conn.execute(
-        "SELECT id, username, password_hash, is_admin, pages_json, email, mobile, twofa_enabled, twofa_secret, twofa_temp_secret, twofa_backup_codes_json, twofa_exempt FROM app_users WHERE username = ? COLLATE NOCASE",
+        "SELECT id, username, password_hash, is_admin, po_admin, pages_json, email, mobile, twofa_enabled, twofa_secret, twofa_temp_secret, twofa_backup_codes_json, twofa_exempt FROM app_users WHERE username = ? COLLATE NOCASE",
         (u,),
     ).fetchone()
     conn.close()
@@ -350,13 +355,14 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         "twofa_temp_secret": str(row["twofa_temp_secret"] or ""),
         "twofa_backup_codes_json": str(row["twofa_backup_codes_json"] or "[]"),
         "twofa_exempt": int(row["twofa_exempt"] or 0) == 1,
+        "po_admin": int(row.get("po_admin", 0) or 0) == 1,
     }
 
 
 def get_user_by_id(uid: int) -> Optional[Dict[str, Any]]:
     conn = _conn()
     row = conn.execute(
-        "SELECT id, username, password_hash, is_admin, pages_json, email, mobile, twofa_enabled, twofa_secret, twofa_temp_secret, twofa_backup_codes_json, twofa_exempt FROM app_users WHERE id = ?",
+        "SELECT id, username, password_hash, is_admin, po_admin, pages_json, email, mobile, twofa_enabled, twofa_secret, twofa_temp_secret, twofa_backup_codes_json, twofa_exempt FROM app_users WHERE id = ?",
         (int(uid),),
     ).fetchone()
     conn.close()
@@ -376,6 +382,7 @@ def get_user_by_id(uid: int) -> Optional[Dict[str, Any]]:
         "twofa_temp_secret": str(row["twofa_temp_secret"] or ""),
         "twofa_backup_codes_json": str(row["twofa_backup_codes_json"] or "[]"),
         "twofa_exempt": int(row["twofa_exempt"] or 0) == 1,
+        "po_admin": int(row.get("po_admin", 0) or 0) == 1,
     }
 
 
@@ -426,6 +433,7 @@ def create_user(
     password: str,
     *,
     is_admin: bool = False,
+    po_admin: bool = False,
     pages: Optional[List[str]] = None,
     email: str = "",
     mobile: str = "",
@@ -442,25 +450,26 @@ def create_user(
         pg_set = sorted(set(pg_set) | {"home"})
     pg = json.dumps(pg_set)
     ts = _now()
+    po_adm = 1 if po_admin else 0
     conn = _conn()
     try:
         if db_runtime.is_postgres():
             cur = conn.execute(
                 """
-                INSERT INTO app_users (username, password_hash, is_admin, pages_json, email, mobile, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO app_users (username, password_hash, is_admin, po_admin, pages_json, email, mobile, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """,
-                (u, hp, 1 if is_admin else 0, pg, (email or "").strip(), (mobile or "").strip(), ts, ts),
+                (u, hp, 1 if is_admin else 0, po_adm, pg, (email or "").strip(), (mobile or "").strip(), ts, ts),
             )
             uid = int(cur.fetchone()[0])
         else:
             cur = conn.execute(
                 """
-                INSERT INTO app_users (username, password_hash, is_admin, pages_json, email, mobile, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO app_users (username, password_hash, is_admin, po_admin, pages_json, email, mobile, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (u, hp, 1 if is_admin else 0, pg, (email or "").strip(), (mobile or "").strip(), ts, ts),
+                (u, hp, 1 if is_admin else 0, po_adm, pg, (email or "").strip(), (mobile or "").strip(), ts, ts),
             )
             uid = int(cur.lastrowid)
         conn.commit()
@@ -476,6 +485,7 @@ def update_user(
     *,
     password: Optional[str] = None,
     is_admin: Optional[bool] = None,
+    po_admin: Optional[bool] = None,
     pages: Optional[List[str]] = None,
     email: Optional[str] = None,
     mobile: Optional[str] = None,
@@ -505,6 +515,9 @@ def update_user(
     if is_admin is not None:
         parts.append("is_admin = ?")
         vals.append(1 if is_admin else 0)
+    if po_admin is not None:
+        parts.append("po_admin = ?")
+        vals.append(1 if po_admin else 0)
     if pages is not None:
         pg_set = sorted(set(pages) & ALL_PAGE_KEYS)
         will_admin = bool(int(row["is_admin"]))
