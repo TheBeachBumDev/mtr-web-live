@@ -777,20 +777,34 @@ def api_ipam_customer(customer_id: int):
     ip_addr = ipam.get_customer_ip(customer_id)
     return {"ok": True, "customer_id": customer_id, "ip": ip_addr}
 
+def _clone_scheduler_allowed() -> bool:
+    """When false (standby .env.compose.standby): no nightly clone, no clone API — avoids DR host cloning itself."""
+    v = (os.getenv("CLONE_SCHEDULER_ENABLED") or "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
 def _standby_banner_message() -> str:
-    """DR standby (clone) disables LOCATION_SYNC_SCHEDULER_ENABLED — show a global heads-up in the UI."""
+    """DR standby (clone) layers .env.compose.standby — show a global heads-up in the UI."""
     loc = (os.getenv("LOCATION_SYNC_SCHEDULER_ENABLED") or "1").strip().lower()
-    if loc not in ("0", "false", "no"):
+    clone_on = _clone_scheduler_allowed()
+    if loc not in ("0", "false", "no") and clone_on:
         return ""
-    parts = [
-        "Standby / DR mode: automatic Location Sync is disabled (scheduled Splynx pull does not run; data reflects the last clone)."
-    ]
+    parts: List[str] = []
+    if loc in ("0", "false", "no"):
+        parts.append(
+            "Standby / DR mode: automatic Location Sync is disabled (scheduled Splynx pull does not run; data reflects the last clone)."
+        )
+    if not clone_on:
+        parts.append(
+            "Standby / DR mode: clone scheduler is disabled (no nightly clone; clone API off — avoids standby copying to itself)."
+        )
     mon = (os.getenv("MONITORING_SAMPLING_ENABLED") or "1").strip().lower()
     if mon in ("0", "false", "no"):
         parts.append(
             "Monitoring ICMP sampling and SNMP probes to network gear are off on this host."
         )
-    parts.append("Re-enable after Promote Standby or by editing .env.compose.")
+    if parts:
+        parts.append("Re-enable after Promote Standby or by editing .env.compose.")
     return " ".join(parts)
 
 
@@ -3951,6 +3965,11 @@ def api_clone_run_detail(run_id: str, request: Request):
 @app.post("/api/clone/start")
 def api_clone_start(request: Request, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
+    if not _clone_scheduler_allowed():
+        raise HTTPException(
+            status_code=403,
+            detail="Clone runs are disabled on this host (CLONE_SCHEDULER_ENABLED=0, typical DR standby).",
+        )
     p = payload or {}
     target_host = str(p.get("target_host") or "").strip()
     target_dir = str(p.get("target_dir") or "").strip()
@@ -4010,7 +4029,11 @@ def api_clone_start(request: Request, payload: Dict[str, Any] = Body(...)):
 @app.get("/api/clone/schedule")
 def api_clone_schedule_get(request: Request):
     require_admin(request)
-    return {"ok": True, "schedule": clone_schedule.get()}
+    return {
+        "ok": True,
+        "schedule": clone_schedule.get(),
+        "clone_scheduler_allowed": _clone_scheduler_allowed(),
+    }
 
 
 @app.get("/api/clone/target")
@@ -4082,6 +4105,11 @@ def api_clone_target_reset(request: Request):
 def api_clone_schedule_put(request: Request, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
     p = payload or {}
+    if not _clone_scheduler_allowed() and bool(p.get("enabled")):
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot enable nightly clone on this host (CLONE_SCHEDULER_ENABLED=0).",
+        )
     cfg = clone_schedule.set_config(
         {
             "enabled": bool(p.get("enabled")),
@@ -4111,6 +4139,11 @@ def api_clone_schedule_put(request: Request, payload: Dict[str, Any] = Body(...)
 @app.post("/api/clone/schedule/run-now")
 def api_clone_schedule_run_now(request: Request):
     require_admin(request)
+    if not _clone_scheduler_allowed():
+        raise HTTPException(
+            status_code=403,
+            detail="Clone runs are disabled on this host (CLONE_SCHEDULER_ENABLED=0).",
+        )
     cfg = clone_schedule.get()
     target_host = str(cfg.get("target_host") or "").strip()
     target_dir = str(cfg.get("target_dir") or "").strip()
@@ -4759,11 +4792,13 @@ async def _po_notification_scheduler():
 async def _nightly_clone_scheduler():
     if APP_ROLE not in ("core",):
         return
+    if not _clone_scheduler_allowed():
+        return
     await asyncio.sleep(15.0)
     while True:
         cfg = clone_schedule.get()
         env_enabled = os.getenv("CLONE_NIGHTLY_ENABLED", "0").strip() == "1"
-        enabled = bool(cfg.get("enabled")) or env_enabled
+        enabled = _clone_scheduler_allowed() and (bool(cfg.get("enabled")) or env_enabled)
         if not enabled:
             await asyncio.sleep(30.0)
             continue
@@ -4823,7 +4858,27 @@ async def _start_po_notification_scheduler():
 
 
 @app.on_event("startup")
+def _standby_sanitize_clone_schedule_json():
+    """Cloned data/ may carry enabled=true from production; clear it when standby disables clone."""
+    if APP_ROLE != "core":
+        return
+    if not _clone_scheduler_allowed():
+        try:
+            cfg = clone_schedule.get()
+            if cfg.get("enabled"):
+                merged = dict(cfg)
+                merged["enabled"] = False
+                clone_schedule.set_config(merged)
+        except Exception:
+            pass
+
+
+@app.on_event("startup")
 async def _start_nightly_clone_scheduler():
+    if APP_ROLE != "core":
+        return
+    if not _clone_scheduler_allowed():
+        return
     asyncio.create_task(_nightly_clone_scheduler())
 
 

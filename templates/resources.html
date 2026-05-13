@@ -479,6 +479,7 @@ sudo apt-get install -y ufw curl openssl
 bash scripts/security/bootstrap_firewall_agent.sh</pre>
       <p class="hint" style="margin:6px 0 0 0;">This installs the host firewall agent, opens UFW for Docker → port <code>9191</code>, aligns <code>.env.compose</code>, and recreates <code>core</code> so <strong>/firewall</strong> works.</p>
       <p class="hint" style="margin:8px 0 0 0;"><strong>Location Sync:</strong> full clone already appends <code>LOCATION_SYNC_SCHEDULER_ENABLED=0</code> so the <code>location_sync</code> container does <strong>not</strong> run the nightly Splynx pull on standby (cache matches the cloned DB). <strong>Promote Standby</strong> sets it back to <code>1</code>.</p>
+      <p class="hint" style="margin:8px 0 0 0;"><strong>Clone / DR:</strong> standby also sets <code>CLONE_SCHEDULER_ENABLED=0</code> so the nightly clone job and clone API are off (avoids the standby copying to itself using a schedule cloned from production). Set to <code>1</code> on the active primary after promotion if you rely on scheduled clones.</p>
     </details>
     <div class="clone-grid">
       <label>Target host/IP
@@ -1405,8 +1406,22 @@ rm -rf ~/mtr-web-live /opt/mtr-web-live</pre>
       .then(function (j) {
         if (!j.ok) throw new Error(j.detail || j.error || "Failed to load clone scheduler");
         applyCloneScheduleForm(j.schedule || {});
+        applyCloneSchedulerGate(j.clone_scheduler_allowed !== false);
       })
       .catch(function (e) { cloneErr(String(e)); });
+  }
+
+  function applyCloneSchedulerGate(allowed) {
+    var ok = allowed !== false;
+    var dis = !ok;
+    ["cloneStartBtn", "cloneSchedSaveBtn", "cloneSchedRunNowBtn", "cloneSchedEnabled"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = dis;
+    });
+    if (dis) {
+      var cb = document.getElementById("cloneSchedEnabled");
+      if (cb) cb.checked = false;
+    }
   }
 
   function loadCloneTarget() {
