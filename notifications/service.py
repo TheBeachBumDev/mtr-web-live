@@ -46,13 +46,18 @@ def _hydrate_po_email_notification(notification: Dict) -> Dict:
     return out
 
 
-def dispatch_notification(notification: Dict) -> None:
+def dispatch_notification(notification: Dict) -> bool:
+    """Return True if this row was claimed for dispatch (caller may count as handled). False if still pending elsewhere."""
     nid = int(notification.get("id") or 0)
     channel = str(notification.get("channel") or "").strip().lower()
     if nid <= 0:
-        return
+        return False
+    if not purchase_orders.claim_notification_for_dispatch(nid):
+        return False
     # In-app notifications are persisted by row creation; mark as sent immediately.
     if channel == "app":
+        if not purchase_orders.notification_row_is_dispatching(nid):
+            return True
         user_id = int(notification.get("user_id") or 0)
         username = _username_for_user_id(user_id)
         if username:
@@ -67,19 +72,24 @@ def dispatch_notification(notification: Dict) -> None:
             except Exception:
                 pass
         purchase_orders.mark_notification_state(nid, "sent", provider_message_id="", response_body="in_app")
-        return
+        return True
     if channel == "email":
+        if not purchase_orders.notification_row_is_dispatching(nid):
+            return True
         pref = _notification_user_pref(int(notification.get("user_id") or 0))
         payload = _hydrate_po_email_notification(notification)
         ok, mid, body = send_email(payload, str(pref.get("email") or ""))
         purchase_orders.mark_notification_state(nid, "sent" if ok else "failed", provider_message_id=mid, response_body=body)
-        return
+        return True
     if channel == "whatsapp":
+        if not purchase_orders.notification_row_is_dispatching(nid):
+            return True
         pref = _notification_user_pref(int(notification.get("user_id") or 0))
         ok, mid, body = send_whatsapp(notification, str(pref.get("whatsapp_number") or ""))
         purchase_orders.mark_notification_state(nid, "sent" if ok else "failed", provider_message_id=mid, response_body=body)
-        return
+        return True
     purchase_orders.mark_notification_state(nid, "failed", response_body=f"unknown channel: {channel}")
+    return True
 
 
 def _notification_user_pref(user_id: int) -> Dict:
@@ -120,15 +130,17 @@ def dispatch_due_notifications(limit: int = 100) -> Dict:
     due = purchase_orders.fetch_due_notifications(limit=limit)
     sent = 0
     failed = 0
+    skipped = 0
     for n in due:
         try:
-            dispatch_notification(n)
-            # re-read state would be expensive; treat non-exception as processed
-            sent += 1
+            if dispatch_notification(n):
+                sent += 1
+            else:
+                skipped += 1
         except Exception as e:
             failed += 1
             try:
                 purchase_orders.mark_notification_state(int(n.get("id") or 0), "failed", response_body=str(e))
             except Exception:
                 pass
-    return {"total": len(due), "processed": sent, "failed": failed}
+    return {"total": len(due), "processed": sent, "failed": failed, "skipped": skipped}

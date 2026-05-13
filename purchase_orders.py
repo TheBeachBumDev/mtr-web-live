@@ -676,7 +676,7 @@ def _cancel_pending_approval_notifications(c, po_id: int) -> None:
         """
         UPDATE notifications
         SET state = 'failed', failed_at = ?
-        WHERE purchase_order_id = ? AND state = 'pending'
+        WHERE purchase_order_id = ? AND state IN ('pending', 'dispatching')
           AND event_type IN (
             'approval_required',
             'approval_reminder_4h',
@@ -685,6 +685,25 @@ def _cancel_pending_approval_notifications(c, po_id: int) -> None:
           )
         """,
         (ts, int(po_id)),
+    )
+
+
+def _cancel_pending_approval_notifications_for_user(c, po_id: int, user_id: int) -> None:
+    """Same as _cancel_pending_approval_notifications but only rows for one approver (parallel step partial approve)."""
+    ts = _now()
+    c.execute(
+        """
+        UPDATE notifications
+        SET state = 'failed', failed_at = ?
+        WHERE purchase_order_id = ? AND user_id = ? AND state IN ('pending', 'dispatching')
+          AND event_type IN (
+            'approval_required',
+            'approval_reminder_4h',
+            'approval_reminder_24h',
+            'approval_escalation_48h'
+          )
+        """,
+        (ts, int(po_id), int(user_id)),
     )
 
 
@@ -1223,6 +1242,8 @@ def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin
                     "UPDATE purchase_orders SET status = ?, current_approval_step = ? WHERE id = ?",
                     (next_status, nstep, int(po_id)),
                 )
+                # Drop scheduled reminders for the step we just left; otherwise they still fire after this user approved.
+                _cancel_pending_approval_notifications(c, int(po_id))
                 po_number = str(po["po_number"] or "")
                 total = _money(po["total"] or 0)
                 supplier_name = str(po["supplier_name"] or "")
@@ -1248,6 +1269,7 @@ def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin
                         comments=comments,
                     )
         else:
+            _cancel_pending_approval_notifications_for_user(c, int(po_id), int(actor_user_id))
             _log_status(c, po_id, actor_user_id, "approved_step_partial", current_status, current_status, comments, meta={"step": step})
         c.commit()
         return current_status
@@ -1872,6 +1894,17 @@ def save_po_pdf(po_id: int, actor_user_id: int, file_name: str, file_path: str, 
 def fetch_due_notifications(limit: int = 100) -> List[Dict[str, Any]]:
     c = _conn()
     try:
+        # Rows left in dispatching (worker crash / kill) would never be due as pending again.
+        stale_before = (datetime.utcnow() - timedelta(minutes=15)).isoformat(timespec="seconds") + "Z"
+        ts = _now()
+        c.execute(
+            """
+            UPDATE notifications
+            SET state = 'failed', failed_at = ?
+            WHERE state = 'dispatching' AND created_at < ?
+            """,
+            (ts, stale_before),
+        )
         rows = c.execute(
             """
             SELECT n.id, n.user_id, n.purchase_order_id, n.event_type, n.title, n.message, n.action_url, n.channel, n.schedule_at, u.username
@@ -1883,7 +1916,7 @@ def fetch_due_notifications(limit: int = 100) -> List[Dict[str, Any]]:
             """,
             (_now(), max(1, min(500, int(limit)))),
         ).fetchall()
-        return [
+        out = [
             {
                 "id": int(r["id"]),
                 "user_id": int(r["user_id"]),
@@ -1898,6 +1931,42 @@ def fetch_due_notifications(limit: int = 100) -> List[Dict[str, Any]]:
             }
             for r in rows
         ]
+        c.commit()
+        return out
+    finally:
+        c.close()
+
+
+def claim_notification_for_dispatch(notification_id: int) -> bool:
+    """Move a queued row from pending to dispatching so approval cancellations are not overridden by stale dispatch batches."""
+    nid = int(notification_id or 0)
+    if nid <= 0:
+        return False
+    c = _conn()
+    try:
+        cur = c.execute(
+            """
+            UPDATE notifications
+            SET state = 'dispatching'
+            WHERE id = ? AND state = 'pending'
+            """,
+            (nid,),
+        )
+        c.commit()
+        return int(getattr(cur, "rowcount", 0) or 0) > 0
+    finally:
+        c.close()
+
+
+def notification_row_is_dispatching(notification_id: int) -> bool:
+    """True if this notification is still in the dispatching state (not cancelled to failed between claim and send)."""
+    nid = int(notification_id or 0)
+    if nid <= 0:
+        return False
+    c = _conn()
+    try:
+        row = c.execute("SELECT state FROM notifications WHERE id = ?", (nid,)).fetchone()
+        return str((row or {}).get("state") or "").strip().lower() == "dispatching"
     finally:
         c.close()
 
@@ -1913,15 +1982,18 @@ def mark_notification_state(notification_id: int, status: str, provider_message_
         delivered_at = ts if st in {"delivered", "read"} else None
         read_at = ts if st == "read" else None
         failed_at = ts if st == "failed" else None
-        c.execute(
+        cur = c.execute(
             """
             UPDATE notifications
             SET state = ?, sent_at = COALESCE(?, sent_at), delivered_at = COALESCE(?, delivered_at),
                 read_at = COALESCE(?, read_at), failed_at = COALESCE(?, failed_at)
-            WHERE id = ?
+            WHERE id = ? AND state = 'dispatching'
             """,
             (st, sent_at, delivered_at, read_at, failed_at, int(notification_id)),
         )
+        if int(getattr(cur, "rowcount", 0) or 0) <= 0:
+            c.commit()
+            return
         row = c.execute(
             "SELECT user_id, purchase_order_id, channel FROM notifications WHERE id = ?",
             (int(notification_id),),
