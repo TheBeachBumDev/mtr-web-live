@@ -1184,6 +1184,16 @@ def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin
                 )
                 _log_status(c, po_id, actor_user_id, "approved", current_status, PO_STATUS_APPROVED, comments, meta={"step": step})
                 current_status = PO_STATUS_APPROVED
+                _cancel_pending_approval_notifications(c, int(po_id))
+                rid = int(po["requested_by_user_id"] or 0)
+                if rid > 0:
+                    _enqueue_requester_update_notification(
+                        c,
+                        po_id=int(po_id),
+                        requester_user_id=rid,
+                        status_label="fully approved — all approval steps complete",
+                        comments=comments,
+                    )
         else:
             _log_status(c, po_id, actor_user_id, "approved_step_partial", current_status, current_status, comments, meta={"step": step})
         c.commit()
