@@ -1279,8 +1279,8 @@ LOGIN_PAGE_HTML = """<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MTR Login</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <title>Business Management Platform</title>
+    <link rel="stylesheet" href="/static/style.css?v=20260513-login-brand" />
     <script>
       (function() {
         try {
@@ -1295,7 +1295,17 @@ LOGIN_PAGE_HTML = """<!doctype html>
 
     <div class="wrap">
       <div class="container">
-        <h1 class="title">MTR Web UI</h1>
+        <div class="login-brand">
+          <img
+            src="/static/Wibernet-logo.png"
+            alt="Wibernet"
+            class="home-hero__logo"
+            width="280"
+            height="auto"
+            decoding="async"
+          />
+          <h1 class="title login-brand__title">Business Management Platform</h1>
+        </div>
 
         <div class="card">
           <form method="post" action="/login">
