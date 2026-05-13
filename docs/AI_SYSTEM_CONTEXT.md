@@ -112,7 +112,7 @@ Build: **`requirements.txt`** → **`COPY . /app`** → image. **Incomplete tree
 
 Typical service: **`env_file: .env.compose`**, **`depends_on: postgres, redis`**, **`networks: mtr_net`**, volumes for **data** / **logs**. Host bind address via **`MTR_PUBLISH_HOST`** (often `127.0.0.1`). Topology: **`§0.4`**; source of truth **`docker-compose.yml`**.
 
-Full restore applies **`.env.compose.standby`** on the target with **`MONITORING_SAMPLING_ENABLED=0`**, **`LOCATION_SYNC_SCHEDULER_ENABLED=0`**, and **`CLONE_SCHEDULER_ENABLED=0`** (same stack image as production; only these env layers differ until you promote or edit compose env).
+Full restore applies **`.env.compose.standby`** on the target with **`MONITORING_SAMPLING_ENABLED=0`**, **`LOCATION_SYNC_SCHEDULER_ENABLED=0`**, and **`CLONE_SCHEDULER_ENABLED=0`** (same stack image as production; only these env layers differ until you promote or edit compose env). **Promote Standby** in the UI runs **`scripts/dr_promote.sh`**, which flips those three back to **`1`**, writes **`data/dr_mode.json`**, and runs **`docker compose … up -d`** so env applies without manual file edits (override with **`DR_PROMOTE_SKIP_COMPOSE=1`** if you must run compose yourself).
 
 ### 2.1 Clone or dev without path-based reverse proxy
 
