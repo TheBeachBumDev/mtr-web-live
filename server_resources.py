@@ -143,6 +143,16 @@ def published_port_for_compose_service(service: str) -> Optional[int]:
         return None
 
 
+def compose_published_ports() -> Set[int]:
+    """Distinct host ports from _COMPOSE_SERVICE_META (must match docker-compose publish map)."""
+    out: Set[int] = set()
+    for name in _COMPOSE_SERVICE_META:
+        p = published_port_for_compose_service(name)
+        if p is not None:
+            out.add(int(p))
+    return out
+
+
 _CPU_WARN = float(os.getenv("RESOURCE_CPU_WARN", "75"))
 _CPU_CRIT = float(os.getenv("RESOURCE_CPU_CRIT", "90"))
 _MEM_WARN = float(os.getenv("RESOURCE_MEM_WARN", "80"))

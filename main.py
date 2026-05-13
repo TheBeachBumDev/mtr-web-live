@@ -1239,6 +1239,72 @@ def _nav_with_published_ports(request: Request, items: List[Dict[str, str]]) -> 
     return out
 
 
+def _compose_service_name_for_app_role() -> str:
+    r = (APP_ROLE or "").strip().lower()
+    if r == "edge":
+        return "routers"
+    return r
+
+
+def _maybe_cross_service_port_redirect(request: Request, path: str) -> Optional[RedirectResponse]:
+    """
+    If the browser opened a compose publish port directly (e.g. :9002/core) but the path belongs to
+    another service, bounce GET (non-API) requests to the correct host:port. Skips standard 80/443 so
+    reverse-proxy entrypoints are unchanged.
+    """
+    raw = (os.getenv("MTR_NAV_CROSS_SERVICE_REDIRECT", "1") or "1").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return None
+    if request.method != "GET":
+        return None
+    p0 = path or "/"
+    if p0.startswith("/api/") or p0.startswith("/ws"):
+        return None
+    if _edge_allowed_path(p0):
+        return None
+    pub = server_resources.compose_published_ports()
+    scheme = (request.url.scheme or "http").strip() or "http"
+    if _request_is_https(request):
+        scheme = "https"
+    cur_req_port = request.url.port
+    if cur_req_port is None:
+        cur_req_port = 443 if scheme == "https" else 80
+    cur_role = _compose_service_name_for_app_role()
+    cur_pub = server_resources.published_port_for_compose_service(cur_role)
+    if cur_pub is None:
+        return None
+    if int(cur_req_port) not in pub or int(cur_req_port) != int(cur_pub):
+        return None
+    p = p0.split("?", 1)[0]
+    if len(p) > 1 and p.endswith("/"):
+        p = p[:-1] or "/"
+    pk = _path_to_page_key(p)
+    if not pk:
+        return None
+    is_adm = bool(getattr(request.state, "is_admin", False))
+    if pk == "users_admin":
+        if not is_adm:
+            return None
+        target_svc = "core"
+    else:
+        if not is_adm:
+            allowed = set(getattr(request.state, "allowed_pages", None) or [])
+            if pk not in allowed:
+                return None
+        target_svc = server_resources.PAGE_KEY_COMPOSE_SERVICE.get(pk) or "core"
+    target_port = server_resources.published_port_for_compose_service(target_svc)
+    if target_port is None or int(target_port) == int(cur_req_port):
+        return None
+    hostname = _client_hostname_for_nav(request)
+    if not hostname:
+        return None
+    host_u = _host_for_url(hostname)
+    qs = ("?" + request.url.query) if request.url.query else ""
+    p_start = p if p.startswith("/") else "/" + p
+    dest = f"{scheme}://{host_u}:{target_port}{p_start}{qs}"
+    return RedirectResponse(url=dest, status_code=302)
+
+
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -1314,6 +1380,9 @@ async def auth_session_middleware(request: Request, call_next):
         return _access_denied(request, path)
 
     if not _edge_allowed_path(path):
+        redir = _maybe_cross_service_port_redirect(request, path)
+        if redir is not None:
+            return redir
         if getattr(request.state, "is_admin", False) and APP_ROLE != "core":
             # Non-core roles: admins may use portable ops paths outside this container's tab subset.
             pass

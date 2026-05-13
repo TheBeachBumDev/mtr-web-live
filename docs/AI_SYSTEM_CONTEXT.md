@@ -122,6 +122,8 @@ If you only open **`http(s)://host:9002/`** (the **core** publish port) on a clo
 
 **Mitigation:** set **`MTR_NAV_USE_PUBLISHED_PORTS=1`** in **`.env.compose`**. Nav links are then rewritten to **`http(s)://<same Host header>:<service port><path>`**, using the same host ports as **`docker-compose.yml`**. After enabling or disabling this flag, rebuild **all** HTML-serving app services (**`§3.3`**) so every container’s `main.py` matches.
 
+By default, **`core`** also issues a **302 redirect** for **GET** (non-`/api/`) requests when the URL uses a **compose publish port** (9002–9013) that does not own the path — so opening **`http://host:9002/purchase-orders`** jumps to **`http://host:9007/purchase-orders`** without nginx. Disable with **`MTR_NAV_CROSS_SERVICE_REDIRECT=0`** if that interferes with a custom front door.
+
 A **DR standby** that uses the **same path-based reverse proxy** as production should **not** set this flag (nav stays root-relative like production).
 
 ---
