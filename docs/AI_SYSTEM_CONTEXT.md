@@ -112,6 +112,14 @@ Build: **`requirements.txt`** → **`COPY . /app`** → image. **Incomplete tree
 
 Typical service: **`env_file: .env.compose`**, **`depends_on: postgres, redis`**, **`networks: mtr_net`**, volumes for **data** / **logs**. Host bind address via **`MTR_PUBLISH_HOST`** (often `127.0.0.1`). Topology: **`§0.4`**; source of truth **`docker-compose.yml`**.
 
+### 2.1 Clone or dev without path-based reverse proxy
+
+The UI builds **root-relative** links (`/purchase-orders`, `/mtr-live`, …). **Production** usually puts **one hostname** (TLS) in front of nginx, which maps each path prefix to the correct **`127.0.0.1:<published port>`** (see **`server_resources._COMPOSE_SERVICE_META`**).
+
+If you only open **`http(s)://host:9002/`** (the **core** publish port) on a clone or laptop, those links still go to **port 9002**, so requests hit **core** instead of the module container and return **403 Forbidden** or wrong content — “broken nav”.
+
+**Mitigation:** set **`MTR_NAV_USE_PUBLISHED_PORTS=1`** in **`.env.compose`**. Nav links are then rewritten to **`http(s)://<same Host header>:<service port><path>`**, using the same host ports as **`docker-compose.yml`**. After enabling or disabling this flag, rebuild **all** HTML-serving app services (**`§3.3`**) so every container’s `main.py` matches.
+
 ---
 
 ## 3. Do these changes require rebuilding?

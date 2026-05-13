@@ -15,6 +15,8 @@ _ADMIN_ONLY_PATHS: Tuple[str, ...] = ("/users", "/audit-log")
 # RBAC page_key → docker-compose `services:` name (see docker-compose.yml). Update when you split a tab to its own container.
 PAGE_KEY_COMPOSE_SERVICE: Dict[str, str] = {
     "home": "core",
+    "users": "core",
+    "audit_log": "core",
     "mtr_live": "mtr_live",
     "download_test": "download_test",
     "fieldtech": "fieldtech",
@@ -123,6 +125,23 @@ _COMPOSE_SERVICE_META: Dict[str, Dict[str, str]] = {
         "path_extra": ", /api/whatsapp-signups*",
     },
 }
+
+
+def published_port_for_compose_service(service: str) -> Optional[int]:
+    """
+    TCP port published on the Docker host for a compose service (see _COMPOSE_SERVICE_META upstream).
+    Used when MTR_NAV_USE_PUBLISHED_PORTS is enabled so nav links reach the correct container without nginx.
+    """
+    meta = _COMPOSE_SERVICE_META.get((service or "").strip()) or {}
+    upstream = (meta.get("upstream") or "").strip()
+    if ":" not in upstream:
+        return None
+    tail = upstream.rsplit(":", 1)[-1].strip()
+    try:
+        return int(tail)
+    except ValueError:
+        return None
+
 
 _CPU_WARN = float(os.getenv("RESOURCE_CPU_WARN", "75"))
 _CPU_CRIT = float(os.getenv("RESOURCE_CPU_CRIT", "90"))

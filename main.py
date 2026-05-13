@@ -1159,6 +1159,72 @@ def _nav_items_for_request(request: Request) -> List[Dict[str, str]]:
     return out
 
 
+def _client_hostname_for_nav(request: Request) -> str:
+    raw = (request.headers.get("host") or "").split(",")[0].strip()
+    if not raw:
+        return (request.url.hostname or "").strip()
+    if raw.startswith("["):
+        end = raw.find("]")
+        if end > 1:
+            return raw[1:end].strip()
+    if ":" in raw:
+        host_part, port_part = raw.rsplit(":", 1)
+        if port_part.isdigit():
+            return host_part.strip()
+    return raw
+
+
+def _host_for_url(hostname: str) -> str:
+    """Bracket IPv6 literals for use in http(s)://… URLs."""
+    if not hostname:
+        return hostname
+    if ":" in hostname and not hostname.startswith("["):
+        return f"[{hostname}]"
+    return hostname
+
+
+def _nav_with_published_ports(request: Request, items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    When the stack is reached via per-service ports (no path-based reverse proxy), root-relative
+    /purchase-orders etc. would hit the wrong container. Rewrite nav hrefs to scheme://host:port/path.
+    Enable with MTR_NAV_USE_PUBLISHED_PORTS=1 in .env.compose (clone / dev laptops).
+    """
+    flag = (os.getenv("MTR_NAV_USE_PUBLISHED_PORTS", "") or "").strip().lower()
+    if flag not in ("1", "true", "yes", "on"):
+        return items
+    hostname = _client_hostname_for_nav(request)
+    if not hostname:
+        return items
+    scheme = (request.url.scheme or "http").strip() or "http"
+    cur_port = request.url.port
+    if cur_port is None:
+        cur_port = 443 if scheme == "https" else 80
+    core_port = server_resources.published_port_for_compose_service("core")
+    out: List[Dict[str, str]] = []
+    host_u = _host_for_url(hostname)
+    for it in items:
+        key = str(it.get("key") or "")
+        href = str(it.get("href") or "/")
+        label = str(it.get("label") or "")
+        svc = server_resources.PAGE_KEY_COMPOSE_SERVICE.get(key, "core")
+        port = server_resources.published_port_for_compose_service(svc)
+        if port is None:
+            out.append(it)
+            continue
+        h = href if href.startswith("/") else f"/{href}"
+        if svc == "core":
+            if core_port is not None and cur_port != core_port:
+                out.append({"key": key, "label": label, "href": f"{scheme}://{host_u}:{core_port}{h}"})
+            else:
+                out.append({"key": key, "label": label, "href": href})
+            continue
+        if port == cur_port:
+            out.append({"key": key, "label": label, "href": href})
+        else:
+            out.append({"key": key, "label": label, "href": f"{scheme}://{host_u}:{port}{h}"})
+    return out
+
+
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -1220,7 +1286,7 @@ async def auth_session_middleware(request: Request, call_next):
     request.state.is_admin = is_adm
     request.state.allowed_pages = allowed
     request.state.standby_banner = _standby_banner_message()
-    request.state.nav_items = _nav_items_for_request(request)
+    request.state.nav_items = _nav_with_published_ports(request, _nav_items_for_request(request))
 
     if path.startswith("/api/traffic") and not is_adm:
         if "mtr_live" not in allowed and "download_test" not in allowed:
