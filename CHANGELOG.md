@@ -6,7 +6,7 @@ Older entries below were **reconstructed from existing git history** (same commi
 
 ## 2026-05-14
 
-- **342c758** — Monitoring High Sites: per-tab `flat` vs `high_sites` layout, named site groups, devices under groups with `site_group_id`, bulk import with `[Site]` headers, aggregate `hs_down` / `hs_up` web push per group (skip per-device push for grouped targets). Web push subscriptions gain `push_po` and `push_monitoring` with filtered sends; monitoring UI (tab mode, site group actions, subscribe JSON); related APIs and PO push path use `require_push_po`.
+- **3c1f91f** — Monitoring High Sites: per-tab `flat` vs `high_sites` layout, named site groups, devices under groups with `site_group_id`, bulk import with `[Site]` headers, aggregate `hs_down` / `hs_up` web push per group (skip per-device push for grouped targets). Web push subscriptions gain `push_po` and `push_monitoring` with filtered sends; monitoring UI (tab mode, site group actions, subscribe JSON); related APIs and PO push path use `require_push_po`.
 
 ## 2026-05-13
 
