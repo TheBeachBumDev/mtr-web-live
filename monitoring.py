@@ -179,6 +179,17 @@ def init_db() -> None:
             (_now(),),
         )
         conn.commit()
+    try:
+        conn.execute(
+            "UPDATE monitoring_tabs SET display_mode = ? WHERE lower(trim(name)) = ? AND display_mode IS DISTINCT FROM ?",
+            (TAB_DISPLAY_FLAT, "power monitoring", TAB_DISPLAY_FLAT),
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_monitoring_targets_tab_target
@@ -216,6 +227,20 @@ def validate_tab_name(name: str) -> str:
     return n
 
 
+def _effective_tab_display_mode(name: Any, display_mode: Any) -> str:
+    """
+    Resolve UI/API display mode for a tab row.
+    The default "Power Monitoring" tab is always flat (legacy rows may have high_sites set).
+    """
+    nm = str(name or "").strip().lower()
+    if nm == "power monitoring":
+        return TAB_DISPLAY_FLAT
+    dm = str(display_mode or TAB_DISPLAY_FLAT).strip().lower()
+    if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
+        return TAB_DISPLAY_FLAT
+    return dm
+
+
 def list_tabs() -> List[Dict[str, Any]]:
     conn = get_conn()
     rows = conn.execute(
@@ -229,10 +254,7 @@ def list_tabs() -> List[Dict[str, Any]]:
     out = []
     for r in rows:
         d = dict(r)
-        dm = str(d.get("display_mode") or TAB_DISPLAY_FLAT).strip().lower()
-        if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
-            dm = TAB_DISPLAY_FLAT
-        d["display_mode"] = dm
+        d["display_mode"] = _effective_tab_display_mode(d.get("name"), d.get("display_mode"))
         out.append(d)
     return out
 
@@ -241,37 +263,11 @@ def get_tab_display_mode(tab_id: int) -> str:
     conn = get_conn()
     try:
         row = conn.execute(
-            "SELECT display_mode FROM monitoring_tabs WHERE id = ?", (int(tab_id),)
+            "SELECT name, display_mode FROM monitoring_tabs WHERE id = ?", (int(tab_id),)
         ).fetchone()
         if not row:
             return TAB_DISPLAY_FLAT
-        dm = str(row.get("display_mode") or TAB_DISPLAY_FLAT).strip().lower()
-        if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
-            return TAB_DISPLAY_FLAT
-        return dm
-    finally:
-        conn.close()
-
-
-def set_tab_display_mode(tab_id: int, display_mode: str) -> bool:
-    dm = str(display_mode or "").strip().lower()
-    if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
-        raise ValueError("display_mode must be 'flat' or 'high_sites'")
-    conn = get_conn()
-    try:
-        if not tab_exists(int(tab_id)):
-            return False
-        if dm == TAB_DISPLAY_FLAT:
-            conn.execute(
-                "UPDATE monitoring_targets SET site_group_id = NULL WHERE tab_id = ?",
-                (int(tab_id),),
-            )
-        conn.execute(
-            "UPDATE monitoring_tabs SET display_mode = ? WHERE id = ?",
-            (dm, int(tab_id)),
-        )
-        conn.commit()
-        return True
+        return _effective_tab_display_mode(row.get("name"), row.get("display_mode"))
     finally:
         conn.close()
 
@@ -350,8 +346,12 @@ def delete_site_group(group_id: int) -> bool:
         conn.close()
 
 
-def add_tab(name: str) -> int:
+def add_tab(name: str, display_mode: str = TAB_DISPLAY_FLAT) -> int:
+    """Create a tab. display_mode is fixed for the lifetime of the tab (flat vs high_sites)."""
     name = validate_tab_name(name)
+    dm = str(display_mode or "").strip().lower()
+    if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
+        raise ValueError("display_mode must be 'flat' or 'high_sites'")
     conn = get_conn()
     try:
         mx = conn.execute(
@@ -364,12 +364,55 @@ def add_tab(name: str) -> int:
             VALUES (?, ?, ?, ?)
             RETURNING id
             """,
-            (name, pos, _now(), TAB_DISPLAY_FLAT),
+            (name, pos, _now(), dm),
         ).fetchone()
         conn.commit()
         if not row:
             raise RuntimeError("Failed to create monitoring tab")
         return int(row[0])
+    finally:
+        conn.close()
+
+
+def delete_tab(tab_id: int) -> bool:
+    """
+    Remove a monitoring tab and all devices / site groups / related rows under it.
+    At least one tab must remain.
+    """
+    tid = int(tab_id)
+    conn = get_conn()
+    try:
+        n_tabs = int(conn.execute("SELECT COUNT(*) FROM monitoring_tabs").fetchone()[0])
+        if n_tabs <= 1:
+            raise ValueError("Cannot delete the last monitoring tab")
+        if not tab_exists(tid):
+            return False
+        conn.execute(
+            """
+            DELETE FROM monitoring_down_ack
+            WHERE device_id IN (SELECT id FROM monitoring_targets WHERE tab_id = ?)
+            """,
+            (tid,),
+        )
+        conn.execute(
+            """
+            DELETE FROM monitoring_samples
+            WHERE device_id IN (SELECT id FROM monitoring_targets WHERE tab_id = ?)
+            """,
+            (tid,),
+        )
+        conn.execute(
+            """
+            DELETE FROM monitoring_outages
+            WHERE tab_id = ? OR device_id IN (SELECT id FROM monitoring_targets WHERE tab_id = ?)
+            """,
+            (tid, tid),
+        )
+        conn.execute("DELETE FROM monitoring_targets WHERE tab_id = ?", (tid,))
+        conn.execute("DELETE FROM monitoring_site_groups WHERE tab_id = ?", (tid,))
+        cur = conn.execute("DELETE FROM monitoring_tabs WHERE id = ?", (tid,))
+        conn.commit()
+        return int(getattr(cur, "rowcount", 0) or 0) > 0
     finally:
         conn.close()
 

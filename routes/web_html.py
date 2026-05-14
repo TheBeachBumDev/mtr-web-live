@@ -191,14 +191,19 @@ def location_sync_page(request: Request):
 @router.get("/monitoring", response_class=HTMLResponse)
 def monitoring_page(request: Request):
     username = request.state.username if hasattr(request.state, "username") else "unknown"
-    can_manage_push_tests = bool(getattr(request.state, "is_admin", False))
+    is_admin = bool(getattr(request.state, "is_admin", False))
+    can_manage_push_tests = is_admin
+    can_delete_monitoring_tabs = is_admin or auth_users.user_is_super_admin(username)
+    can_delete_monitoring_site_groups = can_delete_monitoring_tabs
     return templates.TemplateResponse(
         "monitoring.html",
         {
             "request": request,
             "username": username,
-            "is_admin": bool(getattr(request.state, "is_admin", False)),
+            "is_admin": is_admin,
             "can_manage_push_tests": can_manage_push_tests,
+            "can_delete_monitoring_tabs": can_delete_monitoring_tabs,
+            "can_delete_monitoring_site_groups": can_delete_monitoring_site_groups,
             "active_tab": "monitoring",
             "title": "Monitoring",
             "default_warn_ms": int(monitoring.DEFAULT_WARN_MS),

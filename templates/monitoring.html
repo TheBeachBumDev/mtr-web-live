@@ -12,6 +12,38 @@
     border-radius: 14px;
     background: var(--card);
   }
+  .monitor-form--mode-flat .monitor-form__hs-panel {
+    display: none !important;
+  }
+  .monitor-form--mode-high-sites .monitor-form__hs-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1 1 100%;
+    width: 100%;
+    align-items: stretch;
+  }
+  .monitor-form__hs-panel .monitor-form__hs-site-pick {
+    flex: 1 1 auto;
+    min-width: 200px;
+  }
+  .monitor-form__hs-panel .monitor-form__hs-new-site {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+  }
+  .monitor-form__flat-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    flex: 1 1 auto;
+  }
+  .monitor-form--mode-high-sites .monitor-form__flat-panel {
+    flex: 1 1 100%;
+    width: 100%;
+  }
   .monitor-form label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   .monitor-form input { width: auto; min-width: 140px; max-width: 100%; }
   .monitor-form input#monName { min-width: 160px; }
@@ -315,6 +347,29 @@
     border-color: var(--input-border);
     background: var(--code-bg);
   }
+  .monitor-tab-del {
+    font: inherit;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid #f87171;
+    background: color-mix(in srgb, var(--card) 85%, #fecaca 15%);
+    color: #991b1b;
+    cursor: pointer;
+    font-size: 0.88rem;
+  }
+  html[data-theme="dark"] .monitor-tab-del {
+    border-color: #b91c1c;
+    background: color-mix(in srgb, var(--card) 80%, #450a0a 20%);
+    color: #fecaca;
+  }
+  .monitor-tab-del:hover {
+    filter: brightness(0.97);
+  }
+  .mon-new-tab__layout label {
+    display: block;
+    margin: 6px 0;
+    cursor: pointer;
+  }
   .monitor-hs {
     width: 100%;
     margin-bottom: 12px;
@@ -487,47 +542,45 @@
 <div class="monitor-tabstrip-wrap">
   <div id="monitorTabBar" class="monitor-tab-row"></div>
   <button type="button" class="monitor-tab-add" id="monitorTabAdd" title="Add tab">+</button>
+  {% if can_delete_monitoring_tabs %}
+  <button type="button" class="monitor-tab-del" id="monitorTabDelete" title="Delete the selected monitoring tab">Delete tab</button>
+  {% endif %}
 </div>
 
-<div id="monTabModeRow" class="hint" style="display:none; flex-wrap:wrap; align-items:center; gap:10px 14px; margin-bottom:12px;">
-  <label for="monTabMode" style="margin:0;">Tab layout</label>
-  <select id="monTabMode" style="font:inherit; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--fg);">
-    <option value="flat">Flat list (classic)</option>
-    <option value="high_sites">High Sites (grouped sites)</option>
-  </select>
-  <span class="hint" style="margin:0;">High Sites: create named sites, add devices under each; one push per site when any member is down; all-clear when every member is up.</span>
-</div>
-
-<div class="monitor-form">
-  <div id="monHsGroupWrap" style="display:none; flex:100%; min-width:200px;">
-    <label for="monHsGroupPick">High site (for new device)</label>
-    <select id="monHsGroupPick" style="font:inherit; min-width:200px; padding:8px; border-radius:10px;">
-      <option value="">— Select site —</option>
-    </select>
-  </div>
-  <div id="monNewHsWrap" style="display:none; flex-wrap:wrap; gap:10px; align-items:flex-end;">
-    <div>
-      <label for="monNewHsName">New site name</label>
-      <input id="monNewHsName" type="text" placeholder="e.g. Bunker" autocomplete="off" />
+<div class="monitor-form monitor-form--mode-flat" id="monAddDeviceForm">
+  <div id="monHsControls" class="monitor-form__hs-panel" hidden aria-hidden="true">
+    <div class="monitor-form__hs-site-pick">
+      <label for="monHsGroupPick">High site (for new device)</label>
+      <select id="monHsGroupPick" style="font:inherit; min-width:200px; padding:8px; border-radius:10px;">
+        <option value="">— Select site —</option>
+      </select>
     </div>
-    <div>
-      <button type="button" id="monNewHsBtn">Add site</button>
+    <div class="monitor-form__hs-new-site">
+      <div>
+        <label for="monNewHsName">New site name</label>
+        <input id="monNewHsName" type="text" placeholder="e.g. Bunker" autocomplete="off" />
+      </div>
+      <div>
+        <button type="button" id="monNewHsBtn">Add site</button>
+      </div>
     </div>
   </div>
-  <div>
-    <label for="monName">Name</label>
-    <input id="monName" type="text" placeholder="e.g. Core router" autocomplete="off" />
-  </div>
-  <div>
-    <label for="monTarget">IP or hostname</label>
-    <input id="monTarget" type="text" placeholder="8.8.8.8" autocomplete="off" />
-  </div>
-  <div>
-    <label for="monWarn">Warn if &gt; (ms)</label>
-    <input id="monWarn" type="number" min="1" max="60000" step="1" value="{{ default_warn_ms }}" />
-  </div>
-  <div>
-    <button type="button" id="monAddBtn" onclick="addDevice()">Add</button>
+  <div id="monFlatDeviceRow" class="monitor-form__flat-panel">
+    <div>
+      <label for="monName">Name</label>
+      <input id="monName" type="text" placeholder="e.g. Core router" autocomplete="off" />
+    </div>
+    <div>
+      <label for="monTarget">IP or hostname</label>
+      <input id="monTarget" type="text" placeholder="8.8.8.8" autocomplete="off" />
+    </div>
+    <div>
+      <label for="monWarn">Warn if &gt; (ms)</label>
+      <input id="monWarn" type="number" min="1" max="60000" step="1" value="{{ default_warn_ms }}" />
+    </div>
+    <div>
+      <button type="button" id="monAddBtn" onclick="addDevice()">Add</button>
+    </div>
   </div>
 </div>
 
@@ -638,11 +691,48 @@
   </div>
 </div>
 
+<div id="monNewTabModal" class="hist-modal" aria-hidden="true">
+  <div class="hist-modal__backdrop" id="monNewTabBackdrop"></div>
+  <div class="hist-modal__panel" style="width:min(480px,100%);" role="dialog" aria-modal="true" aria-labelledby="monNewTabTitle">
+    <div class="hist-modal__head">
+      <div>
+        <h2 id="monNewTabTitle">New monitoring tab</h2>
+        <p class="hist-modal__sub">Tab layout is permanent for this tab and cannot be changed later.</p>
+      </div>
+      <button type="button" class="hist-modal__close" id="monNewTabCloseBtn">Close</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <label for="monNewTabName" style="display:block; font-size:0.88rem; color:var(--muted); margin-bottom:4px;">Tab name</label>
+        <input id="monNewTabName" type="text" maxlength="80" autocomplete="off" style="font:inherit; width:100%; box-sizing:border-box; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--fg);" />
+      </div>
+      <fieldset class="mon-new-tab__layout" style="margin:0; padding:12px 14px; border:1px solid var(--border); border-radius:12px;">
+        <legend style="font-size:0.88rem; color:var(--muted); padding:0 6px;">Tab layout</legend>
+        <label>
+          <input type="radio" name="monNewTabLayout" value="flat" checked />
+          Flat list (classic) — one grid of devices per tab.
+        </label>
+        <label>
+          <input type="radio" name="monNewTabLayout" value="high_sites" />
+          High Sites — named sites with devices under each; grouped push behaviour.
+        </label>
+      </fieldset>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end;">
+        <button type="button" class="btn" id="monNewTabCancelBtn">Cancel</button>
+        <button type="button" class="btn" id="monNewTabCreateBtn">Create tab</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   const DEFAULT_WARN = {{ default_warn_ms|int }};
   const IS_ADMIN = {{ is_admin | tojson }};
   const CAN_MANAGE_PUSH_TESTS = {{ can_manage_push_tests | tojson }};
+  const CAN_DELETE_MONITORING_TABS = {{ can_delete_monitoring_tabs | tojson }};
+  const CAN_DELETE_MONITORING_SITE_GROUPS = {{ can_delete_monitoring_site_groups | tojson }};
   const LS_ACTIVE_TAB = "mtr_monitoring_active_tab_id";
+  const HS_ACC_OPEN_KEY = "mtr_monitoring_hs_accordion_open_v1";
   let histChartInst = null;
   let lastTabs = [];
   let lastDevicesAll = [];
@@ -650,6 +740,46 @@
   let activeTabId = null;
   let monPushLastTestResult = "not run";
   let monPushLastTestAt = "";
+
+  function readHsOpenMap() {
+    try {
+      const raw = sessionStorage.getItem(HS_ACC_OPEN_KEY);
+      const o = raw ? JSON.parse(raw) : {};
+      return o && typeof o === "object" ? o : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function writeHsOpenMap(m) {
+    try {
+      sessionStorage.setItem(HS_ACC_OPEN_KEY, JSON.stringify(m || {}));
+    } catch (e) {}
+  }
+
+  function pruneHsOpenForTab(tabId) {
+    const m = readHsOpenMap();
+    delete m[String(tabId)];
+    writeHsOpenMap(m);
+  }
+
+  function hsOpenSetForTab(tabId) {
+    const m = readHsOpenMap();
+    const key = String(tabId);
+    const arr = m[key];
+    return new Set(Array.isArray(arr) ? arr.map(Number).filter(function (x) { return Number.isFinite(x); }) : []);
+  }
+
+  function setHsGroupOpen(tabId, groupId, isOpen) {
+    const m = readHsOpenMap();
+    const key = String(tabId);
+    const cur = hsOpenSetForTab(tabId);
+    const gid = Number(groupId);
+    if (isOpen) cur.add(gid);
+    else cur.delete(gid);
+    m[key] = Array.from(cur);
+    writeHsOpenMap(m);
+  }
 
   function chartStroke() {
     try {
@@ -1548,20 +1678,11 @@
     const t = lastTabs.find(function (x) {
       return Number(x.id) === Number(activeTabId);
     });
-    const m = t && t.display_mode ? String(t.display_mode) : "flat";
+    if (!t) return "flat";
+    const nm = String(t.name || "").trim().toLowerCase();
+    if (nm === "power monitoring") return "flat";
+    const m = t.display_mode ? String(t.display_mode) : "flat";
     return m === "high_sites" ? "high_sites" : "flat";
-  }
-
-  function syncTabModeRow() {
-    const row = document.getElementById("monTabModeRow");
-    const sel = document.getElementById("monTabMode");
-    if (!row || !sel) return;
-    if (activeTabId == null || !lastTabs.length) {
-      row.style.display = "none";
-      return;
-    }
-    row.style.display = "flex";
-    sel.value = currentTabMode();
   }
 
   function fillHsGroupSelect() {
@@ -1585,10 +1706,22 @@
 
   function updateHsChrome() {
     const mode = currentTabMode();
-    const gWrap = document.getElementById("monHsGroupWrap");
-    const nWrap = document.getElementById("monNewHsWrap");
-    if (gWrap) gWrap.style.display = mode === "high_sites" ? "block" : "none";
-    if (nWrap) nWrap.style.display = mode === "high_sites" ? "flex" : "none";
+    const form = document.getElementById("monAddDeviceForm");
+    const hsPanel = document.getElementById("monHsControls");
+    const isFlat = mode !== "high_sites";
+    if (form) {
+      form.classList.toggle("monitor-form--mode-flat", isFlat);
+      form.classList.toggle("monitor-form--mode-high-sites", !isFlat);
+    }
+    if (hsPanel) {
+      if (isFlat) {
+        hsPanel.setAttribute("hidden", "hidden");
+        hsPanel.setAttribute("aria-hidden", "true");
+      } else {
+        hsPanel.removeAttribute("hidden");
+        hsPanel.setAttribute("aria-hidden", "false");
+      }
+    }
     if (mode === "high_sites") fillHsGroupSelect();
   }
 
@@ -1687,6 +1820,11 @@
       const g = groups[gi];
       const det = document.createElement("details");
       det.className = "monitor-hs";
+      const openSet = hsOpenSetForTab(activeTabId);
+      if (openSet.has(Number(g.id))) det.open = true;
+      det.addEventListener("toggle", function () {
+        setHsGroupOpen(activeTabId, g.id, det.open);
+      });
       const mems = sortDevicesPriority(
         tabDevices.filter(function (d) {
           return Number(d.site_group_id) === Number(g.id);
@@ -1700,25 +1838,27 @@
       sum.className = "monitor-hs__summary";
       const left = document.createElement("span");
       left.textContent = (g.name || "Site") + " · " + mems.length + " device(s)";
-      const right = document.createElement("span");
-      right.style.display = "inline-flex";
-      right.style.gap = "8px";
-      right.style.alignItems = "center";
-      const delG = document.createElement("button");
-      delG.type = "button";
-      delG.className = "btn";
-      delG.textContent = "Delete site";
-      delG.style.fontSize = "0.8rem";
-      delG.onclick = function (ev) {
-        try {
-          ev.preventDefault();
-        } catch (e2) {}
-        if (!confirm("Delete site \"" + (g.name || "") + "\" and all devices in it?")) return;
-        deleteSiteGroup(g.id);
-      };
-      right.appendChild(delG);
       sum.appendChild(left);
-      sum.appendChild(right);
+      if (CAN_DELETE_MONITORING_SITE_GROUPS) {
+        const right = document.createElement("span");
+        right.style.display = "inline-flex";
+        right.style.gap = "8px";
+        right.style.alignItems = "center";
+        const delG = document.createElement("button");
+        delG.type = "button";
+        delG.className = "btn";
+        delG.textContent = "Delete site";
+        delG.style.fontSize = "0.8rem";
+        delG.onclick = function (ev) {
+          try {
+            ev.preventDefault();
+          } catch (e2) {}
+          if (!confirm("Delete site \"" + (g.name || "") + "\" and all devices in it?")) return;
+          deleteSiteGroup(g.id);
+        };
+        right.appendChild(delG);
+        sum.appendChild(right);
+      }
       det.appendChild(sum);
       const hbody = document.createElement("div");
       hbody.className = "monitor-hs__body";
@@ -1742,7 +1882,6 @@
   }
 
   function renderFiltered() {
-    syncTabModeRow();
     updateHsChrome();
     const empty = document.getElementById("monEmpty");
     const root = document.getElementById("monList");
@@ -1833,24 +1972,58 @@
     }
   }
 
-  async function createTab() {
-    const name = prompt("New tab name:");
-    if (name == null) return;
-    const trimmed = String(name).trim();
-    if (!trimmed) return;
+  function openNewTabModal() {
+    const m = document.getElementById("monNewTabModal");
+    const nameEl = document.getElementById("monNewTabName");
+    if (nameEl) nameEl.value = "";
+    const flat = document.querySelector('input[name="monNewTabLayout"][value="flat"]');
+    if (flat) flat.checked = true;
+    if (m) {
+      m.classList.add("is-open");
+      m.setAttribute("aria-hidden", "false");
+    }
+    document.body.style.overflow = "hidden";
+    if (nameEl) {
+      setTimeout(function () {
+        try {
+          nameEl.focus();
+        } catch (e2) {}
+      }, 50);
+    }
+  }
+
+  function closeNewTabModal() {
+    const m = document.getElementById("monNewTabModal");
+    if (m) {
+      m.classList.remove("is-open");
+      m.setAttribute("aria-hidden", "true");
+    }
+    document.body.style.overflow = "";
+  }
+
+  async function submitNewTabModal() {
+    const nameEl = document.getElementById("monNewTabName");
+    const trimmed = nameEl ? String(nameEl.value || "").trim() : "";
+    if (!trimmed) {
+      setErr("Tab name is required.");
+      return;
+    }
+    const layoutEl = document.querySelector('input[name="monNewTabLayout"]:checked');
+    const display_mode = layoutEl ? String(layoutEl.value || "flat") : "flat";
     setErr("");
     try {
       const r = await fetch("/api/monitoring/tabs", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, display_mode: display_mode }),
       });
       const j = await r.json().catch(function () { return {}; });
       if (!r.ok || !j.ok) {
         setErr(j.detail || ("HTTP " + r.status));
         return;
       }
+      closeNewTabModal();
       activeTabId = j.id;
       try {
         localStorage.setItem(LS_ACTIVE_TAB, String(activeTabId));
@@ -1861,7 +2034,35 @@
     }
   }
 
-  document.getElementById("monitorTabAdd").addEventListener("click", createTab);
+  async function deleteCurrentTab() {
+    if (!CAN_DELETE_MONITORING_TABS || activeTabId == null || !lastTabs.length) return;
+    const tabRow = lastTabs.find(function (t) {
+      return Number(t.id) === Number(activeTabId);
+    });
+    const n = String((tabRow && tabRow.name) || activeTabId);
+    if (!confirm('Delete monitoring tab "' + n + '" and all devices / sites on it? This cannot be undone.')) return;
+    setErr("");
+    const tid = activeTabId;
+    try {
+      const r = await fetch("/api/monitoring/tabs/" + encodeURIComponent(tid), {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok || !j.ok) {
+        setErr(j.detail || ("HTTP " + r.status));
+        return;
+      }
+      pruneHsOpenForTab(tid);
+      activeTabId = null;
+      try {
+        localStorage.removeItem(LS_ACTIVE_TAB);
+      } catch (e) {}
+      await refresh(false);
+    } catch (e) {
+      setErr(String(e || "Delete tab failed"));
+    }
+  }
 
   async function addDevice() {
     setErr("");
@@ -1921,29 +2122,6 @@
       await refresh(false);
     } catch (e) {
       setErr(String(e || "Add failed"));
-    }
-  }
-
-  async function onMonTabModeChange() {
-    if (activeTabId == null) return;
-    const sel = document.getElementById("monTabMode");
-    if (!sel) return;
-    setErr("");
-    try {
-      const r = await fetch("/api/monitoring/tabs/" + encodeURIComponent(activeTabId), {
-        method: "PATCH",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_mode: sel.value }),
-      });
-      const j = await r.json().catch(function () { return {}; });
-      if (!r.ok || !j.ok) {
-        setErr(j.detail || ("HTTP " + r.status));
-        return;
-      }
-      await refresh(false);
-    } catch (e) {
-      setErr(String(e || "Update failed"));
     }
   }
 
@@ -2103,8 +2281,23 @@
     }
   }
 
-  var monTabModeEl = document.getElementById("monTabMode");
-  if (monTabModeEl) monTabModeEl.addEventListener("change", onMonTabModeChange);
+  var monTabAddEl = document.getElementById("monitorTabAdd");
+  if (monTabAddEl) monTabAddEl.addEventListener("click", openNewTabModal);
+  var monTabDelEl = document.getElementById("monitorTabDelete");
+  if (monTabDelEl) monTabDelEl.addEventListener("click", deleteCurrentTab);
+  var monNewTabBackdrop = document.getElementById("monNewTabBackdrop");
+  if (monNewTabBackdrop) monNewTabBackdrop.addEventListener("click", closeNewTabModal);
+  var monNewTabCloseBtn = document.getElementById("monNewTabCloseBtn");
+  if (monNewTabCloseBtn) monNewTabCloseBtn.addEventListener("click", closeNewTabModal);
+  var monNewTabCancelBtn = document.getElementById("monNewTabCancelBtn");
+  if (monNewTabCancelBtn) monNewTabCancelBtn.addEventListener("click", closeNewTabModal);
+  var monNewTabCreateBtn = document.getElementById("monNewTabCreateBtn");
+  if (monNewTabCreateBtn) monNewTabCreateBtn.addEventListener("click", submitNewTabModal);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") return;
+    const m = document.getElementById("monNewTabModal");
+    if (m && m.classList.contains("is-open")) closeNewTabModal();
+  });
   var monNewHsBtnEl = document.getElementById("monNewHsBtn");
   if (monNewHsBtnEl) monNewHsBtnEl.addEventListener("click", addHighSiteFromForm);
 

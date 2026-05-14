@@ -4660,23 +4660,32 @@ def api_push_test_user(request: Request, payload: Dict[str, Any] = Body(...)):
     return {"ok": True, "username": username}
 
 
+def _can_delete_monitoring_tabs(request: Request) -> bool:
+    """Privileged monitoring edits: DB admin (is_admin) or AUTH_SUPER_ADMIN_USERS."""
+    if bool(getattr(request.state, "is_admin", False)):
+        return True
+    un = str(getattr(request.state, "username", "") or "").strip()
+    return auth_users.user_is_super_admin(un)
+
+
 @app.post("/api/monitoring/tabs")
 def api_monitoring_tabs_add(payload: Dict[str, Any] = Body(...)):
-    name = (payload or {}).get("name")
+    p = payload or {}
+    name = p.get("name")
+    display_mode = str(p.get("display_mode") or monitoring.TAB_DISPLAY_FLAT).strip().lower()
     try:
-        tab_id = monitoring.add_tab(str(name or ""))
+        tab_id = monitoring.add_tab(str(name or ""), display_mode)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "id": tab_id}
 
 
-@app.patch("/api/monitoring/tabs/{tab_id}")
-def api_monitoring_tabs_update(tab_id: int, payload: Dict[str, Any] = Body(...)):
-    p = payload or {}
-    if "display_mode" not in p:
-        raise HTTPException(status_code=400, detail="display_mode required")
+@app.delete("/api/monitoring/tabs/{tab_id}")
+def api_monitoring_tabs_delete(tab_id: int, request: Request):
+    if not _can_delete_monitoring_tabs(request):
+        raise HTTPException(status_code=403, detail="Admin or super-admin only")
     try:
-        ok = monitoring.set_tab_display_mode(int(tab_id), str(p.get("display_mode") or ""))
+        ok = monitoring.delete_tab(int(tab_id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     if not ok:
@@ -4696,7 +4705,9 @@ def api_monitoring_site_groups_add(payload: Dict[str, Any] = Body(...)):
 
 
 @app.delete("/api/monitoring/site-groups/{group_id}")
-def api_monitoring_site_groups_delete(group_id: int):
+def api_monitoring_site_groups_delete(group_id: int, request: Request):
+    if not _can_delete_monitoring_tabs(request):
+        raise HTTPException(status_code=403, detail="Admin or super-admin only")
     if not monitoring.delete_site_group(int(group_id)):
         raise HTTPException(status_code=404, detail="Not found")
     return {"ok": True}
