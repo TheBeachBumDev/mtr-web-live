@@ -23,6 +23,8 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      # Host templates override image copy — Jinja/HTML changes apply after compose up (no rebuild).
+      - ./templates:/app/templates:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/wibernetdev/.ssh:/home/wibernetdev/.ssh:ro
       # Same paths as env_file: expose files under /app so full backups can copy them.
@@ -63,6 +65,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/mtr-live', timeout=3)\""]
       interval: 30s
@@ -95,6 +98,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/download-test', timeout=3)\""]
       interval: 30s
@@ -127,6 +131,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/fieldtech', timeout=3)\""]
       interval: 30s
@@ -159,6 +164,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/ipam', timeout=3)\""]
       interval: 30s
@@ -191,6 +197,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/monitoring', timeout=3)\""]
       interval: 30s
@@ -223,6 +230,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/location-sync', timeout=3)\""]
       interval: 30s
@@ -255,6 +263,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/routers', timeout=3)\""]
       interval: 30s
@@ -287,6 +296,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/backhauls', timeout=3)\""]
       interval: 30s
@@ -319,6 +329,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/stock-management', timeout=3)\""]
       interval: 30s
@@ -351,6 +362,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/purchase-orders', timeout=3)\""]
       interval: 30s
@@ -383,6 +395,7 @@ services:
     volumes:
       - app_data:/app/data
       - app_logs:/app/logs
+      - ./templates:/app/templates:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/whatsapp-signups', timeout=3)\""]
       interval: 30s

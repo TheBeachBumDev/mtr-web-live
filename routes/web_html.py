@@ -109,7 +109,7 @@ def stock_management_page(request: Request):
 @router.get("/purchase-orders", response_class=HTMLResponse)
 def purchase_orders_page(request: Request):
     username = request.state.username if hasattr(request.state, "username") else "unknown"
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         "purchase_orders.html",
         {
             "request": request,
@@ -119,6 +119,8 @@ def purchase_orders_page(request: Request):
             "is_admin": bool(getattr(request.state, "is_admin", False)),
         },
     )
+    resp.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+    return resp
 
 
 @router.get("/whatsapp-signups", response_class=HTMLResponse)
