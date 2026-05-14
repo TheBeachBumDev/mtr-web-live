@@ -5,6 +5,7 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    overflow-x: hidden;
     box-sizing: border-box;
   }
   .po-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 0; flex-wrap: wrap; }
@@ -215,57 +216,160 @@
   }
   .po-items { width: 100%; overflow: hidden; margin-top: 6px; }
   .po-items table { min-width: 0; width: 100%; }
-  /* PO index list: never force a 980px table — fluid on desktop, cards below 1024px */
   .po-list {
     max-width: 100%;
     overflow-x: hidden;
     box-sizing: border-box;
   }
-  .po-list table.po-purchase-list-table {
+  .po-list > h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0 0 4px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* Card rows: PO list + admin tables — all viewports, no horizontal scroll */
+  .po-notif-table input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+  }
+  .po-always-cards {
+    overflow-x: hidden;
+    max-width: 100%;
     min-width: 0;
+  }
+  .po-always-cards table.po-stack-table {
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
+    min-width: 0 !important;
     max-width: 100%;
     table-layout: fixed;
   }
-  .po-list .po-purchase-list-table thead th,
-  .po-list .po-purchase-list-table tbody td {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: middle;
+  .po-always-cards table.po-stack-table thead {
+    display: none;
   }
-  .po-list .po-purchase-list-table th:nth-child(4),
-  .po-list .po-purchase-list-table td:nth-child(4) {
-    white-space: normal;
-    overflow: visible;
-    word-break: break-word;
-    hyphens: auto;
+  .po-always-cards table.po-stack-table tbody tr {
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    background: var(--card);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  .po-list .po-purchase-list-table td:nth-child(4) .po-step-track {
-    max-width: 100%;
+  html[data-theme="dark"] .po-always-cards table.po-stack-table tbody tr {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.42);
   }
-  .po-list .po-purchase-list-table .po-step {
-    white-space: normal;
-    word-break: break-word;
-    max-width: 100%;
+  .po-always-cards table.po-stack-table tbody tr:hover {
+    border-color: color-mix(in srgb, var(--accent, #3b82f6) 45%, var(--line));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.09);
   }
-  .po-list .po-purchase-list-table th:nth-child(9),
-  .po-list .po-purchase-list-table td:nth-child(9) {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
+  html[data-theme="dark"] .po-always-cards table.po-stack-table tbody tr:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   }
-  .po-list .po-purchase-list-table th:nth-child(1),
-  .po-list .po-purchase-list-table td:nth-child(1) { width: 3.25rem; }
-  .po-list .po-purchase-list-table th:nth-child(2),
-  .po-list .po-purchase-list-table td:nth-child(2) { width: 6.5rem; }
-  .po-list .po-purchase-list-table th:nth-child(3),
-  .po-list .po-purchase-list-table td:nth-child(3) { width: 8.5rem; }
-  .po-list .po-purchase-list-table th:nth-child(5),
-  .po-list .po-purchase-list-table td:nth-child(5) { width: 5.5rem; }
-  .app-main .po-list .po-purchase-list-table thead th,
-  .app-main .po-list .po-purchase-list-table tbody td {
+  .po-always-cards table.po-stack-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+  .app-main .po-always-cards table.po-stack-table tbody td {
+    display: grid;
+    grid-template-columns: minmax(0, min(9.5rem, 32%)) minmax(0, 1fr);
+    gap: 8px 12px;
+    align-items: start;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent) !important;
+    padding: 10px 0;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.45;
     min-width: 0;
+    vertical-align: top;
+    white-space: normal;
+  }
+  .app-main .po-always-cards table.po-stack-table thead th {
+    white-space: normal;
+  }
+  .po-always-cards table.po-stack-table tbody td:last-child {
+    border-bottom: none !important;
+    padding-bottom: 0;
+  }
+  .po-always-cards table.po-stack-table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    line-height: 1.35;
+    padding-top: 3px;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    min-width: 0;
+  }
+  .po-always-cards table.po-stack-table tbody td.po-td--stack-wide {
+    grid-template-columns: 1fr;
+  }
+  .po-always-cards table.po-stack-table tbody td.po-td--stack-wide::before {
+    margin-bottom: 6px;
+  }
+  .po-always-cards table.po-stack-table tbody td.po-td--stack-wide > * {
+    min-width: 0;
+  }
+  .po-always-cards table.po-stack-table tbody td > *:not(button) {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .po-always-cards table.po-stack-table .po-step-track {
+    flex-wrap: wrap;
+    gap: 6px 8px;
+  }
+  .po-always-cards table.po-stack-table button {
+    margin-top: 6px;
+    margin-right: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 88%, var(--line) 12%);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+  }
+  .po-always-cards table.po-stack-table button:hover {
+    border-color: color-mix(in srgb, var(--accent, #3b82f6) 50%, var(--line));
+    background: color-mix(in srgb, var(--accent, #3b82f6) 12%, var(--card) 88%);
+  }
+  .po-always-cards table.po-stack-table button:active {
+    transform: scale(0.98);
+  }
+  .po-always-cards .po-step {
+    white-space: normal;
+    word-break: break-word;
+    max-width: 100%;
+  }
+  .po-always-cards .muted.small {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.4;
+  }
+  .po-always-cards table.po-stack-table tbody td:first-child,
+  .po-always-cards table.po-stack-table tbody td:last-child {
+    border-left: none !important;
+    border-right: none !important;
+    border-radius: 0 !important;
   }
 
   /* Row “cards” on all viewports (thin border + radius per row) */
@@ -324,7 +428,7 @@
   .po-table-scroll {
     min-width: 0;
     max-width: 100%;
-    overflow-x: auto;
+    overflow-x: hidden;
     margin-top: 8px;
     -webkit-overflow-scrolling: touch;
     width: 100%;
@@ -545,30 +649,6 @@
     width: 100%;
     box-sizing: border-box;
   }
-  /* Admin tables: stay within main column (overrides global .app-main td nowrap + wide min-widths). */
-  .po-table-scroll .po-notif-table.po-stack-table,
-  .po-table-scroll .po-rule-grid.po-stack-table {
-    min-width: 0 !important;
-    width: 100%;
-    max-width: 100%;
-    table-layout: fixed;
-  }
-  .app-main .po-table-scroll .po-notif-table.po-stack-table th,
-  .app-main .po-table-scroll .po-notif-table.po-stack-table td,
-  .app-main .po-table-scroll .po-rule-grid.po-stack-table th,
-  .app-main .po-table-scroll .po-rule-grid.po-stack-table td {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: middle;
-    max-width: 100%;
-  }
-  .app-main .po-table-scroll .po-notif-table.po-stack-table td:last-child,
-  .app-main .po-table-scroll .po-rule-grid.po-stack-table td:last-child {
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
   .po-notif-table input[type="text"] {
     width: 100%;
     min-width: 0;
@@ -576,7 +656,7 @@
     box-sizing: border-box;
   }
 
-  /* --- Mobile-first: card-style tables (no sideways scroll for primary flows) --- */
+  /* --- Mobile-first: modal + line items --- */
   @media (max-width: 1023px) {
     .po-row--items-head {
       align-items: stretch;
@@ -598,101 +678,6 @@
     }
     .po-list-pagination button {
       width: 100%;
-    }
-    .po-stack-table-wrap {
-      overflow-x: visible;
-      -webkit-overflow-scrolling: auto;
-    }
-    .po-stack-table-wrap .po-stack-table,
-    .po-table-scroll .po-stack-table {
-      min-width: 0 !important;
-      width: 100%;
-    }
-    .po-stack-table-wrap .po-stack-table thead,
-    .po-table-scroll .po-stack-table thead {
-      display: none;
-    }
-    .po-stack-table-wrap .po-stack-table tbody tr,
-    .po-table-scroll .po-stack-table tbody tr {
-      display: block;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      margin-bottom: 12px;
-      padding: 12px 14px;
-      background: var(--card);
-      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
-    }
-    html[data-theme="dark"] .po-stack-table-wrap .po-stack-table tbody tr,
-    html[data-theme="dark"] .po-table-scroll .po-stack-table tbody tr {
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05);
-    }
-    .po-stack-table-wrap .po-stack-table tbody tr:last-child,
-    .po-table-scroll .po-stack-table tbody tr:last-child {
-      margin-bottom: 0;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td,
-    .po-table-scroll .po-stack-table tbody td {
-      display: grid;
-      grid-template-columns: minmax(0, 36%) minmax(0, 1fr);
-      gap: 8px 10px;
-      align-items: start;
-      border: none !important;
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      background: transparent !important;
-      border-bottom: 1px solid var(--line);
-      padding: 8px 0;
-      text-align: left;
-      font-size: 13px;
-      min-width: 0;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td:last-child,
-    .po-table-scroll .po-stack-table tbody td:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td::before,
-    .po-table-scroll .po-stack-table tbody td::before {
-      content: attr(data-label);
-      font-weight: 600;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--muted);
-      line-height: 1.3;
-      padding-top: 2px;
-      max-width: 40%;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      min-width: 0;
-    }
-    /* Actions / wide control columns: label on top, controls full width */
-    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide,
-    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide {
-      grid-template-columns: 1fr;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide::before,
-    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide::before {
-      margin-bottom: 4px;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td.po-td--stack-wide > *,
-    .po-table-scroll .po-stack-table tbody td.po-td--stack-wide > * {
-      min-width: 0;
-    }
-    .po-stack-table-wrap .po-stack-table button,
-    .po-table-scroll .po-stack-table button {
-      margin-top: 4px;
-      margin-right: 6px;
-    }
-    .po-stack-table-wrap .po-stack-table tbody td > *:not(button) {
-      min-width: 0;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }
-    .po-notif-table input[type="checkbox"] {
-      width: 1.25rem;
-      height: 1.25rem;
     }
     .po-modal {
       z-index: 3000 !important;
@@ -805,7 +790,7 @@
     </div>
   </section>
 
-  <section class="po-card po-list po-stack-table-wrap">
+  <section class="po-card po-list po-stack-table-wrap po-always-cards">
     <h3>Purchase Orders</h3>
     <div class="po-list-controls">
       <div class="po-field po-field--full">
@@ -871,7 +856,7 @@
         <button id="poNtSaveTimingBtn" type="button">Save Timing</button>
       </div>
     </div>
-    <div class="po-table-scroll po-stack-table-wrap">
+    <div class="po-table-scroll po-stack-table-wrap po-always-cards">
       <table class="po-notif-table po-stack-table">
         <thead><tr><th>User</th><th>In-app</th><th>Email</th><th>WhatsApp</th><th>Email Address</th><th>Mobile/WhatsApp</th><th></th></tr></thead>
         <tbody id="poNtRows"></tbody>
@@ -974,7 +959,7 @@
         <button id="poRuleAddBtn" type="button">+ Add Rule</button>
       </div>
     </div>
-    <div class="po-table-scroll po-stack-table-wrap">
+    <div class="po-table-scroll po-stack-table-wrap po-always-cards">
       <table class="po-rule-grid po-stack-table">
         <thead><tr><th>ID</th><th>Name</th><th>Total range (ZAR)</th><th>Department</th><th>Category</th><th>Step # / role</th><th>Primary approver</th><th>Backup approver</th><th></th></tr></thead>
         <tbody id="poRuleRows"></tbody>
