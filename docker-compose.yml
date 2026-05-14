@@ -419,7 +419,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mtr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -448,6 +448,7 @@ volumes:
   app_data:
   app_logs:
   postgres_data:
+  postgres_data_17:
   redis_data:
 
 networks:
