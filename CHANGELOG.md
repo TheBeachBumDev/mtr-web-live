@@ -4,6 +4,10 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
+## 2026-05-14
+
+- **342c758** — Monitoring High Sites: per-tab `flat` vs `high_sites` layout, named site groups, devices under groups with `site_group_id`, bulk import with `[Site]` headers, aggregate `hs_down` / `hs_up` web push per group (skip per-device push for grouped targets). Web push subscriptions gain `push_po` and `push_monitoring` with filtered sends; monitoring UI (tab mode, site group actions, subscribe JSON); related APIs and PO push path use `require_push_po`.
+
 ## 2026-05-13
 
 - **2eb4ace** — PO approval reminders: cancel queued reminders when the workflow advances to the next approver (not only when the PO is fully finished). Fix a race where the notification worker could still send email/push after a row was cancelled, by claiming rows (`pending` → `dispatching`) and only marking `sent`/`failed` from that in-flight state.

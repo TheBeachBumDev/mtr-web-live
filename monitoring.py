@@ -4,7 +4,7 @@ import re
 import sqlite3
 import subprocess
 import threading
-from collections import deque
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -72,6 +72,11 @@ _DOWN_SINCE: Dict[int, str] = {}
 _DOWN_STREAK: Dict[int, int] = {}
 _STABLE_OK_WARN: Dict[int, str] = {}
 _LAST_GOOD_LATENCY_MS: Dict[int, float] = {}
+# High site (site group) aggregate alarm: True while any member in the group is "down".
+_HS_GROUP_ALARM: Dict[int, bool] = {}
+
+TAB_DISPLAY_FLAT = "flat"
+TAB_DISPLAY_HIGH_SITES = "high_sites"
 
 
 def _parse_iso_utc(ts: Optional[str]) -> Optional[datetime]:
@@ -110,9 +115,41 @@ def get_conn() -> sqlite3.Connection:
     return db_runtime.get_conn("monitoring")
 
 
+def _ensure_monitoring_schema(conn: Any) -> None:
+    """Migrations for High Sites + tab display mode (PostgreSQL)."""
+    try:
+        conn.execute(
+            "ALTER TABLE monitoring_tabs ADD COLUMN IF NOT EXISTS display_mode TEXT NOT NULL DEFAULT 'flat'"
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS monitoring_site_groups (
+                id BIGSERIAL PRIMARY KEY,
+                tab_id BIGINT NOT NULL,
+                name TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                UNIQUE (tab_id, name)
+            )
+            """
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            "ALTER TABLE monitoring_targets ADD COLUMN IF NOT EXISTS site_group_id BIGINT"
+        )
+    except Exception:
+        pass
+
+
 def init_db() -> None:
     db_runtime.init_postgres_schema()
     conn = get_conn()
+    _ensure_monitoring_schema(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS monitoring_down_ack (
@@ -136,8 +173,8 @@ def init_db() -> None:
     if int(n_tabs) == 0:
         conn.execute(
             """
-            INSERT INTO monitoring_tabs (name, position, created_at)
-            VALUES ('Power Monitoring', 0, ?)
+            INSERT INTO monitoring_tabs (name, position, created_at, display_mode)
+            VALUES ('Power Monitoring', 0, ?, 'flat')
             """,
             (_now(),),
         )
@@ -183,13 +220,134 @@ def list_tabs() -> List[Dict[str, Any]]:
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT id, name, position
+        SELECT id, name, position, display_mode
         FROM monitoring_tabs
         ORDER BY position ASC, id ASC
         """
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        dm = str(d.get("display_mode") or TAB_DISPLAY_FLAT).strip().lower()
+        if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
+            dm = TAB_DISPLAY_FLAT
+        d["display_mode"] = dm
+        out.append(d)
+    return out
+
+
+def get_tab_display_mode(tab_id: int) -> str:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT display_mode FROM monitoring_tabs WHERE id = ?", (int(tab_id),)
+        ).fetchone()
+        if not row:
+            return TAB_DISPLAY_FLAT
+        dm = str(row.get("display_mode") or TAB_DISPLAY_FLAT).strip().lower()
+        if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
+            return TAB_DISPLAY_FLAT
+        return dm
+    finally:
+        conn.close()
+
+
+def set_tab_display_mode(tab_id: int, display_mode: str) -> bool:
+    dm = str(display_mode or "").strip().lower()
+    if dm not in (TAB_DISPLAY_FLAT, TAB_DISPLAY_HIGH_SITES):
+        raise ValueError("display_mode must be 'flat' or 'high_sites'")
+    conn = get_conn()
+    try:
+        if not tab_exists(int(tab_id)):
+            return False
+        if dm == TAB_DISPLAY_FLAT:
+            conn.execute(
+                "UPDATE monitoring_targets SET site_group_id = NULL WHERE tab_id = ?",
+                (int(tab_id),),
+            )
+        conn.execute(
+            "UPDATE monitoring_tabs SET display_mode = ? WHERE id = ?",
+            (dm, int(tab_id)),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def list_site_groups(tab_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        if tab_id is not None:
+            rows = conn.execute(
+                """
+                SELECT id, tab_id, name, position, created_at
+                FROM monitoring_site_groups
+                WHERE tab_id = ?
+                ORDER BY position ASC, id ASC
+                """,
+                (int(tab_id),),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, tab_id, name, position, created_at
+                FROM monitoring_site_groups
+                ORDER BY tab_id ASC, position ASC, id ASC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_site_group(tab_id: int, name: str) -> int:
+    name = validate_tab_name(name)  # reuse length rules
+    tid = int(tab_id)
+    if not tab_exists(tid):
+        raise ValueError("Unknown tab")
+    if get_tab_display_mode(tid) != TAB_DISPLAY_HIGH_SITES:
+        raise ValueError("Tab is not in High Sites mode")
+    conn = get_conn()
+    try:
+        ex = conn.execute(
+            "SELECT id FROM monitoring_site_groups WHERE tab_id = ? AND lower(name) = lower(?)",
+            (tid, name),
+        ).fetchone()
+        if ex:
+            return int(ex[0])
+        mx = conn.execute(
+            "SELECT COALESCE(MAX(position), -1) FROM monitoring_site_groups WHERE tab_id = ?",
+            (tid,),
+        ).fetchone()[0]
+        pos = int(mx) + 1
+        row = conn.execute(
+            """
+            INSERT INTO monitoring_site_groups (tab_id, name, position, created_at)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
+            """,
+            (tid, name, pos, _now()),
+        ).fetchone()
+        conn.commit()
+        if not row:
+            raise RuntimeError("Failed to create site group")
+        return int(row[0])
+    finally:
+        conn.close()
+
+
+def delete_site_group(group_id: int) -> bool:
+    gid = int(group_id)
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM monitoring_targets WHERE site_group_id = ?", (gid,))
+        cur2 = conn.execute("DELETE FROM monitoring_site_groups WHERE id = ?", (gid,))
+        conn.commit()
+        return int(getattr(cur2, "rowcount", 0) or 0) > 0
+    finally:
+        conn.close()
 
 
 def add_tab(name: str) -> int:
@@ -202,11 +360,11 @@ def add_tab(name: str) -> int:
         pos = int(mx) + 1
         row = conn.execute(
             """
-            INSERT INTO monitoring_tabs (name, position, created_at)
-            VALUES (?, ?, ?)
+            INSERT INTO monitoring_tabs (name, position, created_at, display_mode)
+            VALUES (?, ?, ?, ?)
             RETURNING id
             """,
-            (name, pos, _now()),
+            (name, pos, _now(), TAB_DISPLAY_FLAT),
         ).fetchone()
         conn.commit()
         if not row:
@@ -229,9 +387,12 @@ def list_devices() -> List[Dict[str, Any]]:
     conn = get_conn()
     rows = conn.execute(
         """
-        SELECT id, name, target, warn_latency_ms, tab_id
-        FROM monitoring_targets
-        ORDER BY tab_id ASC, name COLLATE NOCASE ASC, id ASC
+        SELECT t.id, t.name, t.target, t.warn_latency_ms, t.tab_id, t.site_group_id,
+               g.name AS site_group_name
+        FROM monitoring_targets t
+        LEFT JOIN monitoring_site_groups g ON g.id = t.site_group_id
+        ORDER BY t.tab_id ASC, t.site_group_id NULLS LAST, g.name NULLS LAST,
+                 t.name COLLATE NOCASE ASC, t.id ASC
         """
     ).fetchall()
     conn.close()
@@ -243,6 +404,7 @@ def add_device(
     target: str,
     warn_latency_ms: Optional[float] = None,
     tab_id: Optional[int] = None,
+    site_group_id: Optional[int] = None,
 ) -> int:
     name = validate_name(name)
     target = validate_target(target)
@@ -251,6 +413,18 @@ def add_device(
     tid = int(tab_id)
     if not tab_exists(tid):
         raise ValueError("Unknown tab")
+    mode = get_tab_display_mode(tid)
+    sgid: Optional[int] = None
+    if site_group_id is not None:
+        sgid = int(site_group_id)
+    if mode == TAB_DISPLAY_HIGH_SITES:
+        if sgid is None or sgid <= 0:
+            raise ValueError("site_group_id is required for High Sites tabs")
+    else:
+        if sgid is not None and sgid > 0:
+            raise ValueError("site_group_id is only allowed in High Sites mode")
+        sgid = None
+
     if warn_latency_ms is None:
         w = DEFAULT_WARN_MS
     else:
@@ -260,28 +434,49 @@ def add_device(
 
     conn = get_conn()
     try:
+        if mode == TAB_DISPLAY_HIGH_SITES:
+            gx = conn.execute(
+                "SELECT id, tab_id FROM monitoring_site_groups WHERE id = ?",
+                (int(sgid),),
+            ).fetchone()
+            if not gx:
+                raise ValueError("Unknown site group")
+            gtab = int(dict(gx).get("tab_id") or 0)
+            if gtab != tid:
+                raise ValueError("site_group_id does not belong to this tab")
         existing = conn.execute(
             "SELECT id FROM monitoring_targets WHERE tab_id = ? AND target = ?",
             (tid, target),
         ).fetchone()
         if existing:
-            conn.execute(
-                """
-                UPDATE monitoring_targets
-                SET name = ?, warn_latency_ms = ?
-                WHERE id = ?
-                """,
-                (name, w, int(existing[0])),
-            )
+            eid = int(existing[0])
+            if sgid is not None:
+                conn.execute(
+                    """
+                    UPDATE monitoring_targets
+                    SET name = ?, warn_latency_ms = ?, site_group_id = ?
+                    WHERE id = ?
+                    """,
+                    (name, w, sgid, eid),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE monitoring_targets
+                    SET name = ?, warn_latency_ms = ?
+                    WHERE id = ?
+                    """,
+                    (name, w, eid),
+                )
             conn.commit()
-            return int(existing[0])
+            return eid
         row = conn.execute(
             """
-            INSERT INTO monitoring_targets (name, target, warn_latency_ms, created_at, tab_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO monitoring_targets (name, target, warn_latency_ms, created_at, tab_id, site_group_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
-            (name, target, w, _now(), tid),
+            (name, target, w, _now(), tid, sgid),
         ).fetchone()
         conn.commit()
         if not row:
@@ -384,24 +579,25 @@ def parse_import_line(line: str) -> Optional[Tuple[str, str, Optional[float]]]:
     return (s, s, None)
 
 
-def import_devices_bulk(
-    tab_id: int,
-    text: str,
-    default_warn_ms: Optional[float] = None,
-) -> Dict[str, Any]:
-    """
-    Parse multi-line text and create devices on tab_id.
-    default_warn_ms applies when a line does not specify a per-line threshold.
-    """
-    tid = int(tab_id)
-    if not tab_exists(tid):
-        raise ValueError("Unknown tab")
+def _parse_hs_group_header(line: str) -> Optional[str]:
+    """If line is ``[Bunker]`` style, return validated site name; else None."""
+    s = (line or "").strip()
+    if len(s) >= 2 and s.startswith("[") and s.endswith("]"):
+        inner = s[1:-1].strip()
+        if inner:
+            return validate_tab_name(inner)
+    return None
 
+
+def _import_devices_bulk_flat(
+    tab_id: int,
+    lines: List[str],
+    default_warn_ms: Optional[float],
+) -> Dict[str, Any]:
+    tid = int(tab_id)
     created_ids: List[int] = []
     errors: List[Dict[str, Any]] = []
     skipped = 0
-
-    lines = (text or "").splitlines()
     for line_no, raw in enumerate(lines, start=1):
         try:
             parsed = parse_import_line(raw)
@@ -414,7 +610,6 @@ def import_devices_bulk(
             created_ids.append(did)
         except ValueError as e:
             errors.append({"line": line_no, "detail": str(e)})
-
     return {
         "all_succeeded": len(errors) == 0,
         "created": len(created_ids),
@@ -422,6 +617,66 @@ def import_devices_bulk(
         "skipped_lines": skipped,
         "errors": errors,
     }
+
+
+def _import_devices_bulk_hs(
+    tab_id: int,
+    lines: List[str],
+    default_warn_ms: Optional[float],
+) -> Dict[str, Any]:
+    tid = int(tab_id)
+    created_ids: List[int] = []
+    errors: List[Dict[str, Any]] = []
+    skipped = 0
+    current_group_id: Optional[int] = None
+    for line_no, raw in enumerate(lines, start=1):
+        try:
+            s = (raw or "").strip()
+            if not s or s.startswith("#"):
+                skipped += 1
+                continue
+            hdr = _parse_hs_group_header(s)
+            if hdr is not None:
+                current_group_id = add_site_group(tid, hdr)
+                continue
+            if current_group_id is None:
+                raise ValueError("add a [Site name] line before device rows (e.g. [Bunker])")
+            parsed = parse_import_line(raw)
+            if parsed is None:
+                skipped += 1
+                continue
+            name, target, line_warn = parsed
+            w_use = line_warn if line_warn is not None else default_warn_ms
+            did = add_device(name, target, w_use, tab_id=tid, site_group_id=current_group_id)
+            created_ids.append(did)
+        except ValueError as e:
+            errors.append({"line": line_no, "detail": str(e)})
+    return {
+        "all_succeeded": len(errors) == 0,
+        "created": len(created_ids),
+        "ids": created_ids,
+        "skipped_lines": skipped,
+        "errors": errors,
+    }
+
+
+def import_devices_bulk(
+    tab_id: int,
+    text: str,
+    default_warn_ms: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Parse multi-line text and create devices on tab_id.
+    For tabs in **high_sites** mode, lines may start a section with ``[Site name]``;
+    following device lines belong to that site until the next ``[...]`` header.
+    """
+    tid = int(tab_id)
+    if not tab_exists(tid):
+        raise ValueError("Unknown tab")
+    lines = (text or "").splitlines()
+    if get_tab_display_mode(tid) == TAB_DISPLAY_HIGH_SITES:
+        return _import_devices_bulk_hs(tid, lines, default_warn_ms)
+    return _import_devices_bulk_flat(tid, lines, default_warn_ms)
 
 
 def measure_ping(host: str, wait_sec: int = 2, count: Optional[int] = None) -> Tuple[str, Optional[float]]:
@@ -576,6 +831,7 @@ def _status_snapshot_inner() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]
             _STABLE_OK_WARN.clear()
             _LAST_GOOD_LATENCY_MS.clear()
             _DOWN_SINCE.clear()
+            _HS_GROUP_ALARM.clear()
         return [], []  # rows, push_events
 
     if not is_monitoring_sampling_enabled():
@@ -620,6 +876,12 @@ def _status_snapshot_inner() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]
             r["latency_ms"] = out_lat
             r["level"] = level
 
+            try:
+                hs_gid = int(r.get("site_group_id") or 0)
+            except (TypeError, ValueError):
+                hs_gid = 0
+            in_high_site = hs_gid > 0
+
             lvl = str(level or "down")
             old = _PREV_LEVELS.get(did)
             if old is not None and old != lvl:
@@ -636,14 +898,15 @@ def _status_snapshot_inner() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]
                 if lvl != "down":
                     _TRANSITION_LOG.appendleft(entry)
                 elif lvl == "down":
-                    push_events.append(
-                        {
-                            "kind": "down",
-                            "device_id": did,
-                            "name": str(r.get("name") or ""),
-                            "target": str(r.get("target") or ""),
-                        }
-                    )
+                    if not in_high_site:
+                        push_events.append(
+                            {
+                                "kind": "down",
+                                "device_id": did,
+                                "name": str(r.get("name") or ""),
+                                "target": str(r.get("target") or ""),
+                            }
+                        )
                 if old == "down" and lvl != "down":
                     down_started = _DOWN_SINCE.get(did)
                     duration_seconds = None
@@ -668,17 +931,18 @@ def _status_snapshot_inner() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]
                         outage_entry["acked_at"] = str(ack.get("acked_at") or "")
                         outage_entry["ack_delay_seconds"] = ack.get("ack_delay_seconds")
                     _insert_outage_event(outage_entry)
-                    push_events.append(
-                        {
-                            "kind": "up",
-                            "device_id": did,
-                            "name": str(r.get("name") or ""),
-                            "target": str(r.get("target") or ""),
-                            "new_level": lvl,
-                            "outage_duration_seconds": duration_seconds,
-                            "outage_duration_text": outage_entry["duration_text"],
-                        }
-                    )
+                    if not in_high_site:
+                        push_events.append(
+                            {
+                                "kind": "up",
+                                "device_id": did,
+                                "name": str(r.get("name") or ""),
+                                "target": str(r.get("target") or ""),
+                                "new_level": lvl,
+                                "outage_duration_seconds": duration_seconds,
+                                "outage_duration_text": outage_entry["duration_text"],
+                            }
+                        )
             if lvl == "down":
                 if old != "down":
                     _DOWN_SINCE[did] = ts
@@ -688,6 +952,44 @@ def _status_snapshot_inner() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]
 
             _PREV_LEVELS[did] = lvl
             rows.append(r)
+
+        members_by_gid: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            try:
+                ig = int(row.get("site_group_id") or 0)
+            except (TypeError, ValueError):
+                ig = 0
+            if ig > 0:
+                members_by_gid[ig].append(row)
+        for gid, members in members_by_gid.items():
+            gname = str(members[0].get("site_group_name") or "").strip() or f"Site {gid}"
+            tab_id0 = int(members[0].get("tab_id") or 0)
+            any_down = any(str(m.get("level") or "") == "down" for m in members)
+            prev = bool(_HS_GROUP_ALARM.get(gid, False))
+            if any_down and not prev:
+                push_events.append(
+                    {
+                        "kind": "hs_down",
+                        "site_group_id": gid,
+                        "name": gname,
+                        "tab_id": tab_id0,
+                    }
+                )
+                _HS_GROUP_ALARM[gid] = True
+            elif (not any_down) and prev:
+                push_events.append(
+                    {
+                        "kind": "hs_up",
+                        "site_group_id": gid,
+                        "name": gname,
+                        "tab_id": tab_id0,
+                    }
+                )
+                _HS_GROUP_ALARM[gid] = False
+            elif any_down:
+                _HS_GROUP_ALARM[gid] = True
+            else:
+                _HS_GROUP_ALARM[gid] = False
 
         for stale in list(_PREV_LEVELS.keys()):
             if stale not in seen:

@@ -37,6 +37,7 @@ def _conn():
 def init_db() -> None:
     if db_runtime.is_postgres():
         db_runtime.init_postgres_schema()
+        _ensure_push_scope_columns()
         return
     _ensure_dirs()
     conn = _conn()
@@ -48,12 +49,33 @@ def init_db() -> None:
             endpoint TEXT NOT NULL UNIQUE,
             p256dh TEXT NOT NULL,
             auth TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            push_po INTEGER NOT NULL DEFAULT 1,
+            push_monitoring INTEGER NOT NULL DEFAULT 1
         );
         """
     )
     conn.commit()
     conn.close()
+
+
+def _ensure_push_scope_columns() -> None:
+    conn = _conn()
+    try:
+        conn.execute(
+            "ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS push_po INTEGER NOT NULL DEFAULT 1"
+        )
+        conn.execute(
+            "ALTER TABLE web_push_subscriptions ADD COLUMN IF NOT EXISTS push_monitoring INTEGER NOT NULL DEFAULT 1"
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()
 
 
 def _ensure_vapid_private_pem() -> str:
@@ -87,7 +109,13 @@ def get_vapid_public_key_b64url() -> str:
     return base64.urlsafe_b64encode(pub).decode("ascii").rstrip("=")
 
 
-def save_subscription(username: str, subscription: Dict[str, Any]) -> None:
+def save_subscription(
+    username: str,
+    subscription: Dict[str, Any],
+    *,
+    push_po: bool = True,
+    push_monitoring: bool = True,
+) -> None:
     endpoint = str((subscription or {}).get("endpoint") or "").strip()
     keys = (subscription or {}).get("keys") or {}
     p256dh = str(keys.get("p256dh") or "").strip()
@@ -104,8 +132,8 @@ def save_subscription(username: str, subscription: Dict[str, Any]) -> None:
         conn.execute("DELETE FROM web_push_subscriptions WHERE endpoint = ?", (endpoint,))
         conn.execute(
             """
-            INSERT INTO web_push_subscriptions (username, endpoint, p256dh, auth, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO web_push_subscriptions (username, endpoint, p256dh, auth, created_at, push_po, push_monitoring)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 canonical,
@@ -113,6 +141,8 @@ def save_subscription(username: str, subscription: Dict[str, Any]) -> None:
                 p256dh,
                 auth,
                 ts,
+                1 if push_po else 0,
+                1 if push_monitoring else 0,
             ),
         )
         conn.commit()
@@ -159,22 +189,38 @@ def delete_all_for_username(username: str) -> None:
         conn.close()
 
 
-def _iter_subscriptions(usernames: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def _iter_subscriptions(
+    usernames: Optional[List[str]] = None,
+    *,
+    require_push_po: Optional[bool] = None,
+    require_push_monitoring: Optional[bool] = None,
+) -> List[Dict[str, Any]]:
     conn = _conn()
-    conn.row_factory = sqlite3.Row
     try:
         users = [str(u or "").strip() for u in (usernames or []) if str(u or "").strip()]
+        conds: List[str] = []
+        params: List[Any] = []
+        if require_push_po is True:
+            conds.append("COALESCE(push_po, 1) = 1")
+        elif require_push_po is False:
+            conds.append("COALESCE(push_po, 1) = 0")
+        if require_push_monitoring is True:
+            conds.append("COALESCE(push_monitoring, 1) = 1")
+        elif require_push_monitoring is False:
+            conds.append("COALESCE(push_monitoring, 1) = 0")
+        where_extra = (" AND " + " AND ".join(conds)) if conds else ""
         if users:
             lowered = [u.lower() for u in users]
             placeholders = ",".join("?" for _ in lowered)
-            rows = conn.execute(
-                f"SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE lower(username) IN ({placeholders})",
-                tuple(lowered),
-            ).fetchall()
+            sql = (
+                "SELECT endpoint, p256dh, auth FROM web_push_subscriptions "
+                f"WHERE lower(username) IN ({placeholders}){where_extra}"
+            )
+            params = list(lowered)
+            rows = conn.execute(sql, tuple(params)).fetchall()
         else:
-            rows = conn.execute(
-                "SELECT endpoint, p256dh, auth FROM web_push_subscriptions"
-            ).fetchall()
+            sql = "SELECT endpoint, p256dh, auth FROM web_push_subscriptions WHERE 1=1" + where_extra
+            rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
@@ -224,7 +270,7 @@ def _worker(events: List[Dict[str, Any]]) -> None:
         _ensure_vapid_private_pem()
     except Exception:
         return
-    subs = _iter_subscriptions()
+    subs = _iter_subscriptions(require_push_monitoring=True)
     if not subs:
         return
     vapid_path = PRIVATE_KEY_PATH
@@ -233,7 +279,16 @@ def _worker(events: List[Dict[str, Any]]) -> None:
         tgt = str(ev.get("target") or "")
         did = ev.get("device_id")
         kind = str(ev.get("kind") or "down")
-        if kind == "up":
+        gid = ev.get("site_group_id")
+        if kind == "hs_down":
+            title = f"Monitoring: {name}"
+            body = "A device in this site has no ICMP reply"
+            tag = f"mtr-hs-{gid}"
+        elif kind == "hs_up":
+            title = f"Monitoring: {name} OK"
+            body = "All devices in this site are responding again"
+            tag = f"mtr-hs-{gid}"
+        elif kind == "up":
             nl = str(ev.get("new_level") or "ok")
             outage_text = str(ev.get("outage_duration_text") or "").strip()
             title = f"Monitoring: {name} OK"
@@ -252,6 +307,7 @@ def _worker(events: List[Dict[str, Any]]) -> None:
                 "body": body,
                 "tag": tag,
                 "requireInteraction": True,
+                "url": "/monitoring",
             }
         ).encode("utf-8")
         for s in subs:
@@ -269,7 +325,16 @@ def send_monitoring_push_events(events: List[Dict[str, Any]]) -> None:
     t.start()
 
 
-def send_user_push(username: str, title: str, body: str, tag: str = "mtr-app", url: str = "/") -> None:
+def send_user_push(
+    username: str,
+    title: str,
+    body: str,
+    tag: str = "mtr-app",
+    url: str = "/",
+    *,
+    require_push_po: Optional[bool] = True,
+    require_push_monitoring: Optional[bool] = None,
+) -> None:
     """Non-blocking: push a single generic notification to one subscribed username."""
     user = str(username or "").strip()
     if not user:
@@ -283,7 +348,9 @@ def send_user_push(username: str, title: str, body: str, tag: str = "mtr-app", u
             _ensure_vapid_private_pem()
         except Exception:
             return
-        subs = _iter_subscriptions([user])
+        subs = _iter_subscriptions(
+            [user], require_push_po=require_push_po, require_push_monitoring=require_push_monitoring
+        )
         if not subs:
             _log.warning(
                 "Web push skipped: no subscription for username=%r (user must enable browser push once, "

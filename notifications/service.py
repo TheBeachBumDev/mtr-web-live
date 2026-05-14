@@ -68,6 +68,8 @@ def dispatch_notification(notification: Dict) -> bool:
                     body=str(notification.get("message") or ""),
                     tag=f"po-{int(notification.get('purchase_order_id') or 0)}",
                     url=str(notification.get("action_url") or "/purchase-orders"),
+                    require_push_po=True,
+                    require_push_monitoring=None,
                 )
             except Exception:
                 pass

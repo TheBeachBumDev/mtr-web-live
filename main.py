@@ -4502,12 +4502,14 @@ def api_monitoring_status():
         except Exception:
             pass
     tabs = monitoring.list_tabs()
+    site_groups = monitoring.list_site_groups()
     transitions = monitoring.recent_transition_events()
     outages = monitoring.recent_outage_events()
     return {
         "ok": True,
         "sampling_enabled": monitoring.is_monitoring_sampling_enabled(),
         "tabs": tabs,
+        "site_groups": site_groups,
         "devices": rows,
         "transitions": transitions,
         "outages": outages,
@@ -4544,8 +4546,23 @@ def api_push_vapid_public_key():
 
 @app.post("/api/push/subscribe")
 def api_push_subscribe(request: Request, payload: Dict[str, Any] = Body(...)):
+    p = payload or {}
+    sub: Dict[str, Any]
+    push_po = True
+    push_monitoring = True
+    if isinstance(p.get("subscription"), dict):
+        sub = dict(p["subscription"])
+        push_po = bool(p.get("push_po", True))
+        push_monitoring = bool(p.get("push_monitoring", True))
+    else:
+        sub = dict(p)
     try:
-        push_notifications.save_subscription(request.state.username, payload or {})
+        push_notifications.save_subscription(
+            request.state.username,
+            sub,
+            push_po=push_po,
+            push_monitoring=push_monitoring,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
@@ -4569,6 +4586,8 @@ def api_push_test_self(request: Request):
         body="Background push is enabled for this browser profile.",
         tag="monitoring-push-test",
         url="/monitoring",
+        require_push_po=None,
+        require_push_monitoring=True,
     )
     return {"ok": True}
 
@@ -4635,6 +4654,8 @@ def api_push_test_user(request: Request, payload: Dict[str, Any] = Body(...)):
         body=f"Push test sent by {str(getattr(request.state, 'username', 'admin') or 'admin')}",
         tag=f"monitoring-push-test-{user_id}",
         url="/monitoring",
+        require_push_po=None,
+        require_push_monitoring=True,
     )
     return {"ok": True, "username": username}
 
@@ -4647,6 +4668,38 @@ def api_monitoring_tabs_add(payload: Dict[str, Any] = Body(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True, "id": tab_id}
+
+
+@app.patch("/api/monitoring/tabs/{tab_id}")
+def api_monitoring_tabs_update(tab_id: int, payload: Dict[str, Any] = Body(...)):
+    p = payload or {}
+    if "display_mode" not in p:
+        raise HTTPException(status_code=400, detail="display_mode required")
+    try:
+        ok = monitoring.set_tab_display_mode(int(tab_id), str(p.get("display_mode") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Tab not found")
+    return {"ok": True}
+
+
+@app.post("/api/monitoring/site-groups")
+def api_monitoring_site_groups_add(payload: Dict[str, Any] = Body(...)):
+    p = payload or {}
+    try:
+        tid = int(p.get("tab_id") or 0)
+        gid = monitoring.add_site_group(tid, str(p.get("name") or ""))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "id": gid}
+
+
+@app.delete("/api/monitoring/site-groups/{group_id}")
+def api_monitoring_site_groups_delete(group_id: int):
+    if not monitoring.delete_site_group(int(group_id)):
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @app.post("/api/monitoring/devices")
@@ -4667,9 +4720,20 @@ def api_monitoring_add_device(payload: Dict[str, Any] = Body(...)):
         tab_id = int(tab_raw)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid tab_id")
+    sg_raw = (payload or {}).get("site_group_id")
+    site_group_id = None
+    if sg_raw is not None and str(sg_raw).strip() != "":
+        try:
+            site_group_id = int(sg_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid site_group_id")
     try:
         device_id = monitoring.add_device(
-            str(name or ""), str(target or ""), warn_latency_ms, tab_id=tab_id
+            str(name or ""),
+            str(target or ""),
+            warn_latency_ms,
+            tab_id=tab_id,
+            site_group_id=site_group_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
