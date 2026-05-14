@@ -396,7 +396,7 @@ services:
       - mtr_net
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: mtr-postgres
     restart: unless-stopped
     env_file:
