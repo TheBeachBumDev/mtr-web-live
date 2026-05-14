@@ -14,6 +14,7 @@ import math
 from fnmatch import fnmatch
 from datetime import datetime, timedelta
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import ipam
@@ -3906,6 +3907,105 @@ def _human_size(n: int) -> str:
     return f"{int(n)} B"
 
 
+def _copy_config_files_into_backup_stage(stage: Path, app_root: Path) -> List[str]:
+    """Copy compose/env/docs from app_root into a backup stage; returns basenames written."""
+    copied: List[str] = []
+    seen: Set[str] = set()
+    try:
+        roots_base = app_root.resolve()
+    except OSError:
+        roots_base = app_root
+    explicit = (
+        "docker-compose.yml",
+        "docker-compose.override.yml",
+        ".env",
+        ".env.compose",
+        ".env.compose.standby",
+        ".env.compose.example",
+        "OPERATIONS.md",
+    )
+    for name in explicit:
+        src = app_root / name
+        if not src.is_file():
+            continue
+        try:
+            if not src.resolve().is_relative_to(roots_base):
+                continue
+        except (ValueError, OSError):
+            continue
+        shutil.copy2(src, stage / name)
+        copied.append(name)
+        seen.add(name)
+    try:
+        for src in sorted(app_root.glob(".env*")):
+            if not src.is_file() or src.name in seen:
+                continue
+            try:
+                if not src.resolve().is_relative_to(roots_base):
+                    continue
+            except (ValueError, OSError):
+                continue
+            shutil.copy2(src, stage / src.name)
+            copied.append(src.name)
+            seen.add(src.name)
+    except Exception:
+        pass
+    for part in (os.getenv("BACKUP_EXTRA_CONFIG_FILES") or "").split(","):
+        raw = part.strip()
+        if not raw or Path(raw).is_absolute():
+            continue
+        rel_path = Path(raw)
+        if ".." in rel_path.parts:
+            continue
+        src = (app_root / rel_path).resolve()
+        try:
+            if not src.is_relative_to(roots_base):
+                continue
+        except (ValueError, OSError):
+            continue
+        if not src.is_file():
+            continue
+        dest_name = str(rel_path).replace(os.sep, "_").replace("/", "_").lstrip("_")
+        if not dest_name or dest_name in seen:
+            continue
+        shutil.copy2(src, stage / dest_name)
+        copied.append(dest_name)
+        seen.add(dest_name)
+    return copied
+
+
+def _run_full_backup_bundle() -> Dict[str, Any]:
+    root = _ensure_backup_dir()
+    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    stage = root / f"full-{stamp}"
+    stage.mkdir(parents=True, exist_ok=True)
+    dump_path = stage / "postgres.dump"
+    _run_pg_dump(dump_path)
+    bundled = _copy_config_files_into_backup_stage(stage, Path("/app"))
+    meta = {
+        "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "db_backend": os.getenv("DB_BACKEND", ""),
+        "postgres": {k: v for k, v in _pg_conn_parts().items() if k != "password"},
+        "bundled_config_files": bundled,
+    }
+    (stage / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    out = root / f"full-backup-{stamp}.tar.gz"
+    with tarfile.open(out, "w:gz") as tf:
+        tf.add(stage, arcname=stage.name)
+    for child in sorted(stage.glob("**/*"), reverse=True):
+        if child.is_file():
+            child.unlink(missing_ok=True)
+        elif child.is_dir():
+            child.rmdir()
+    stage.rmdir()
+    return {
+        "ok": True,
+        "file": out.name,
+        "size": _human_size(out.stat().st_size),
+        "bundled_config_files": bundled,
+    }
+
+
 def _list_backup_files() -> List[Dict[str, Any]]:
     root = _ensure_backup_dir()
     out: List[Dict[str, Any]] = []
@@ -3955,32 +4055,7 @@ def api_backups_db_only(request: Request):
 @app.post("/api/backups/full")
 def api_backups_full(request: Request):
     require_admin(request)
-    root = _ensure_backup_dir()
-    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    stage = root / f"full-{stamp}"
-    stage.mkdir(parents=True, exist_ok=True)
-    dump_path = stage / "postgres.dump"
-    _run_pg_dump(dump_path)
-    meta = {
-        "created_at_utc": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        "db_backend": os.getenv("DB_BACKEND", ""),
-        "postgres": {k: v for k, v in _pg_conn_parts().items() if k != "password"},
-    }
-    (stage / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    for cfg in ("docker-compose.yml", ".env.compose", "OPERATIONS.md"):
-        src = Path("/app") / cfg
-        if src.is_file():
-            (stage / cfg).write_bytes(src.read_bytes())
-    out = root / f"full-backup-{stamp}.tar.gz"
-    with tarfile.open(out, "w:gz") as tf:
-        tf.add(stage, arcname=stage.name)
-    for child in sorted(stage.glob("**/*"), reverse=True):
-        if child.is_file():
-            child.unlink(missing_ok=True)
-        elif child.is_dir():
-            child.rmdir()
-    stage.rmdir()
-    return {"ok": True, "file": out.name, "size": _human_size(out.stat().st_size)}
+    return _run_full_backup_bundle()
 
 
 @app.get("/api/resources")
@@ -5007,6 +5082,51 @@ async def _nightly_clone_scheduler():
             )
         except Exception:
             pass
+
+
+def _backup_nightly_enabled() -> bool:
+    v = os.getenv("BACKUP_NIGHTLY_ENABLED", "1").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _backup_nightly_hh_mm() -> Tuple[int, int]:
+    try:
+        hh = max(0, min(23, int(os.getenv("BACKUP_NIGHTLY_HOUR", "2"))))
+    except ValueError:
+        hh = 2
+    try:
+        mm = max(0, min(59, int(os.getenv("BACKUP_NIGHTLY_MINUTE", "0"))))
+    except ValueError:
+        mm = 0
+    return hh, mm
+
+
+async def _nightly_backup_scheduler():
+    if APP_ROLE not in ("core",):
+        return
+    await asyncio.sleep(25.0)
+    while True:
+        if not _backup_nightly_enabled():
+            await asyncio.sleep(60.0)
+            continue
+        hh, mm = _backup_nightly_hh_mm()
+        now = datetime.now()
+        nxt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if nxt <= now:
+            nxt = nxt + timedelta(days=1)
+        await asyncio.sleep(max(1.0, (nxt - now).total_seconds()))
+        try:
+            r = _run_full_backup_bundle()
+            LOG.info("nightly full backup ok file=%s size=%s", r.get("file"), r.get("size"))
+        except Exception:
+            LOG.exception("nightly full backup failed")
+
+
+@app.on_event("startup")
+async def _start_nightly_backup_scheduler():
+    if APP_ROLE not in ("core",):
+        return
+    asyncio.create_task(_nightly_backup_scheduler())
 
 
 @app.on_event("startup")

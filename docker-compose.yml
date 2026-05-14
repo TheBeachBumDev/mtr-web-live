@@ -25,6 +25,10 @@ services:
       - app_logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/wibernetdev/.ssh:/home/wibernetdev/.ssh:ro
+      # Same paths as env_file: expose files under /app so full backups can copy them.
+      - ./.env.compose:/app/.env.compose:ro
+      - ./.env.compose.standby:/app/.env.compose.standby:ro
+      # Optional: add ./.env:/app/.env:ro in docker-compose.override.yml if you use a root .env.
       # Match host wall clock for clone/DR log timestamps (Linux; Docker Desktop may differ).
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
