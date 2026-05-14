@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-  .po-page { width: 100%; max-width: 100%; box-sizing: border-box; }
+  .po-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
   .po-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 0; flex-wrap: wrap; }
   .po-list-controls {
     display: flex;
@@ -10,7 +15,7 @@
     align-items: flex-end;
     margin-bottom: 12px;
   }
-  .po-list-controls .po-field { flex: 1; min-width: 200px; max-width: min(480px, 100%); margin: 0; }
+  .po-list-controls .po-field { flex: 1; min-width: 0; max-width: min(480px, 100%); margin: 0; }
   .po-list-pagination {
     display: flex;
     flex-wrap: wrap;
@@ -28,6 +33,8 @@
     padding: 14px 16px;
     margin-bottom: 12px;
     box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
   }
   .po-card > h3,
   .po-card > h4 {
@@ -256,6 +263,10 @@
   .po-list .po-purchase-list-table td:nth-child(3) { width: 8.5rem; }
   .po-list .po-purchase-list-table th:nth-child(5),
   .po-list .po-purchase-list-table td:nth-child(5) { width: 5.5rem; }
+  .app-main .po-list .po-purchase-list-table thead th,
+  .app-main .po-list .po-purchase-list-table tbody td {
+    min-width: 0;
+  }
 
   /* Row “cards” on all viewports (thin border + radius per row) */
   table.po-stack-table {
@@ -311,15 +322,26 @@
     vertical-align: middle;
   }
   .po-table-scroll {
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     margin-top: 8px;
     -webkit-overflow-scrolling: touch;
     width: 100%;
+    box-sizing: border-box;
   }
   .po-form-grid--after-intro {
     margin-bottom: 16px;
   }
-  .po-log { max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .po-log {
+    max-height: 180px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   .po-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; align-items: center; }
   .po-modal .po-actions {
     margin-top: 16px;
@@ -468,10 +490,15 @@
   }
   .po-kv {
     display: grid;
-    grid-template-columns: minmax(120px, 140px) 1fr;
+    grid-template-columns: minmax(0, min(140px, 32%)) minmax(0, 1fr);
     gap: 8px 12px;
     font-size: 12px;
     align-items: baseline;
+  }
+  .po-kv > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   @media (max-width: 1023px) {
     .po-kv {
@@ -483,10 +510,9 @@
     }
   }
   .po-kv b { color: var(--muted); font-weight: 600; }
-  .po-rule-grid.po-stack-table { min-width: 820px; }
   .po-role-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
     gap: 12px;
     margin-bottom: 4px;
   }
@@ -519,8 +545,36 @@
     width: 100%;
     box-sizing: border-box;
   }
-  .po-notif-table.po-stack-table { min-width: 980px; }
-  .po-notif-table input[type="text"] { width: min(220px, 100%); box-sizing: border-box; }
+  /* Admin tables: stay within main column (overrides global .app-main td nowrap + wide min-widths). */
+  .po-table-scroll .po-notif-table.po-stack-table,
+  .po-table-scroll .po-rule-grid.po-stack-table {
+    min-width: 0 !important;
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+  .app-main .po-table-scroll .po-notif-table.po-stack-table th,
+  .app-main .po-table-scroll .po-notif-table.po-stack-table td,
+  .app-main .po-table-scroll .po-rule-grid.po-stack-table th,
+  .app-main .po-table-scroll .po-rule-grid.po-stack-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    max-width: 100%;
+  }
+  .app-main .po-table-scroll .po-notif-table.po-stack-table td:last-child,
+  .app-main .po-table-scroll .po-rule-grid.po-stack-table td:last-child {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .po-notif-table input[type="text"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 
   /* --- Mobile-first: card-style tables (no sideways scroll for primary flows) --- */
   @media (max-width: 1023px) {
@@ -1942,19 +1996,19 @@
       ? `<b>Postponed by</b><span>${escHtml(po.postponed_by_username || "-")}</span><b>Resume on</b><span>${escHtml(po.resume_at || "-")}</span><b>Postpone comment</b><span>${escHtml(po.postponed_comment || "-")}</span>`
       : "";
     detail.innerHTML = `
-      <b>PO Number</b><span>${po.po_number || "-"}</span>
+      <b>PO Number</b><span>${escHtml(String(po.po_number || "-"))}</span>
       <b>Status</b><span><span class="${statusBadgeClass(po.status)}">${escHtml(statusBadgeLabel(po.status))}</span></span>
-      <b>Supplier</b><span>${po.supplier_name || "-"}</span>
-      <b>Department</b><span>${po.department_name || "-"}</span>
-      <b>Type</b><span>${String(po.request_type || "stock_item").replace(/_/g, " ")}</span>
-      <b>Customer ID</b><span>${po.customer_id || "-"}</span>
-      <b>Payment</b><span>${po.payment_status || "-"}</span>
-      <b>Date Required</b><span>${po.date_required || "-"}</span>
-      <b>Urgency</b><span>${po.urgency || "-"}</span>
-      <b>Requested By</b><span>${po.requested_by_username || "-"}</span>
+      <b>Supplier</b><span>${escHtml(String(po.supplier_name || "-"))}</span>
+      <b>Department</b><span>${escHtml(String(po.department_name || "-"))}</span>
+      <b>Type</b><span>${escHtml(String(po.request_type || "stock_item").replace(/_/g, " "))}</span>
+      <b>Customer ID</b><span>${escHtml(String(po.customer_id || "-"))}</span>
+      <b>Payment</b><span>${escHtml(String(po.payment_status || "-"))}</span>
+      <b>Date Required</b><span>${escHtml(String(po.date_required || "-"))}</span>
+      <b>Urgency</b><span>${escHtml(String(po.urgency || "-"))}</span>
+      <b>Requested By</b><span>${escHtml(String(po.requested_by_username || "-"))}</span>
       <b>Total</b><span>R ${(po.total || 0).toFixed ? po.total.toFixed(2) : po.total}</span>
-      <b>Created</b><span>${po.created_at || "-"}</span>
-      <b>Notes</b><span>${po.notes || "-"}</span>
+      <b>Created</b><span>${escHtml(String(po.created_at || "-"))}</span>
+      <b>Notes</b><span>${escHtml(String(po.notes || "-"))}</span>
       ${rejCommentExtra}
       ${postponeExtra}
     `;
