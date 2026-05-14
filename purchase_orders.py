@@ -40,6 +40,20 @@ TERMINAL_STATUSES = {PO_STATUS_REJECTED, PO_STATUS_CANCELLED, PO_STATUS_CLOSED}
 EDITABLE_STATUSES = {PO_STATUS_DRAFT, PO_STATUS_CHANGES}
 DELETABLE_STATUSES = {PO_STATUS_DRAFT, PO_STATUS_CHANGES, PO_STATUS_REJECTED, PO_STATUS_CANCELLED}
 
+# Approval-related notification rows must only dispatch while the PO is still in an approval-waiting status.
+_APPROVAL_QUEUE_EVENT_TYPES: Tuple[str, ...] = (
+    "approval_required",
+    "approval_reminder_4h",
+    "approval_reminder_24h",
+    "approval_escalation_48h",
+)
+_APPROVAL_ACTIVE_PO_STATUSES: Tuple[str, ...] = (
+    PO_STATUS_SUBMITTED,
+    PO_STATUS_PENDING_MANAGER,
+    PO_STATUS_PENDING_FINANCE,
+    PO_STATUS_PENDING_DIRECTOR,
+)
+
 REMINDER_4H = int(os.getenv("PO_REMINDER_4H_SEC", "14400"))
 REMINDER_24H = int(os.getenv("PO_REMINDER_24H_SEC", "86400"))
 REMINDER_48H = int(os.getenv("PO_REMINDER_48H_SEC", "172800"))
@@ -1098,6 +1112,8 @@ def submit_po(po_id: int, actor_user_id: int) -> bool:
         rules = _load_rules(c, total, int(po["department_id"]) if po["department_id"] is not None else None, str(po["category"] or ""))
         if not rules:
             raise ValueError("No approval rules available")
+        # Clear any stray approval-queue rows before rebuilding steps (e.g. partial DB state or missed cancels).
+        _cancel_pending_approval_notifications(c, int(po_id))
         po_number = _next_po_number(c)
         submitted_at = _now()
         first_step = min(int(r["step_number"]) for r in rules)
@@ -1557,6 +1573,7 @@ def update_lifecycle_status(po_id: int, actor_user_id: int, target_status: str, 
             (target, closed_at, int(po_id)),
         )
         _log_status(c, po_id, actor_user_id, "status_update", from_status, target, comments)
+        _cancel_pending_approval_notifications(c, int(po_id))
         c.commit()
         return True
     finally:
@@ -1905,16 +1922,45 @@ def fetch_due_notifications(limit: int = 100) -> List[Dict[str, Any]]:
             """,
             (ts, stale_before),
         )
+        # Drop approval reminders that were never cancelled but the PO already left the approval queue.
+        et_list = ",".join(["?"] * len(_APPROVAL_QUEUE_EVENT_TYPES))
+        st_list = ",".join(["?"] * len(_APPROVAL_ACTIVE_PO_STATUSES))
+        c.execute(
+            f"""
+            UPDATE notifications AS n
+            SET state = 'failed', failed_at = ?
+            WHERE n.state = 'pending'
+              AND n.event_type IN ({et_list})
+              AND n.purchase_order_id IS NOT NULL
+              AND (
+                NOT EXISTS (SELECT 1 FROM purchase_orders po WHERE po.id = n.purchase_order_id)
+                OR EXISTS (
+                  SELECT 1 FROM purchase_orders po
+                  WHERE po.id = n.purchase_order_id
+                    AND lower(btrim(po.status::text)) NOT IN ({st_list})
+                )
+              )
+            """,
+            (ts, *_APPROVAL_QUEUE_EVENT_TYPES, *_APPROVAL_ACTIVE_PO_STATUSES),
+        )
         rows = c.execute(
-            """
+            f"""
             SELECT n.id, n.user_id, n.purchase_order_id, n.event_type, n.title, n.message, n.action_url, n.channel, n.schedule_at, u.username
             FROM notifications n
             LEFT JOIN app_users u ON u.id = n.user_id
             WHERE n.state = 'pending' AND n.schedule_at <= ?
+              AND (
+                n.event_type NOT IN ({et_list})
+                OR EXISTS (
+                  SELECT 1 FROM purchase_orders po
+                  WHERE po.id = n.purchase_order_id
+                    AND lower(btrim(po.status::text)) IN ({st_list})
+                )
+              )
             ORDER BY n.schedule_at ASC, n.id ASC
             LIMIT ?
             """,
-            (_now(), max(1, min(500, int(limit)))),
+            (_now(), *_APPROVAL_QUEUE_EVENT_TYPES, *_APPROVAL_ACTIVE_PO_STATUSES, max(1, min(500, int(limit)))),
         ).fetchall()
         out = [
             {
