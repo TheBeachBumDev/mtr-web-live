@@ -112,7 +112,8 @@ ModeProto = Literal["icmp", "tcp", "udp"]
 security = HTTPBasic()
 
 
-def require_login(credentials: HTTPBasicCredentials) -> str:
+def require_basic_auth(credentials: HTTPBasicCredentials) -> str:
+    """HTTP Basic auth helper (FastAPI Depends). Do not confuse with access_control.require_login (session)."""
     user = (credentials.username or "").strip()
     if verify_user_password(user, credentials.password or ""):
         return user
