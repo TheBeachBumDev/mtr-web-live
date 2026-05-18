@@ -601,6 +601,103 @@ def _norm_text(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(s or "").lower())
 
 
+def _format_multiple_choice_prompt(question: str, options: Any) -> str:
+    prompt = str(question or "").strip() or "Choose one option"
+    if not isinstance(options, list) or not options:
+        return prompt
+    lines = [
+        f"{str(o.get('key') or '').strip()} - {str(o.get('label') or '').strip()}"
+        for o in options
+        if isinstance(o, dict) and str(o.get("key") or "").strip()
+    ]
+    if not lines:
+        return prompt
+    return prompt + "\n" + "\n".join(lines)
+
+
+def _resolve_multiple_choice_answer(msg: str, options: Any) -> Optional[str]:
+    raw = _clean_inbound_text(msg)
+    if not raw or not isinstance(options, list):
+        return None
+    norm = _norm_text(raw)
+
+    if re.fullmatch(r"\d+", raw):
+        idx = int(raw) - 1
+        if 0 <= idx < len(options):
+            opt = options[idx]
+            if isinstance(opt, dict):
+                picked = str(opt.get("value") or opt.get("label") or opt.get("key") or "").strip()
+                if picked:
+                    return picked
+
+    prefix = re.split(r"\s*[-–:]\s*", raw, maxsplit=1)[0].strip()
+    if prefix and prefix != raw:
+        nested = _resolve_multiple_choice_answer(prefix, options)
+        if nested:
+            return nested
+
+    for opt in options:
+        if not isinstance(opt, dict):
+            continue
+        key = str(opt.get("key") or "").strip()
+        label = str(opt.get("label") or "").strip()
+        value = str(opt.get("value") or label or key).strip()
+        if not key and not label:
+            continue
+        key_norm = _norm_text(key)
+        label_norm = _norm_text(label)
+        value_norm = _norm_text(value)
+        if raw in {key, label, value}:
+            return value
+        if norm and norm in {key_norm, label_norm, value_norm}:
+            return value
+    return None
+
+
+def _clean_inbound_text(msg: str) -> str:
+    s = str(msg or "").strip()
+    s = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", s)
+    return s.strip()
+
+
+def _inbound_message_text(m0: Dict[str, Any]) -> str:
+    mtype = str((m0 or {}).get("type") or "")
+    if mtype == "text":
+        return _clean_inbound_text(str(((m0.get("text") or {}).get("body")) or ""))
+    if mtype == "interactive":
+        inter = (m0 or {}).get("interactive") or {}
+        itype = str(inter.get("type") or "")
+        if itype == "button_reply":
+            br = inter.get("button_reply") or {}
+            return _clean_inbound_text(str(br.get("id") or br.get("title") or ""))
+        if itype == "list_reply":
+            lr = inter.get("list_reply") or {}
+            return _clean_inbound_text(str(lr.get("id") or lr.get("title") or ""))
+        nfm = inter.get("nfm_reply") or {}
+        return _clean_inbound_text(str(nfm.get("body") or ""))
+    return ""
+
+
+def _flow_steps_for_session(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    cid = int(data.get("__campaign_id") or 0)
+    if cid > 0:
+        for cd in list_campaign_defs():
+            if int(cd.get("id") or 0) == cid:
+                flow = cd.get("flow")
+                if isinstance(flow, list) and flow:
+                    data["__flow_steps"] = flow
+                    return flow
+    flow = data.get("__flow_steps")
+    if isinstance(flow, list) and flow:
+        return flow
+    return list(_SIGNUP_STEPS)
+
+
+def _session_needs_flow_reset(data: Dict[str, Any]) -> bool:
+    flow = data.get("__flow_steps")
+    return not isinstance(flow, list) or not flow
+
+
 def find_campaign_by_trigger(message_text: str) -> Optional[Dict[str, Any]]:
     norm = _norm_text(message_text)
     if not norm:
@@ -1005,11 +1102,10 @@ def _extract_message_event(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     mtype = str(m0.get("type") or "")
                     msg_text = ""
                     interactive_json = {}
-                    if mtype == "text":
-                        msg_text = str((m0.get("text") or {}).get("body") or "")
-                    if mtype == "interactive":
-                        interactive_json = m0.get("interactive") or {}
-                        msg_text = str((interactive_json.get("nfm_reply") or {}).get("body") or "")
+                    if mtype in ("text", "interactive"):
+                        if mtype == "interactive":
+                            interactive_json = m0.get("interactive") or {}
+                        msg_text = _inbound_message_text(m0)
                     return {
                         "provider_event_id": str(m0.get("id") or ""),
                         "wa_id": wa_id,
@@ -1222,7 +1318,7 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
     from_phone = str(evt.get("from_phone") or "").strip()
     if not from_phone:
         return
-    msg = str(evt.get("message_text") or "").strip()
+    msg = _clean_inbound_text(str(evt.get("message_text") or ""))
     norm = _norm_text(msg)
     session = _session_by_phone(c, from_phone)
     ts = _now()
@@ -1234,6 +1330,61 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
         or norm in {"signup", "start", "hi", "hello"}
     )
     kickoff = bool(matched_campaign) or default_kickoff
+
+    def _start_session(flow_steps: List[Dict[str, Any]], campaign: Optional[Dict[str, Any]]) -> None:
+        if not isinstance(flow_steps, list) or not flow_steps:
+            flow_steps = list(_SIGNUP_STEPS)
+        first_step = flow_steps[0] if isinstance(flow_steps[0], dict) else _SIGNUP_STEPS[0]
+        first_key = str(first_step.get("field_key") or "full_name")
+        first_prompt = str(first_step.get("question_text") or "What is your full name?")
+        if str(first_step.get("type") or "").strip().lower() == "multiple_choice":
+            first_prompt = _format_multiple_choice_prompt(first_prompt, first_step.get("options"))
+        welcome_text = (
+            str((campaign or {}).get("welcome_text") or "").strip()
+            if campaign
+            else "Welcome to Wibernet signup."
+        ) or "Welcome to Wibernet signup."
+        meta = {
+            "__flow_steps": flow_steps,
+            "__step_index": 0,
+            "__campaign_id": int((campaign or {}).get("id") or 0),
+            "__campaign_code": str((campaign or {}).get("campaign_code") or ""),
+        }
+        if session:
+            c.execute(
+                """
+                UPDATE whatsapp_signup_sessions
+                SET wa_id = ?, profile_name = ?, step_key = ?, data_json = ?, status = 'active', updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    str(evt.get("wa_id") or ""),
+                    str(evt.get("profile_name") or ""),
+                    first_key,
+                    json.dumps(meta, ensure_ascii=True),
+                    ts,
+                    int(session["id"]),
+                ),
+            )
+        else:
+            c.execute(
+                """
+                INSERT INTO whatsapp_signup_sessions(from_phone, wa_id, profile_name, step_key, data_json, status, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, 'active', ?, ?)
+                """,
+                (
+                    from_phone,
+                    str(evt.get("wa_id") or ""),
+                    str(evt.get("profile_name") or ""),
+                    first_key,
+                    json.dumps(meta, ensure_ascii=True),
+                    ts,
+                    ts,
+                ),
+            )
+        send_or_log(from_phone, welcome_text, "kickoff_welcome")
+        send_or_log(from_phone, first_prompt, "kickoff_first_question")
+
     def send_or_log(phone: str, text: str, context: str) -> bool:
         rs = send_test_message(str(phone or ""), str(text or ""), use_template=False)
         if bool(rs.get("ok")):
@@ -1261,41 +1412,26 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
         return False
 
     if not session and kickoff:
-        flow_steps = matched_campaign.get("flow") if matched_campaign else _SIGNUP_STEPS
+        flow_steps = matched_campaign.get("flow") if matched_campaign else list(_SIGNUP_STEPS)
         if not isinstance(flow_steps, list) or not flow_steps:
-            flow_steps = _SIGNUP_STEPS
-        first_step = flow_steps[0] if isinstance(flow_steps[0], dict) else _SIGNUP_STEPS[0]
-        first_key = str(first_step.get("field_key") or "full_name")
-        first_prompt = str(first_step.get("question_text") or "What is your full name?")
-        welcome_text = (
-            str(matched_campaign.get("welcome_text") or "").strip()
-            if matched_campaign
-            else "Welcome to Wibernet signup."
-        ) or "Welcome to Wibernet signup."
-        meta = {
-            "__flow_steps": flow_steps,
-            "__step_index": 0,
-            "__campaign_id": int(matched_campaign.get("id") or 0) if matched_campaign else 0,
-            "__campaign_code": str(matched_campaign.get("campaign_code") or "") if matched_campaign else "",
-        }
-        c.execute(
-            """
-            INSERT INTO whatsapp_signup_sessions(from_phone, wa_id, profile_name, step_key, data_json, status, created_at, updated_at)
-            VALUES(?, ?, ?, ?, ?, 'active', ?, ?)
-            """,
-            (
-                from_phone,
-                str(evt.get("wa_id") or ""),
-                str(evt.get("profile_name") or ""),
-                first_key,
-                json.dumps(meta, ensure_ascii=True),
-                ts,
-                ts,
-            ),
-        )
-        send_or_log(from_phone, welcome_text, "kickoff_welcome")
-        send_or_log(from_phone, first_prompt, "kickoff_first_question")
+            flow_steps = list(_SIGNUP_STEPS)
+        _start_session(flow_steps, matched_campaign)
         return
+
+    if session and kickoff:
+        existing: Dict[str, Any] = {}
+        try:
+            parsed = json.loads(str(session["data_json"] or "{}"))
+            if isinstance(parsed, dict):
+                existing = parsed
+        except Exception:
+            existing = {}
+        if _session_needs_flow_reset(existing):
+            flow_steps = matched_campaign.get("flow") if matched_campaign else list(_SIGNUP_STEPS)
+            if not isinstance(flow_steps, list) or not flow_steps:
+                flow_steps = list(_SIGNUP_STEPS)
+            _start_session(flow_steps, matched_campaign)
+            return
 
     if not session:
         return
@@ -1308,9 +1444,7 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
     except Exception:
         data = {}
     step_key = str(session["step_key"] or "")
-    flow_steps = data.get("__flow_steps")
-    if not isinstance(flow_steps, list) or not flow_steps:
-        flow_steps = _SIGNUP_STEPS
+    flow_steps = _flow_steps_for_session(data)
     idx = int(data.get("__step_index") or 0)
     if idx < 0 or idx >= len(flow_steps):
         idx = next((i for i, x in enumerate(flow_steps) if str((x or {}).get("field_key") or "") == step_key), 0)
@@ -1320,23 +1454,13 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
     answer = msg
     if stype == "multiple_choice":
         options = current_step.get("options") or []
-        mapped = None
-        if isinstance(options, list):
-            for opt in options:
-                if not isinstance(opt, dict):
-                    continue
-                key_norm = _norm_text(str(opt.get("key") or ""))
-                label_norm = _norm_text(str(opt.get("label") or ""))
-                if norm and norm in {key_norm, label_norm}:
-                    mapped = str(opt.get("value") or opt.get("label") or "").strip()
-                    break
+        mapped = _resolve_multiple_choice_answer(msg, options)
         if mapped is None:
-            lines = []
-            if isinstance(options, list):
-                lines = [f"{str(o.get('key') or '').strip()} - {str(o.get('label') or '').strip()}" for o in options if isinstance(o, dict)]
-            retry = str(current_step.get("question_text") or "Choose one option")
-            if lines:
-                retry = retry + "\n" + "\n".join(lines)
+            retry = _format_multiple_choice_prompt(
+                str(current_step.get("question_text") or "Choose one option"),
+                options,
+            )
+            retry = retry + "\n\nReply with the option number (e.g. 2) or the option label."
             send_or_log(from_phone, retry, "multiple_choice_retry")
             return
         answer = mapped
@@ -1348,11 +1472,7 @@ def _process_conversational_signup(c, evt: Dict[str, Any]) -> None:
         next_key = str(next_step.get("field_key") or "full_name")
         next_prompt = str(next_step.get("question_text") or "Next question")
         if str(next_step.get("type") or "").strip().lower() == "multiple_choice":
-            options = next_step.get("options") or []
-            if isinstance(options, list) and options:
-                lines = [f"{str(o.get('key') or '').strip()} - {str(o.get('label') or '').strip()}" for o in options if isinstance(o, dict)]
-                if lines:
-                    next_prompt = next_prompt + "\n" + "\n".join(lines)
+            next_prompt = _format_multiple_choice_prompt(next_prompt, next_step.get("options"))
         data["__step_index"] = idx + 1
         c.execute(
             "UPDATE whatsapp_signup_sessions SET step_key = ?, data_json = ?, updated_at = ? WHERE id = ?",

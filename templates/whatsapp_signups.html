@@ -61,6 +61,39 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+#waPage details.wa-tech-panel {
+  margin-top: 14px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  overflow: hidden;
+}
+#waPage details.wa-tech-panel > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  user-select: none;
+}
+#waPage details.wa-tech-panel > summary::-webkit-details-marker { display: none; }
+#waPage details.wa-tech-panel > summary::after {
+  content: "▶";
+  font-size: 12px;
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+#waPage details.wa-tech-panel[open] > summary::after { content: "▼"; }
+#waPage details.wa-tech-panel > summary:hover { background: var(--card2, rgba(0,0,0,0.03)); }
+#waPage .wa-tech-panel-body {
+  padding: 0 16px 16px;
+  border-top: 1px dashed var(--border, #ddd);
+}
 </style>
 <div id="waPage">
 <section class="card">
@@ -70,106 +103,12 @@
   </p>
 </section>
 
-<section class="card" style="margin-top:14px;">
-  <h3 style="margin:0 0 10px 0;">Technical Configuration</h3>
-  <p class="hint wa-muted" style="margin:0 0 10px 0;">
-    Required signup entry fields are built in your WhatsApp provider flow/template. This module stores config, generates campaign QR/link, and receives submitted data via webhook.
-  </p>
-  <div class="grid cols-3">
-    <label>Provider
-      <input id="waProvider" placeholder="meta" />
-    </label>
-    <label>Business Number (E.164 digits)
-      <input id="waBusinessNumber" placeholder="27731234567" />
-    </label>
-    <label>Phone Number ID
-      <input id="waPhoneNumberId" placeholder="Meta phone_number_id" />
-    </label>
-  </div>
-  <div class="grid cols-2" style="margin-top:10px;">
-    <label>Flow ID
-      <input id="waFlowId" placeholder="WhatsApp Flow ID" />
-    </label>
-    <label>Webhook Verify Token
-      <input id="waVerifyToken" placeholder="Used for webhook challenge verify" />
-    </label>
-  </div>
-  <div class="grid cols-2" style="margin-top:10px;">
-    <label>Access Token (Meta Cloud API)
-      <input id="waAccessToken" placeholder="Temporary or long-lived token" />
-    </label>
-  </div>
-  <div class="grid cols-3" style="margin-top:10px;">
-    <label>Splynx Integration Enabled
-      <select id="waSplynxEnabled">
-        <option value="0">No</option>
-        <option value="1">Yes</option>
-      </select>
-    </label>
-    <label>Splynx Dry Run
-      <select id="waSplynxDryRun">
-        <option value="1">Yes (safe)</option>
-        <option value="0">No (live write)</option>
-      </select>
-    </label>
-    <label>Splynx Lead Path
-      <input id="waSplynxLeadPath" placeholder="admin/customers/customer" />
-    </label>
-  </div>
-  <div class="grid cols-2" style="margin-top:10px;">
-    <label>Splynx Default Location ID
-      <input id="waSplynxLocationId" placeholder="optional location id" />
-    </label>
-    <label>Splynx Default Status
-      <input id="waSplynxStatus" placeholder="lead" />
-    </label>
-  </div>
-  <label style="display:block;margin-top:10px;">Signup Message Template
-    <textarea id="waSignupTemplate" rows="3" placeholder="Hi, I want to sign up. Campaign: {campaign}"></textarea>
-  </label>
-  <label style="display:block;margin-top:10px;">Field Mapping JSON (incoming WhatsApp form key -> app field)
-    <textarea id="waFieldMappingJson" rows="8" placeholder='{"full_name":"full_name","email":"email"}'></textarea>
-  </label>
-  <div style="display:flex;gap:8px;margin-top:12px;">
-    <button id="waSaveCfgBtn" type="button">Save Configuration</button>
-    <button id="waReloadCfgBtn" type="button">Reload Configuration</button>
-  </div>
-  <div class="grid cols-2" style="margin-top:10px;">
-    <label>Test Destination Phone
-      <input id="waTestPhone" placeholder="2773..." />
-    </label>
-    <label>Test Message
-      <input id="waTestMessage" placeholder="Wibernet WhatsApp config test" />
-    </label>
-  </div>
-  <p class="hint" style="margin:8px 0 0 0;">Connection test sends WhatsApp template <code class="mono">hello_world</code> (required for first contact in test mode).</p>
-  <div style="display:flex;gap:8px;margin-top:10px;">
-    <button id="waRunTestBtn" type="button">Run Connection Test</button>
-  </div>
-  <div id="waCfgMsg" class="hint" style="margin-top:10px;"></div>
-</section>
 
-<section class="card" style="margin-top:14px;">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-    <h3 style="margin:0;">Webhook Health</h3>
-    <button id="waHealthRefreshBtn" type="button">Refresh Health</button>
-  </div>
-  <div class="grid cols-3" style="margin-top:10px;">
-    <div><b>Events Total:</b> <span id="waHealthEventsTotal">0</span></div>
-    <div><b>Records Total:</b> <span id="waHealthRecordsTotal">0</span></div>
-    <div><b>Last Inbound At:</b> <span id="waHealthLastAt">-</span></div>
-  </div>
-  <div class="grid cols-3" style="margin-top:6px;">
-    <div><b>Last Event Type:</b> <span id="waHealthLastType">-</span></div>
-    <div><b>Last Status:</b> <span id="waHealthLastStatus">-</span></div>
-    <div><b>Last Phone:</b> <span id="waHealthLastPhone">-</span></div>
-  </div>
-</section>
 
 <section class="card" style="margin-top:14px;">
   <h3 style="margin:0 0 10px 0;">Campaign Flow Builder</h3>
   <p class="hint wa-muted" style="margin:0 0 10px 0;">
-    Build custom WhatsApp question flows per campaign. For multiple choice, set options as <code class="mono">key|label|stored_value</code> per line.
+    Build custom WhatsApp question flows per campaign. For multiple choice, set a short <b>Key</b> (what the user replies with, e.g. <code class="mono">1</code>, <code class="mono">2</code>), a <b>Label</b> (shown in WhatsApp), and an optional <b>Stored value</b>.
   </p>
   <div class="grid cols-3">
     <label>Campaign Code
@@ -284,9 +223,33 @@
   </div>
 </section>
 
+
 <section class="card" style="margin-top:14px;">
   <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
-    <h3 style="margin:0;">WhatsApp Inbox (Webhook Events)</h3>
+    <h3 style="margin:0;">Whatsapp Signups</h3>
+    <input id="waRecordSearch" placeholder="Search phone, name, email, id..." style="max-width:360px;" />
+  </div>
+  <div class="wa-table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Phone</th>
+          <th>Full Name</th>
+          <th>Email</th>
+          <th>Details</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="waRecordRows"></tbody>
+    </table>
+  </div>
+</section>
+
+<details class="wa-tech-panel">
+  <summary>WhatsApp Inbox (Webhook Events)</summary>
+  <div class="wa-tech-panel-body">
+  <div style="display:flex;justify-content:flex-end;flex-wrap:wrap;margin-bottom:10px;">
     <input id="waSearch" placeholder="Search phone, profile, text, type..." style="max-width:360px;" />
   </div>
   <div class="wa-table-wrap">
@@ -310,29 +273,108 @@
     <span class="hint" id="waPageInfo">Page 1</span>
     <button id="waNextBtn" type="button">Next</button>
   </div>
-</section>
+  </div>
+</details>
 
-<section class="card" style="margin-top:14px;">
-  <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;">
-    <h3 style="margin:0;">Whatsapp Signups</h3>
-    <input id="waRecordSearch" placeholder="Search phone, name, email, id..." style="max-width:360px;" />
+<details class="wa-tech-panel">
+  <summary>Webhook Health</summary>
+  <div class="wa-tech-panel-body">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <button id="waHealthRefreshBtn" type="button">Refresh Health</button>
   </div>
-  <div class="wa-table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Phone</th>
-          <th>Full Name</th>
-          <th>Email</th>
-          <th>Details</th>
-          <th>Created</th>
-        </tr>
-      </thead>
-      <tbody id="waRecordRows"></tbody>
-    </table>
+  <div class="grid cols-3" style="margin-top:10px;">
+    <div><b>Events Total:</b> <span id="waHealthEventsTotal">0</span></div>
+    <div><b>Records Total:</b> <span id="waHealthRecordsTotal">0</span></div>
+    <div><b>Last Inbound At:</b> <span id="waHealthLastAt">-</span></div>
   </div>
-</section>
+  <div class="grid cols-3" style="margin-top:6px;">
+    <div><b>Last Event Type:</b> <span id="waHealthLastType">-</span></div>
+    <div><b>Last Status:</b> <span id="waHealthLastStatus">-</span></div>
+    <div><b>Last Phone:</b> <span id="waHealthLastPhone">-</span></div>
+  </div>
+  </div>
+</details>
+
+<details class="wa-tech-panel">
+  <summary>Technical Configuration</summary>
+  <div class="wa-tech-panel-body">
+  <p class="hint wa-muted" style="margin:0 0 10px 0;">
+    Required signup entry fields are built in your WhatsApp provider flow/template. This module stores config, generates campaign QR/link, and receives submitted data via webhook.
+  </p>
+  <div class="grid cols-3">
+    <label>Provider
+      <input id="waProvider" placeholder="meta" />
+    </label>
+    <label>Business Number (E.164 digits)
+      <input id="waBusinessNumber" placeholder="27731234567" />
+    </label>
+    <label>Phone Number ID
+      <input id="waPhoneNumberId" placeholder="Meta phone_number_id" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Flow ID
+      <input id="waFlowId" placeholder="WhatsApp Flow ID" />
+    </label>
+    <label>Webhook Verify Token
+      <input id="waVerifyToken" placeholder="Used for webhook challenge verify" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Access Token (Meta Cloud API)
+      <input id="waAccessToken" placeholder="Temporary or long-lived token" />
+    </label>
+  </div>
+  <div class="grid cols-3" style="margin-top:10px;">
+    <label>Splynx Integration Enabled
+      <select id="waSplynxEnabled">
+        <option value="0">No</option>
+        <option value="1">Yes</option>
+      </select>
+    </label>
+    <label>Splynx Dry Run
+      <select id="waSplynxDryRun">
+        <option value="1">Yes (safe)</option>
+        <option value="0">No (live write)</option>
+      </select>
+    </label>
+    <label>Splynx Lead Path
+      <input id="waSplynxLeadPath" placeholder="admin/customers/customer" />
+    </label>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Splynx Default Location ID
+      <input id="waSplynxLocationId" placeholder="optional location id" />
+    </label>
+    <label>Splynx Default Status
+      <input id="waSplynxStatus" placeholder="lead" />
+    </label>
+  </div>
+  <label style="display:block;margin-top:10px;">Signup Message Template
+    <textarea id="waSignupTemplate" rows="3" placeholder="Hi, I want to sign up. Campaign: {campaign}"></textarea>
+  </label>
+  <label style="display:block;margin-top:10px;">Field Mapping JSON (incoming WhatsApp form key -> app field)
+    <textarea id="waFieldMappingJson" rows="8" placeholder='{"full_name":"full_name","email":"email"}'></textarea>
+  </label>
+  <div style="display:flex;gap:8px;margin-top:12px;">
+    <button id="waSaveCfgBtn" type="button">Save Configuration</button>
+    <button id="waReloadCfgBtn" type="button">Reload Configuration</button>
+  </div>
+  <div class="grid cols-2" style="margin-top:10px;">
+    <label>Test Destination Phone
+      <input id="waTestPhone" placeholder="2773..." />
+    </label>
+    <label>Test Message
+      <input id="waTestMessage" placeholder="Wibernet WhatsApp config test" />
+    </label>
+  </div>
+  <p class="hint" style="margin:8px 0 0 0;">Connection test sends WhatsApp template <code class="mono">hello_world</code> (required for first contact in test mode).</p>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <button id="waRunTestBtn" type="button">Run Connection Test</button>
+  </div>
+  <div id="waCfgMsg" class="hint" style="margin-top:10px;"></div>
+  </div>
+</details>
 
 <div id="waRecordModal" aria-hidden="true">
   <div class="wa-modal-panel">

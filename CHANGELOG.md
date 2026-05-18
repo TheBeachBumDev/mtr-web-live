@@ -5,6 +5,8 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
 ## 2026-05-18
+- **f1f0a94** — WhatsApp signups: fix multiple-choice replies (`2`, full line, label, or list position); reload campaign flow per message; repair empty sessions; read button/list WhatsApp replies.
+- **f1f0a94** — WhatsApp signups: collapse **WhatsApp Inbox**, **Webhook Health**, and **Technical Configuration** into closed dropdown panels below the main signup tools.
 - **7ea6492** — Stock management: **Misc Products (All Suppliers)** search box; five products per page with Previous/Next pagination.
 - **7ea6492** — Stock management: admin **Delete** on vendors and products with confirmation; blocks removal when assigned/pre-allocated serialised stock or misc assignments still reference quantity lots.
 - **688103e** — Stock management: optional accent colour per supplier (picker on create; admin Edit to change); subtle background tint and colour dot in the supplier header.
