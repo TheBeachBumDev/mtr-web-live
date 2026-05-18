@@ -6,6 +6,18 @@
   .sm-section { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-top: 14px; background: var(--card); }
   .sm-suppliers, .sm-vendors, .sm-products, .sm-items { margin-top: 10px; display: grid; gap: 8px; }
   .sm-supplier, .sm-vendor, .sm-product { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--card); }
+  .sm-supplier.sm-supplier--accent {
+    background: color-mix(in srgb, var(--sm-supplier-accent) 14%, var(--card) 86%);
+    border-color: color-mix(in srgb, var(--sm-supplier-accent) 28%, var(--border) 72%);
+    box-shadow: inset 4px 0 0 var(--sm-supplier-accent);
+  }
+  .sm-supplier-swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px;
+    border: 1px solid color-mix(in srgb, var(--border) 55%, transparent); vertical-align: middle; flex-shrink: 0;
+  }
+  .sm-supplier-form-modal { width: min(420px, 94vw); }
+  .sm-supplier-color-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .sm-supplier-color-row input[type="color"] { width: 48px; height: 36px; padding: 2px; cursor: pointer; }
   .sm-items .sm-item { border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; background: var(--code-bg); }
   .sm-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .sm-lookup-row { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
@@ -249,6 +261,30 @@
   </div>
 </div>
 
+<div id="smSupplierModalWrap" class="sm-modal-backdrop">
+  <div class="sm-modal sm-supplier-form-modal">
+    <div class="sm-head-row">
+      <h3 id="smSupplierModalTitle" style="margin:0;">New supplier</h3>
+      <button type="button" id="smSupplierModalClose">Close</button>
+    </div>
+    <label style="display:block;margin-top:12px;">Supplier name
+      <input id="smSupplierModalName" type="text" maxlength="120" placeholder="Supplier name" style="width:100%;box-sizing:border-box;margin-top:4px;" />
+    </label>
+    <div class="sm-supplier-color-row">
+      <label for="smSupplierModalColor" style="margin:0;">Accent colour</label>
+      <input id="smSupplierModalColor" type="color" value="#3b82f6" />
+      <label class="hint" style="display:inline-flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
+        <input type="checkbox" id="smSupplierModalNoColor" /> No accent
+      </label>
+    </div>
+    <p class="hint" style="margin:8px 0 0;">A subtle tint on this supplier block so you can see which one you are working in.</p>
+    <div class="sm-actions">
+      <button type="button" id="smSupplierModalCancel">Cancel</button>
+      <button type="button" id="smSupplierModalSave">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
   (function () {
     var IS_ADMIN = {{ is_admin | tojson }};
@@ -326,6 +362,68 @@
       if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
     loadExpandState();
+    var supplierModalMode = "create";
+    var supplierModalId = 0;
+    var DEFAULT_SUPPLIER_ACCENT = "#3b82f6";
+    function normalizeSupplierAccent(c) {
+      var s = String(c || "").trim();
+      if (!s) return "";
+      if (s.charAt(0) !== "#") s = "#" + s;
+      if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+      if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+        return ("#" + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]).toLowerCase();
+      }
+      return "";
+    }
+    function applySupplierAccent(box, accent) {
+      if (!box) return;
+      var hex = normalizeSupplierAccent(accent);
+      if (!hex) {
+        box.classList.remove("sm-supplier--accent");
+        box.style.removeProperty("--sm-supplier-accent");
+        return;
+      }
+      box.classList.add("sm-supplier--accent");
+      box.style.setProperty("--sm-supplier-accent", hex);
+    }
+    function supplierSwatchHtml(accent) {
+      var hex = normalizeSupplierAccent(accent);
+      if (!hex) return "";
+      return "<span class='sm-supplier-swatch' style='background:" + hex + ";'></span>";
+    }
+    function closeSupplierModal() {
+      var wrap = byId("smSupplierModalWrap");
+      if (wrap) wrap.style.display = "none";
+      supplierModalMode = "create";
+      supplierModalId = 0;
+    }
+    function openSupplierModal(opts) {
+      var o = opts || {};
+      supplierModalMode = o.mode === "edit" ? "edit" : "create";
+      supplierModalId = Number(o.id || 0);
+      var title = byId("smSupplierModalTitle");
+      var nameEl = byId("smSupplierModalName");
+      var colorEl = byId("smSupplierModalColor");
+      var noColorEl = byId("smSupplierModalNoColor");
+      if (title) title.textContent = supplierModalMode === "edit" ? "Edit supplier" : "New supplier";
+      if (nameEl) nameEl.value = String(o.name || "");
+      var hex = normalizeSupplierAccent(o.accent) || DEFAULT_SUPPLIER_ACCENT;
+      if (colorEl) colorEl.value = hex;
+      if (noColorEl) noColorEl.checked = !normalizeSupplierAccent(o.accent);
+      var wrap = byId("smSupplierModalWrap");
+      if (wrap) wrap.style.display = "flex";
+      if (nameEl) nameEl.focus();
+    }
+    function readSupplierModalPayload() {
+      var name = String((byId("smSupplierModalName") && byId("smSupplierModalName").value) || "").trim();
+      var noColor = !!(byId("smSupplierModalNoColor") && byId("smSupplierModalNoColor").checked);
+      var accent = null;
+      if (!noColor) {
+        accent = normalizeSupplierAccent((byId("smSupplierModalColor") && byId("smSupplierModalColor").value) || "");
+        if (!accent) throw new Error("Choose a valid accent colour or tick No accent");
+      }
+      return { name: name, accent_color: accent };
+    }
     function byId(id) { return document.getElementById(id); }
     function showErr(msg) {
       var el = byId("smErr");
@@ -458,6 +556,7 @@
         }
         var sBox = document.createElement("div");
         sBox.className = "sm-supplier";
+        applySupplierAccent(sBox, s.accent_color);
         var allVendors = (s.vendors || []);
         var normalVendors = allVendors.filter(function (v) { return !v.is_misc; });
         var miscVendors = allVendors.filter(function (v) { return !!v.is_misc; });
@@ -550,8 +649,8 @@
           });
         }
         sBox.innerHTML =
-          "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-supplier='" + s.id + "'><span>" + e(s.name) + "</span><span class='mono'>" + (supplierOpen ? "▼" : "▶") + "</span></button>" +
-          (IS_ADMIN ? "<button type='button' data-edit-supplier='" + s.id + "' data-supplier-name='" + e(s.name) + "'>Edit</button>" : "") + "</div>" +
+          "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-supplier='" + s.id + "'><span>" + supplierSwatchHtml(s.accent_color) + e(s.name) + "</span><span class='mono'>" + (supplierOpen ? "▼" : "▶") + "</span></button>" +
+          (IS_ADMIN ? "<button type='button' data-edit-supplier='" + s.id + "' data-supplier-name='" + e(s.name) + "' data-supplier-accent='" + e(s.accent_color || "") + "'>Edit</button>" : "") + "</div>" +
           "<div class='sm-body' data-supplier-body='" + s.id + "' style='display:" + (supplierOpen ? "block" : "none") + ";'>" +
           "<div class='sm-head-row'><button type='button' data-add-vendor='" + s.id + "'>+ Vendor</button><button type='button' data-add-misc-vendor='" + s.id + "'>+ Miscellaneous</button></div>" +
           "<div class='sm-vendors'>" +
@@ -854,9 +953,20 @@
       } catch (e) { showErr(String(e)); }
     }
     async function addSupplier() {
-      var name = prompt("New supplier name:");
-      if (!name) return;
-      await api("/api/stock/suppliers", "POST", { name: String(name).trim() });
+      openSupplierModal({ mode: "create", name: "", accent: "" });
+    }
+    async function saveSupplierModal() {
+      var payload = readSupplierModalPayload();
+      if (!payload.name) throw new Error("Supplier name is required");
+      if (supplierModalMode === "edit") {
+        if (!supplierModalId) throw new Error("No supplier selected");
+        await api("/api/stock/suppliers/" + encodeURIComponent(supplierModalId), "PATCH", payload);
+        pinSupplier(supplierModalId);
+      } else {
+        var created = await api("/api/stock/suppliers", "POST", payload);
+        pinSupplier(created.id);
+      }
+      closeSupplierModal();
       await refresh();
     }
     async function addVendor(sid) {
@@ -1257,11 +1367,8 @@
       if (currentSupplierId && currentVendorId) pinVendor(currentSupplierId, currentVendorId);
       await refresh();
     }
-    async function editSupplier(sid, oldName) {
-      var name = prompt("Rename supplier:", oldName || "");
-      if (!name) return;
-      await api("/api/stock/suppliers/" + encodeURIComponent(sid), "PATCH", { name: String(name).trim() });
-      await refresh();
+    async function editSupplier(sid, oldName, oldAccent) {
+      openSupplierModal({ mode: "edit", id: sid, name: oldName || "", accent: oldAccent || "" });
     }
     async function editVendor(vid, oldName) {
       var name = prompt("Rename vendor:", oldName || "");
@@ -1311,7 +1418,15 @@
       saveExpandState();
       renderSuppliers(suppliersCache);
     });
-    byId("smAddSupplierBtn").addEventListener("click", function () { addSupplier().catch(function (e) { showErr(String(e)); }); });
+    byId("smSupplierModalClose").addEventListener("click", closeSupplierModal);
+    byId("smSupplierModalCancel").addEventListener("click", closeSupplierModal);
+    byId("smSupplierModalSave").addEventListener("click", function () { saveSupplierModal().catch(function (e) { showErr(String(e)); }); });
+    byId("smSupplierModalNoColor").addEventListener("change", function () {
+      var disabled = !!(byId("smSupplierModalNoColor") && byId("smSupplierModalNoColor").checked);
+      var colorEl = byId("smSupplierModalColor");
+      if (colorEl) colorEl.disabled = disabled;
+    });
+        byId("smAddSupplierBtn").addEventListener("click", function () { addSupplier().catch(function (e) { showErr(String(e)); }); });
     byId("smAddRowBtn").addEventListener("click", function () { addEntryRow(); });
     byId("smCloseModalBtn").addEventListener("click", function () { closeEntryModal(); });
     byId("smSaveEntryBtn").addEventListener("click", function () { saveEntryModal().catch(function (e) { showErr(String(e)); }); });
@@ -1388,7 +1503,7 @@
           .catch(function (e) { showErr(String(e)); });
       }
       if (!IS_ADMIN) return;
-      v = t.getAttribute("data-edit-supplier"); if (v) return editSupplier(v, t.getAttribute("data-supplier-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-edit-supplier"); if (v) return editSupplier(v, t.getAttribute("data-supplier-name") || "", t.getAttribute("data-supplier-accent") || "").catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-vendor"); if (v) return editVendor(v, t.getAttribute("data-vendor-name") || "").catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-product"); if (v) return editProduct(v, t.getAttribute("data-product-name") || "").catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-item"); if (v) return editItem(v, t.getAttribute("data-item-sn") || "").catch(function (e) { showErr(String(e)); });

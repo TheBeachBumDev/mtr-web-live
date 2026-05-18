@@ -1,12 +1,37 @@
+import json
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
-import json
 
 import db_runtime
 
 
 PRE_ALLOCATION_HOLD_DAYS = 14
+_UNSET = object()
+_HEX_ACCENT_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _normalize_accent_color(raw: Any) -> Optional[str]:
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    if not s.startswith("#"):
+        s = "#" + s
+    if re.fullmatch(r"#[0-9a-fA-F]{3}", s):
+        s = "#" + "".join(ch * 2 for ch in s[1:])
+    if not _HEX_ACCENT_RE.fullmatch(s):
+        raise ValueError("Accent colour must be a hex value like #3b82f6")
+    return s.lower()
+
+
+def _ensure_supplier_accent_color(conn) -> None:
+    if db_runtime.is_postgres():
+        conn.execute("ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS accent_color TEXT")
+        return
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(stock_suppliers)").fetchall()}
+    if "accent_color" not in cols:
+        conn.execute("ALTER TABLE stock_suppliers ADD COLUMN accent_color TEXT")
 
 
 def _now() -> str:
@@ -321,6 +346,7 @@ def init_db() -> None:
             ):
                 conn.execute(stmt)
             _ensure_stock_vendor_unique_includes_misc(conn)
+            _ensure_supplier_accent_color(conn)
         else:
             conn.execute(
                 """
@@ -514,6 +540,7 @@ def init_db() -> None:
             misc_existing = {str(r["name"]) for r in misc_cols}
             if "value_ex_vat" not in misc_existing:
                 conn.execute("ALTER TABLE stock_misc_product_lots ADD COLUMN value_ex_vat REAL")
+            _ensure_supplier_accent_color(conn)
         conn.commit()
         n = int(conn.execute("SELECT COUNT(*) FROM stock_suppliers").fetchone()[0])
         if n == 0:
@@ -597,7 +624,7 @@ def list_suppliers() -> List[Dict[str, Any]]:
         _expire_due_pre_allocations(conn)
         conn.commit()
         suppliers = conn.execute(
-            "SELECT id, name, created_at FROM stock_suppliers ORDER BY name COLLATE NOCASE ASC"
+            "SELECT id, name, created_at, accent_color FROM stock_suppliers ORDER BY name COLLATE NOCASE ASC"
         ).fetchall()
         vendor_rows = conn.execute(
             """
@@ -738,6 +765,7 @@ def list_suppliers() -> List[Dict[str, Any]]:
                     "id": sid,
                     "name": str(r["name"]),
                     "created_at": str(r["created_at"]),
+                    "accent_color": str(r["accent_color"] or "") if r["accent_color"] is not None else "",
                     "vendors": vendor_map.get(sid, []),
                 }
             )
@@ -746,16 +774,17 @@ def list_suppliers() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def add_supplier(name: str) -> int:
+def add_supplier(name: str, accent_color: Optional[str] = None) -> int:
     nm = (name or "").strip()
     if len(nm) < 2 or len(nm) > 120:
         raise ValueError("Supplier name must be 2-120 characters")
+    accent = _normalize_accent_color(accent_color) if accent_color is not None else None
     conn = _conn()
     try:
         ts = _now()
         conn.execute(
-            "INSERT INTO stock_suppliers(name, created_at) VALUES(?, ?)",
-            (nm, ts),
+            "INSERT INTO stock_suppliers(name, created_at, accent_color) VALUES(?, ?, ?)",
+            (nm, ts, accent),
         )
         conn.commit()
         row = conn.execute("SELECT id FROM stock_suppliers WHERE name = ?", (nm,)).fetchone()
@@ -766,24 +795,40 @@ def add_supplier(name: str) -> int:
         conn.close()
 
 
-def rename_supplier(supplier_id: int, name: str) -> bool:
+def update_supplier(
+    supplier_id: int,
+    *,
+    name: Optional[str] = None,
+    accent_color: Any = _UNSET,
+) -> bool:
     sid = int(supplier_id)
-    nm = (name or "").strip()
     if sid <= 0:
         raise ValueError("Invalid supplier id")
-    if len(nm) < 2 or len(nm) > 120:
-        raise ValueError("Supplier name must be 2-120 characters")
+    if name is None and accent_color is _UNSET:
+        raise ValueError("Nothing to update")
     conn = _conn()
     try:
-        cur = conn.execute("UPDATE stock_suppliers SET name = ? WHERE id = ?", (nm, sid))
-        conn.commit()
-        if int(cur.rowcount or 0) == 0:
+        row = conn.execute("SELECT id FROM stock_suppliers WHERE id = ?", (sid,)).fetchone()
+        if not row:
             raise ValueError("Supplier not found")
+        if name is not None:
+            nm = (name or "").strip()
+            if len(nm) < 2 or len(nm) > 120:
+                raise ValueError("Supplier name must be 2-120 characters")
+            conn.execute("UPDATE stock_suppliers SET name = ? WHERE id = ?", (nm, sid))
+        if accent_color is not _UNSET:
+            accent = _normalize_accent_color(accent_color) if accent_color is not None else None
+            conn.execute("UPDATE stock_suppliers SET accent_color = ? WHERE id = ?", (accent, sid))
+        conn.commit()
         return True
     except sqlite3.IntegrityError:
         raise ValueError("Supplier already exists") from None
     finally:
         conn.close()
+
+
+def rename_supplier(supplier_id: int, name: str) -> bool:
+    return update_supplier(supplier_id, name=name)
 
 
 def add_vendor(supplier_id: int, name: str, is_misc: bool = False) -> int:

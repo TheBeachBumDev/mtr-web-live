@@ -2834,12 +2834,20 @@ def api_stock_scrapped(limit: int = 200):
 
 @app.post("/api/stock/suppliers")
 def api_stock_add_supplier(request: Request, payload: Dict[str, Any] = Body(...)):
-    name = str((payload or {}).get("name") or "")
+    body = payload or {}
+    name = str(body.get("name") or "")
+    accent_color = body.get("accent_color") if "accent_color" in body else None
     try:
-        sid = stock_management.add_supplier(name)
+        sid = stock_management.add_supplier(name, accent_color=accent_color)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    audit_log.record_request(request, "stock.supplier.create", target_type="supplier_id", target_id=str(sid), detail={"name": name[:120]})
+    audit_log.record_request(
+        request,
+        "stock.supplier.create",
+        target_type="supplier_id",
+        target_id=str(sid),
+        detail={"name": name[:120], "accent_color": str(accent_color or "")[:16]},
+    )
     return {"ok": True, "id": sid}
 
 
@@ -3083,12 +3091,31 @@ def api_stock_rma_item(request: Request, item_id: int):
 @app.patch("/api/stock/suppliers/{supplier_id}")
 def api_stock_rename_supplier(request: Request, supplier_id: int, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
-    name = str((payload or {}).get("name") or "")
+    body = payload or {}
+    name = str(body.get("name")).strip() if body.get("name") is not None else None
+    if name == "":
+        name = None
+    accent_color = stock_management._UNSET
+    if "accent_color" in body:
+        accent_color = body.get("accent_color")
     try:
-        stock_management.rename_supplier(supplier_id, name)
+        stock_management.update_supplier(
+            supplier_id,
+            name=name,
+            accent_color=accent_color,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    audit_log.record_request(request, "stock.supplier.rename", target_type="supplier_id", target_id=str(supplier_id), detail={"name": name[:120]})
+    audit_log.record_request(
+        request,
+        "stock.supplier.update",
+        target_type="supplier_id",
+        target_id=str(supplier_id),
+        detail={
+            "name": (name or "")[:120],
+            "accent_color": str(body.get("accent_color") or "")[:16] if "accent_color" in body else None,
+        },
+    )
     return {"ok": True}
 
 
