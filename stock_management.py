@@ -964,6 +964,82 @@ def rename_product(product_id: int, name: str) -> bool:
         conn.close()
 
 
+def _product_delete_blockers(conn: Any, product_id: int) -> Optional[str]:
+    pid = int(product_id)
+    row = conn.execute("SELECT name FROM stock_vendor_products WHERE id = ?", (pid,)).fetchone()
+    if not row:
+        return "Product not found"
+    pname = str(row["name"] or "")
+    assigned = conn.execute(
+        """
+        SELECT COUNT(*) AS n FROM stock_product_items
+        WHERE product_id = ? AND lifecycle_status IN ('assigned', 'pre_allocated')
+        """,
+        (pid,),
+    ).fetchone()
+    misc_usage = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+        FROM stock_misc_item_assignment_lot_usage u
+        INNER JOIN stock_misc_product_lots l ON l.id = u.lot_id
+        WHERE l.product_id = ?
+        """,
+        (pid,),
+    ).fetchone()
+    parts: List[str] = []
+    n_assigned = int(assigned["n"] or 0)
+    if n_assigned:
+        parts.append(f"{n_assigned} assigned or pre-allocated serialised item(s)")
+    n_misc = int(misc_usage["n"] or 0)
+    if n_misc:
+        parts.append(f"{n_misc} misc assignment(s) linked to quantity lots")
+    if not parts:
+        return None
+    return f"{pname}: " + "; ".join(parts) + ". Return or reassign stock first."
+
+
+def delete_product(product_id: int) -> bool:
+    pid = int(product_id)
+    if pid <= 0:
+        raise ValueError("Invalid product id")
+    conn = _conn()
+    try:
+        blocker = _product_delete_blockers(conn, pid)
+        if blocker:
+            if blocker == "Product not found":
+                raise ValueError(blocker)
+            raise ValueError(f"Cannot delete product. {blocker}")
+        conn.execute("DELETE FROM stock_vendor_products WHERE id = ?", (pid,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def delete_vendor(vendor_id: int) -> bool:
+    vid = int(vendor_id)
+    if vid <= 0:
+        raise ValueError("Invalid vendor id")
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT id FROM stock_supplier_vendors WHERE id = ?", (vid,)).fetchone()
+        if not row:
+            raise ValueError("Vendor not found")
+        products = conn.execute("SELECT id FROM stock_vendor_products WHERE vendor_id = ?", (vid,)).fetchall()
+        blockers: List[str] = []
+        for p in products:
+            b = _product_delete_blockers(conn, int(p["id"]))
+            if b and b != "Product not found":
+                blockers.append(b)
+        if blockers:
+            raise ValueError("Cannot delete vendor. " + " ".join(blockers))
+        conn.execute("DELETE FROM stock_supplier_vendors WHERE id = ?", (vid,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def add_product_item(product_id: int, serial_number: str) -> int:
     return add_product_items_batch(
         product_id=product_id,

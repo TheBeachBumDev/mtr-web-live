@@ -53,6 +53,20 @@
   }
   .sm-subitem { margin-top: 6px; }
   .sm-item-returned { border-style: dashed; opacity: 0.95; }
+  .sm-misc-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .sm-misc-pagination button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sm-inline-actions button.sm-btn-danger {
+    border-color: color-mix(in srgb, #b91c1c 55%, var(--border) 45%);
+    color: #b91c1c;
+  }
 </style>
 
 <div class="sm-head">
@@ -75,12 +89,18 @@
 <div class="sm-section">
   <div class="title" style="gap:10px; flex-wrap:wrap;">
     <h4 class="sm-section-title">Misc Products (All Suppliers)</h4>
+    <input id="smMiscGlobalSearch" type="text" placeholder="Search product, supplier, invoice..." style="min-width:260px; flex:1 1 320px;">
     <label class="hint" style="display:inline-flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
       <input type="checkbox" id="smMiscShowZeroStock">
       Show zero stock
     </label>
   </div>
   <div id="smMiscGlobal" class="sm-suppliers"></div>
+  <div class="sm-misc-pagination" id="smMiscGlobalPagination" style="display:none;">
+    <button type="button" id="smMiscGlobalPrev">Previous</button>
+    <span id="smMiscGlobalPageInfo"></span>
+    <button type="button" id="smMiscGlobalNext">Next</button>
+  </div>
 </div>
 
 <div class="sm-section">
@@ -364,6 +384,8 @@
     loadExpandState();
     var supplierModalMode = "create";
     var supplierModalId = 0;
+    var miscGlobalPage = 1;
+    var MISC_GLOBAL_PAGE_SIZE = 5;
     var DEFAULT_SUPPLIER_ACCENT = "#3b82f6";
     function normalizeSupplierAccent(c) {
       var s = String(c || "").trim();
@@ -627,7 +649,8 @@
             return "<div class='sm-product'>" +
               "<div class='sm-head-row'><strong>" + e(p.name) + "</strong><span class='small'>" + (isMisc ? ("Qty: " + e(p.quantity_available == null ? 0 : p.quantity_available)) : ("Stock: " + (p.stock_level || 0))) + "</span></div>" +
               "<div class='sm-head-row' style='margin-top:8px;'><button type='button' " + (isMisc ? ("data-add-misc-lot='" + p.id + "'" + sidAttr) : ("data-add-item='" + p.id + "'" + sidAttr)) + " data-product-name='" + e(p.name) + "'>" + (isMisc ? "+ Quantity Entry" : "+ Stock Entry") + "</button>" +
-              (IS_ADMIN ? "<button type='button' data-edit-product='" + p.id + "' data-product-name='" + e(p.name) + "'>Edit Product</button>" : "") + "</div>" +
+              (IS_ADMIN ? "<button type='button' data-edit-product='" + p.id + "' data-product-name='" + e(p.name) + "'>Edit Product</button>" +
+              "<button type='button' class='sm-btn-danger' data-delete-product='" + p.id + "' data-product-name='" + e(p.name) + "'" + sidAttr + ">Delete</button>" : "") + "</div>" +
               (isMisc ? ("<div class='sm-lots'>" + (lotsHtml || "<div class='muted'>No quantity lots yet.</div>") + "</div>") : ("<div class='sm-items'>" + itemsHtml + "</div>")) +
               "</div>";
           }).filter(function (x) { return !!x; }).join("");
@@ -635,7 +658,8 @@
           var vendorOpen = isVendorOpen(v.id, !!q);
           return "<div class='sm-vendor'>" +
             "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-vendor='" + v.id + "'><span>" + e(v.name) + "</span><span class='mono'>" + (vendorOpen ? "▼" : "▶") + "</span></button>" +
-            (IS_ADMIN ? "<button type='button' data-edit-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'" + sidAttr + ">Edit</button>" : "") + "</div>" +
+            (IS_ADMIN ? "<button type='button' data-edit-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'" + sidAttr + ">Edit</button>" +
+            "<button type='button' class='sm-btn-danger' data-delete-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'" + sidAttr + ">Delete</button>" : "") + "</div>" +
             "<div class='sm-body' data-vendor-body='" + v.id + "' style='display:" + (vendorOpen ? "block" : "none") + ";'>" +
             "<div class='sm-head-row'><button type='button' data-add-product='" + v.id + "'" + sidAttr + ">+ Product</button></div>" +
             "<div class='sm-products'>" + productsHtml + "</div></div></div>";
@@ -665,9 +689,7 @@
       scrollToExpandPin();
       clearExpandPin();
     }
-    function renderGlobalMisc(rows) {
-      var root = byId("smMiscGlobal");
-      root.innerHTML = "";
+    function collectGlobalMiscItems(rows) {
       var map = {};
       (rows || []).forEach(function (s) {
         (s.vendors || []).forEach(function (v) {
@@ -701,7 +723,58 @@
       if (!showZero) {
         items = items.filter(function (it) { return Number(it.quantity_available || 0) > 0; });
       }
-      items.forEach(function (it) {
+      return items;
+    }
+    function miscGlobalItemSearchText(it) {
+      var parts = [it.product_name, String(it.quantity_available)];
+      (it.lots || []).forEach(function (lt) {
+        parts.push(
+          lt.supplier,
+          lt.invoice_number,
+          lt.date_in_stock,
+          String(lt.quantity_remaining),
+          lt.value_ex_vat == null ? "" : String(lt.value_ex_vat)
+        );
+      });
+      return parts.join(" ").toLowerCase();
+    }
+    function updateMiscGlobalPagination(total, totalPages) {
+      var pag = byId("smMiscGlobalPagination");
+      var info = byId("smMiscGlobalPageInfo");
+      var prev = byId("smMiscGlobalPrev");
+      var next = byId("smMiscGlobalNext");
+      if (pag) pag.style.display = total ? "flex" : "none";
+      if (!total) {
+        if (info) info.textContent = "";
+        if (prev) prev.disabled = true;
+        if (next) next.disabled = true;
+        return;
+      }
+      var start = (miscGlobalPage - 1) * MISC_GLOBAL_PAGE_SIZE + 1;
+      var end = Math.min(total, miscGlobalPage * MISC_GLOBAL_PAGE_SIZE);
+      if (info) {
+        info.textContent = "Showing " + start + "–" + end + " of " + total + " · page " + miscGlobalPage + " of " + totalPages;
+      }
+      if (prev) prev.disabled = miscGlobalPage <= 1;
+      if (next) next.disabled = miscGlobalPage >= totalPages;
+    }
+    function renderGlobalMisc(rows) {
+      var root = byId("smMiscGlobal");
+      root.innerHTML = "";
+      var allItems = collectGlobalMiscItems(rows);
+      var q = String((byId("smMiscGlobalSearch") && byId("smMiscGlobalSearch").value) || "").trim().toLowerCase();
+      var filtered = q
+        ? allItems.filter(function (it) { return miscGlobalItemSearchText(it).indexOf(q) >= 0; })
+        : allItems;
+      var total = filtered.length;
+      var totalPages = Math.max(1, Math.ceil(total / MISC_GLOBAL_PAGE_SIZE));
+      if (miscGlobalPage > totalPages) miscGlobalPage = totalPages;
+      if (miscGlobalPage < 1) miscGlobalPage = 1;
+      var pageItems = filtered.slice(
+        (miscGlobalPage - 1) * MISC_GLOBAL_PAGE_SIZE,
+        miscGlobalPage * MISC_GLOBAL_PAGE_SIZE
+      );
+      pageItems.forEach(function (it) {
         var box = document.createElement("div");
         box.className = "sm-product";
         var lotsHtml = (it.lots || []).map(function (lt) {
@@ -723,11 +796,16 @@
           "<div class='sm-lots'>" + (lotsHtml || "<div class='muted'>No lots yet.</div>") + "</div>";
         root.appendChild(box);
       });
+      updateMiscGlobalPagination(total, totalPages);
       if (!root.innerHTML) {
-        var showZeroEmpty = !!(byId("smMiscShowZeroStock") && byId("smMiscShowZeroStock").checked);
-        root.innerHTML = showZeroEmpty
-          ? "<div class='muted'>No miscellaneous products yet. Use + Miscellaneous -> + Product -> + Quantity Entry.</div>"
-          : "<div class='muted'>No in-stock miscellaneous products. Tick <b>Show zero stock</b> to see empty lines.</div>";
+        if (q && allItems.length) {
+          root.innerHTML = "<div class='muted'>No miscellaneous products matched your search.</div>";
+        } else {
+          var showZeroEmpty = !!(byId("smMiscShowZeroStock") && byId("smMiscShowZeroStock").checked);
+          root.innerHTML = showZeroEmpty
+            ? "<div class='muted'>No miscellaneous products yet. Use + Miscellaneous -> + Product -> + Quantity Entry.</div>"
+            : "<div class='muted'>No in-stock miscellaneous products. Tick <b>Show zero stock</b> to see empty lines.</div>";
+        }
       }
     }
     function deriveMiscAssignableFromSuppliers(rows) {
@@ -1382,6 +1460,26 @@
       await api("/api/stock/products/" + encodeURIComponent(pid), "PATCH", { name: String(name).trim() });
       await refresh();
     }
+    async function deleteVendor(vid, vendorName, supplierId) {
+      var label = String(vendorName || "").trim() || ("vendor #" + vid);
+      var msg =
+        "Delete vendor \"" + label + "\"?\n\n" +
+        "All products and stock under this vendor will be permanently removed. This cannot be undone.";
+      if (!window.confirm(msg)) return;
+      await api("/api/stock/vendors/" + encodeURIComponent(vid), "DELETE");
+      if (supplierId) pinSupplier(supplierId);
+      await refresh();
+    }
+    async function deleteProduct(pid, productName, supplierId, vendorId) {
+      var label = String(productName || "").trim() || ("product #" + pid);
+      var msg =
+        "Delete product \"" + label + "\"?\n\n" +
+        "All serial numbers, quantity lots, and stock lines for this product will be permanently removed. This cannot be undone.";
+      if (!window.confirm(msg)) return;
+      await api("/api/stock/products/" + encodeURIComponent(pid), "DELETE");
+      if (supplierId && vendorId) pinVendor(supplierId, vendorId);
+      await refresh();
+    }
     async function editItem(iid, oldSn) {
       var sn = prompt("Edit serial number:", oldSn || "");
       if (!sn) return;
@@ -1438,7 +1536,23 @@
     byId("smAssignPreAllocateBtn").addEventListener("click", function () { savePreAllocate().catch(function (e) { showErr(String(e)); }); });
     byId("smAssignSaveBtn").addEventListener("click", function () { saveAssign().catch(function (e) { showErr(String(e)); }); });
     byId("smProductsSearch").addEventListener("input", function () { renderSuppliers(suppliersCache); });
-    byId("smMiscShowZeroStock").addEventListener("change", function () { renderGlobalMisc(suppliersCache); });
+    byId("smMiscGlobalSearch").addEventListener("input", function () {
+      miscGlobalPage = 1;
+      renderGlobalMisc(suppliersCache);
+    });
+    byId("smMiscShowZeroStock").addEventListener("change", function () {
+      miscGlobalPage = 1;
+      renderGlobalMisc(suppliersCache);
+    });
+    byId("smMiscGlobalPrev").addEventListener("click", function () {
+      if (miscGlobalPage <= 1) return;
+      miscGlobalPage -= 1;
+      renderGlobalMisc(suppliersCache);
+    });
+    byId("smMiscGlobalNext").addEventListener("click", function () {
+      miscGlobalPage += 1;
+      renderGlobalMisc(suppliersCache);
+    });
     byId("smAssignedSearch").addEventListener("input", function () { renderAssignedVendors(assignedCache); });
     byId("smAddMiscAssignBtn").addEventListener("click", function () { openMiscAssignModal(); });
     byId("smMiscAssignCloseBtn").addEventListener("click", function () { closeMiscAssignModal(); });
@@ -1446,7 +1560,7 @@
     byId("smMiscAssignTargetType").addEventListener("change", syncMiscAssignTargetUi);
     byId("smMiscAssignSaveBtn").addEventListener("click", function () { saveMiscAssign().catch(function (e) { showErr(String(e)); }); });
     document.addEventListener("click", function (ev) {
-      var t = ev.target && ev.target.closest ? ev.target.closest("[data-toggle-supplier],[data-toggle-vendor],[data-toggle-assigned],[data-add-vendor],[data-add-misc-vendor],[data-add-product],[data-add-item],[data-add-misc-lot],[data-edit-supplier],[data-edit-vendor],[data-edit-product],[data-edit-item],[data-act]") : null;
+      var t = ev.target && ev.target.closest ? ev.target.closest("[data-toggle-supplier],[data-toggle-vendor],[data-toggle-assigned],[data-add-vendor],[data-add-misc-vendor],[data-add-product],[data-add-item],[data-add-misc-lot],[data-edit-supplier],[data-edit-vendor],[data-edit-product],[data-edit-item],[data-delete-vendor],[data-delete-product],[data-act]") : null;
       if (!t) return;
       var v;
       v = t.getAttribute("data-toggle-supplier"); if (v) return toggleBody("[data-supplier-body='" + v + "']", t, "suppliers", v);
@@ -1505,7 +1619,9 @@
       if (!IS_ADMIN) return;
       v = t.getAttribute("data-edit-supplier"); if (v) return editSupplier(v, t.getAttribute("data-supplier-name") || "", t.getAttribute("data-supplier-accent") || "").catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-vendor"); if (v) return editVendor(v, t.getAttribute("data-vendor-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-delete-vendor"); if (v) return deleteVendor(v, t.getAttribute("data-vendor-name") || "", t.getAttribute("data-supplier-id")).catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-product"); if (v) return editProduct(v, t.getAttribute("data-product-name") || "").catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-delete-product"); if (v) return deleteProduct(v, t.getAttribute("data-product-name") || "", t.getAttribute("data-supplier-id"), t.getAttribute("data-vendor-id")).catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-edit-item"); if (v) return editItem(v, t.getAttribute("data-item-sn") || "").catch(function (e) { showErr(String(e)); });
     });
 

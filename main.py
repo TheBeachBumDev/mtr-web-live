@@ -3143,6 +3143,40 @@ def api_stock_rename_product(request: Request, product_id: int, payload: Dict[st
     return {"ok": True}
 
 
+@app.delete("/api/stock/vendors/{vendor_id}")
+def api_stock_delete_vendor(request: Request, vendor_id: int):
+    require_admin(request)
+    try:
+        stock_management.delete_vendor(vendor_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    audit_log.record_request(
+        request,
+        "stock.vendor.delete",
+        target_type="vendor_id",
+        target_id=str(vendor_id),
+        detail={},
+    )
+    return {"ok": True}
+
+
+@app.delete("/api/stock/products/{product_id}")
+def api_stock_delete_product(request: Request, product_id: int):
+    require_admin(request)
+    try:
+        stock_management.delete_product(product_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    audit_log.record_request(
+        request,
+        "stock.product.delete",
+        target_type="product_id",
+        target_id=str(product_id),
+        detail={},
+    )
+    return {"ok": True}
+
+
 @app.patch("/api/stock/items/{item_id}")
 def api_stock_rename_item(request: Request, item_id: int, payload: Dict[str, Any] = Body(...)):
     require_admin(request)
