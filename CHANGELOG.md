@@ -5,6 +5,7 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
 ## 2026-05-18
+- **fa3f5f3** — Purchase orders: validation errors (e.g. missing department) appear beside the create/edit modal title instead of only in the page toolbar.
 - **1e61104** — Purchase orders: create/type/postpone modals sit above the bottom navigation on zoomed and older devices; dock hides while a modal is open; Submit and related actions stay visible via sticky footer in the panel.
 - **c178814** — Stock management: hide miscellaneous products with zero available quantity in **Misc Products (All Suppliers)** by default; optional **Show zero stock** checkbox to reveal them.
 
