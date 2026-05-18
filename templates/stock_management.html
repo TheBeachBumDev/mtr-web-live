@@ -59,8 +59,12 @@
 </div>
 
 <div class="sm-section">
-  <div class="title">
+  <div class="title" style="gap:10px; flex-wrap:wrap;">
     <h4 class="sm-section-title">Misc Products (All Suppliers)</h4>
+    <label class="hint" style="display:inline-flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
+      <input type="checkbox" id="smMiscShowZeroStock">
+      Show zero stock
+    </label>
   </div>
   <div id="smMiscGlobal" class="sm-suppliers"></div>
 </div>
@@ -519,6 +523,10 @@
       });
       var items = Object.keys(map).map(function (k) { return map[k]; })
         .sort(function (a, b) { return String(a.product_name).localeCompare(String(b.product_name)); });
+      var showZero = !!(byId("smMiscShowZeroStock") && byId("smMiscShowZeroStock").checked);
+      if (!showZero) {
+        items = items.filter(function (it) { return Number(it.quantity_available || 0) > 0; });
+      }
       items.forEach(function (it) {
         var box = document.createElement("div");
         box.className = "sm-product";
@@ -542,7 +550,10 @@
         root.appendChild(box);
       });
       if (!root.innerHTML) {
-        root.innerHTML = "<div class='muted'>No miscellaneous products yet. Use + Miscellaneous -> + Product -> + Quantity Entry.</div>";
+        var showZeroEmpty = !!(byId("smMiscShowZeroStock") && byId("smMiscShowZeroStock").checked);
+        root.innerHTML = showZeroEmpty
+          ? "<div class='muted'>No miscellaneous products yet. Use + Miscellaneous -> + Product -> + Quantity Entry.</div>"
+          : "<div class='muted'>No in-stock miscellaneous products. Tick <b>Show zero stock</b> to see empty lines.</div>";
       }
     }
     function deriveMiscAssignableFromSuppliers(rows) {
@@ -1201,6 +1212,7 @@
     byId("smAssignPreAllocateBtn").addEventListener("click", function () { savePreAllocate().catch(function (e) { showErr(String(e)); }); });
     byId("smAssignSaveBtn").addEventListener("click", function () { saveAssign().catch(function (e) { showErr(String(e)); }); });
     byId("smProductsSearch").addEventListener("input", function () { renderSuppliers(suppliersCache); });
+    byId("smMiscShowZeroStock").addEventListener("change", function () { renderGlobalMisc(suppliersCache); });
     byId("smAssignedSearch").addEventListener("input", function () { renderAssignedVendors(assignedCache); });
     byId("smAddMiscAssignBtn").addEventListener("click", function () { openMiscAssignModal(); });
     byId("smMiscAssignCloseBtn").addEventListener("click", function () { closeMiscAssignModal(); });
