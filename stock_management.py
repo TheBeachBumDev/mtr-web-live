@@ -33,6 +33,43 @@ def _conn() -> sqlite3.Connection:
     return db_runtime.get_conn("stock")
 
 
+def _is_unique_violation(exc: BaseException) -> bool:
+    if isinstance(exc, sqlite3.IntegrityError):
+        return True
+    name = type(exc).__name__
+    if name in {"UniqueViolation", "UniqueViolationError", "IntegrityError"}:
+        return True
+    msg = str(exc).lower()
+    return "unique" in msg or "duplicate key" in msg
+
+
+def _ensure_stock_vendor_unique_includes_misc(conn: Any) -> None:
+    """Postgres: drop legacy UNIQUE(supplier_id, name) so misc + serialized can share a vendor name."""
+    if not db_runtime.is_postgres():
+        return
+    conn.execute(
+        "ALTER TABLE stock_supplier_vendors DROP CONSTRAINT IF EXISTS stock_supplier_vendors_supplier_id_name_key"
+    )
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE t.relname = 'stock_supplier_vendors'
+          AND c.conname = 'stock_supplier_vendors_supplier_id_name_is_misc_key'
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        conn.execute(
+            """
+            ALTER TABLE stock_supplier_vendors
+            ADD CONSTRAINT stock_supplier_vendors_supplier_id_name_is_misc_key
+            UNIQUE (supplier_id, name, is_misc)
+            """
+        )
+
+
 def _ipam_conn() -> sqlite3.Connection:
     return db_runtime.get_conn("ipam")
 
@@ -283,6 +320,7 @@ def init_db() -> None:
                 "ALTER TABLE stock_misc_item_assignments ADD COLUMN IF NOT EXISTS assigned_location_name TEXT",
             ):
                 conn.execute(stmt)
+            _ensure_stock_vendor_unique_includes_misc(conn)
         else:
             conn.execute(
                 """
@@ -771,8 +809,13 @@ def add_vendor(supplier_id: int, name: str, is_misc: bool = False) -> int:
             (sid, nm, 1 if is_misc else 0),
         ).fetchone()
         return int(row["id"]) if row else 0
-    except sqlite3.IntegrityError:
-        raise ValueError("Vendor already exists for this supplier") from None
+    except Exception as e:
+        if _is_unique_violation(e):
+            kind = "miscellaneous" if is_misc else "serialized"
+            raise ValueError(
+                f"A {kind} vendor named '{nm}' already exists for this supplier"
+            ) from None
+        raise
     finally:
         conn.close()
 
@@ -786,24 +829,35 @@ def rename_vendor(vendor_id: int, name: str) -> bool:
         raise ValueError("Vendor name must be 2-120 characters")
     conn = _conn()
     try:
-        row = conn.execute("SELECT supplier_id FROM stock_supplier_vendors WHERE id = ?", (vid,)).fetchone()
+        row = conn.execute(
+            "SELECT supplier_id, is_misc FROM stock_supplier_vendors WHERE id = ?",
+            (vid,),
+        ).fetchone()
         if not row:
             raise ValueError("Vendor not found")
         sid = int(row["supplier_id"])
+        misc_flag = int(row["is_misc"] or 0)
         conn.execute(
             "UPDATE stock_supplier_vendors SET name = ? WHERE id = ?",
             (nm, vid),
         )
         conn.commit()
         dup = conn.execute(
-            "SELECT COUNT(*) AS n FROM stock_supplier_vendors WHERE supplier_id = ? AND name = ?",
-            (sid, nm),
+            """
+            SELECT COUNT(*) AS n
+            FROM stock_supplier_vendors
+            WHERE supplier_id = ? AND name = ? AND is_misc = ? AND id <> ?
+            """,
+            (sid, nm, misc_flag, vid),
         ).fetchone()
-        if int(dup["n"] or 0) > 1:
-            raise ValueError("Vendor already exists for this supplier")
+        if int(dup["n"] or 0) > 0:
+            kind = "miscellaneous" if misc_flag else "serialized"
+            raise ValueError(f"A {kind} vendor named '{nm}' already exists for this supplier")
         return True
-    except sqlite3.IntegrityError:
-        raise ValueError("Vendor already exists for this supplier") from None
+    except Exception as e:
+        if _is_unique_violation(e):
+            raise ValueError("Vendor already exists for this supplier") from None
+        raise
     finally:
         conn.close()
 

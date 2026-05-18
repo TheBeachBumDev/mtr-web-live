@@ -244,17 +244,32 @@ DUMP_R="${TRANSFER_REMOTE}/postgres.dump"
 # Stop app containers so pg_restore can rewrite the DB safely.
 docker compose "${ENV_ARGS[@]}" stop "${APP_SERVICES[@]}" 2>/dev/null || true
 
+echo "PHASE remote reset postgres (fresh PG17 volume before pg_restore)"
+docker compose "${ENV_ARGS[@]}" stop postgres 2>/dev/null || true
+docker rm -f "${POSTGRES_CONTAINER}" 2>/dev/null || true
+# Drop only the PG17 named volume so we never pg_restore into an empty/partial or PG16-mismatched cluster.
+for _pgvol in $(docker volume ls -q | grep -E 'postgres_data_17$' || true); do
+  docker volume rm -f "${_pgvol}" 2>/dev/null || true
+done
+
 docker compose "${ENV_ARGS[@]}" up -d postgres
 
 echo "PHASE remote wait for postgres"
-for _i in $(seq 1 90); do
-  if docker exec "$POSTGRES_CONTAINER" pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+# Do not pass -d during first init: DB may not accept connections yet (see pg_migrate_16_to_17.sh).
+for _i in $(seq 1 120); do
+  if docker exec "${POSTGRES_CONTAINER}" pg_isready -U "${POSTGRES_USER}" >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
-if ! docker exec "$POSTGRES_CONTAINER" pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+if ! docker exec "${POSTGRES_CONTAINER}" pg_isready -U "${POSTGRES_USER}" >/dev/null 2>&1; then
   echo "postgres did not become ready on standby" >&2
+  docker ps -a --filter "name=${POSTGRES_CONTAINER}" --format 'table {{.Names}}\t{{.Status}}' >&2 || true
+  docker logs "${POSTGRES_CONTAINER}" --tail 40 2>&1 >&2 || true
+  for _pgvol in $(docker volume ls -q | grep -E 'postgres_data' || true); do
+    _ver="$(docker run --rm -v "${_pgvol}:/data:ro" alpine cat /data/PG_VERSION 2>/dev/null || echo '?')"
+    echo "volume ${_pgvol} PG_VERSION=${_ver}" >&2
+  done
   exit 4
 fi
 
