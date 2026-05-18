@@ -549,7 +549,34 @@
     padding: 12px;
     box-sizing: border-box;
   }
-  .po-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .po-modal__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-bottom: 8px;
+  }
+  .po-modal__head h3 {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+  .po-modal__msg {
+    flex: 1 1 140px;
+    min-width: 0;
+    margin: 0;
+    text-align: right;
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .po-modal__msg:empty { display: none; }
+  .po-modal__msg.is-error { color: #fb7185; }
+  .po-modal__msg.is-ok { color: #4ade80; }
+  .po-modal__head > button { flex: 0 0 auto; }
   .po-type-picker__panel { width: min(720px, 94vw); }
   .po-type-picker__options {
     display: grid;
@@ -1135,7 +1162,8 @@
 <div id="poCreateModal" class="po-modal" data-mode="standard" aria-hidden="true">
   <div class="po-modal__panel">
     <div class="po-modal__head">
-      <h3 id="poCreateModalTitle" style="margin:0">Create / Edit PO</h3>
+      <h3 id="poCreateModalTitle">Create / Edit PO</h3>
+      <span id="poCreateModalMsg" class="po-modal__msg" role="alert" aria-live="polite"></span>
       <button id="poCloseCreateBtn" type="button">Close</button>
     </div>
     <div class="po-field po-field--quote-only po-field--full">
@@ -1342,8 +1370,28 @@
   };
   const CURRENT_USERNAME = {{ username | tojson }};
   const IS_ADMIN = {{ is_admin | tojson }};
+  const isPoCreateModalOpen = () => {
+    const m = document.getElementById("poCreateModal");
+    return !!(m && m.classList.contains("is-open"));
+  };
+  const setCreateModalMsg = (t, ok = true) => {
+    const modalMsg = document.getElementById("poCreateModalMsg");
+    if (!modalMsg) return;
+    const text = String(t || "").trim();
+    modalMsg.textContent = text;
+    modalMsg.className = "po-modal__msg" + (text ? (ok ? " is-ok" : " is-error") : "");
+  };
+  const clearCreateModalMsg = () => setCreateModalMsg("", true);
   const msg = (t, ok = true) => {
+    if (isPoCreateModalOpen()) {
+      setCreateModalMsg(t, ok);
+      const top = document.getElementById("poMsg");
+      if (top) top.textContent = "";
+      return;
+    }
+    clearCreateModalMsg();
     const el = document.getElementById("poMsg");
+    if (!el) return;
     el.textContent = t || "";
     el.style.color = ok ? "#4ade80" : "#fb7185";
   };
@@ -2288,10 +2336,6 @@
       msg(e.message || String(e), false);
     }
   };
-  const isPoCreateModalOpen = () => {
-    const m = document.getElementById("poCreateModal");
-    return !!(m && m.classList.contains("is-open"));
-  };
   const scheduleRealtimeRefresh = (poId = 0) => {
     if (poRefreshTimer) window.clearTimeout(poRefreshTimer);
     poRefreshTimer = window.setTimeout(async () => {
@@ -2354,13 +2398,14 @@
     toggleCustomerFields();
     loadSupplierProductSuggestions().catch(() => {});
   };
-  const openCreateModal = () => { modal.classList.add("is-open"); syncPoModalBodyClass(); };
-  const closeCreateModal = () => { modal.classList.remove("is-open"); syncPoModalBodyClass(); };
+  const openCreateModal = () => { clearCreateModalMsg(); modal.classList.add("is-open"); syncPoModalBodyClass(); };
+  const closeCreateModal = () => { clearCreateModalMsg(); modal.classList.remove("is-open"); syncPoModalBodyClass(); };
   const openTypePickerModal = () => { typePickerModal.classList.add("is-open"); syncPoModalBodyClass(); };
   const closeTypePickerModal = () => { typePickerModal.classList.remove("is-open"); syncPoModalBodyClass(); };
   const prepareNewPoModal = (mode = "standard") => {
     poComposingNew = true;
     selectedPoId = 0;
+    clearCreateModalMsg();
     applyCreateModalMode(mode);
     document.getElementById("poSupplier").value = "";
     document.getElementById("poDepartment").value = "";
