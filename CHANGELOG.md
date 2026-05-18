@@ -6,8 +6,8 @@ Older entries below were **reconstructed from existing git history** (same commi
 
 ## 2026-05-18
 
-- **COMMIT** — Stock management: allow the same vendor name under serialized stock and under Miscellaneous by migrating Postgres off legacy `UNIQUE (supplier_id, name)` to `UNIQUE (supplier_id, name, is_misc)` on startup; clearer duplicate-vendor errors; vendor rename checks respect `is_misc`.
-- **COMMIT** — Standby full clone: drop and recreate `postgres_data_17` before `pg_restore` so PG17 restore does not hit a PG16 data directory; wait for Postgres with `pg_isready` without `-d` during first init; log container status, Postgres logs, and volume `PG_VERSION` when standby Postgres never becomes ready.
+- **ac0dac5** — Stock management: allow the same vendor name under serialized stock and under Miscellaneous by migrating Postgres off legacy `UNIQUE (supplier_id, name)` to `UNIQUE (supplier_id, name, is_misc)` on startup; clearer duplicate-vendor errors; vendor rename checks respect `is_misc`.
+- **ac0dac5** — Standby full clone: drop and recreate `postgres_data_17` before `pg_restore` so PG17 restore does not hit a PG16 data directory; wait for Postgres with `pg_isready` without `-d` during first init; log container status, Postgres logs, and volume `PG_VERSION` when standby Postgres never becomes ready.
 
 ## 2026-05-14
 
