@@ -5,6 +5,7 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
 ## 2026-05-18
+- **688103e** — Stock management: optional accent colour per supplier (picker on create; admin Edit to change); subtle background tint and colour dot in the supplier header.
 - **bfa2e51** — Stock management: supplier and vendor sections stay open after adding products or stock (remembered in the session); search still auto-expands matches; **Expand all** / **Collapse all** for bulk tidy-up.
 - **fa3f5f3** — Purchase orders: validation errors (e.g. missing department) appear beside the create/edit modal title instead of only in the page toolbar.
 - **1e61104** — Purchase orders: create/type/postpone modals sit above the bottom navigation on zoomed and older devices; dock hides while a modal is open; Submit and related actions stay visible via sticky footer in the panel.
