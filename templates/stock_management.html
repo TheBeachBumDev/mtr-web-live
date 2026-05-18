@@ -52,6 +52,8 @@
     <div class="title" style="gap:10px; flex-wrap:wrap;">
       <h4 class="sm-section-title">Suppliers</h4>
       <input id="smProductsSearch" type="text" placeholder="Search suppliers, vendors, products, SN, invoice..." style="min-width:280px; flex:1 1 360px;">
+      <button type="button" id="smExpandAllBtn" class="hint" style="font-size:12px;">Expand all</button>
+      <button type="button" id="smCollapseAllBtn" class="hint" style="font-size:12px;">Collapse all</button>
       <button type="button" id="smAddSupplierBtn">+ Supplier</button>
   </div>
   <div id="smErr" class="err" style="display:none;margin-top:10px;"></div>
@@ -261,6 +263,69 @@
     var ipamLocationsLoadErr = "";
     var suppliersCache = [];
     var assignedCache = [];
+    var currentSupplierId = 0;
+    var currentVendorId = 0;
+    var SM_EXPAND_KEY = "mtr-stock-expand-v1";
+    var smExpandState = { suppliers: new Set(), vendors: new Set(), assigned: new Set() };
+    var expandPin = { supplierId: "", vendorId: "" };
+    function loadExpandState() {
+      try {
+        var raw = sessionStorage.getItem(SM_EXPAND_KEY);
+        if (!raw) return;
+        var o = JSON.parse(raw);
+        (o.suppliers || []).forEach(function (x) { smExpandState.suppliers.add(String(x)); });
+        (o.vendors || []).forEach(function (x) { smExpandState.vendors.add(String(x)); });
+        (o.assigned || []).forEach(function (x) { smExpandState.assigned.add(String(x)); });
+      } catch (_) {}
+    }
+    function saveExpandState() {
+      try {
+        sessionStorage.setItem(SM_EXPAND_KEY, JSON.stringify({
+          suppliers: Array.from(smExpandState.suppliers),
+          vendors: Array.from(smExpandState.vendors),
+          assigned: Array.from(smExpandState.assigned)
+        }));
+      } catch (_) {}
+    }
+    function pinSupplier(sid) {
+      if (!sid) return;
+      smExpandState.suppliers.add(String(sid));
+      expandPin.supplierId = String(sid);
+      saveExpandState();
+    }
+    function pinVendor(sid, vid) {
+      pinSupplier(sid);
+      if (!vid) return;
+      smExpandState.vendors.add(String(vid));
+      expandPin.vendorId = String(vid);
+      saveExpandState();
+    }
+    function clearExpandPin() {
+      expandPin = { supplierId: "", vendorId: "" };
+    }
+    function isSupplierOpen(sid, searchActive) {
+      if (searchActive) return true;
+      var k = String(sid);
+      return expandPin.supplierId === k || smExpandState.suppliers.has(k);
+    }
+    function isVendorOpen(vid, searchActive) {
+      if (searchActive) return true;
+      var k = String(vid);
+      return expandPin.vendorId === k || smExpandState.vendors.has(k);
+    }
+    function isAssignedOpen(key, searchActive) {
+      if (searchActive) return true;
+      return smExpandState.assigned.has(String(key));
+    }
+    function scrollToExpandPin() {
+      var sel = expandPin.vendorId
+        ? ("[data-vendor-body='" + expandPin.vendorId + "']")
+        : (expandPin.supplierId ? ("[data-supplier-body='" + expandPin.supplierId + "']") : "");
+      if (!sel) return;
+      var el = document.querySelector(sel);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    loadExpandState();
     function byId(id) { return document.getElementById(id); }
     function showErr(msg) {
       var el = byId("smErr");
@@ -397,6 +462,7 @@
         var normalVendors = allVendors.filter(function (v) { return !v.is_misc; });
         var miscVendors = allVendors.filter(function (v) { return !!v.is_misc; });
         var renderVendorBlock = function (v) {
+          var sidAttr = " data-supplier-id='" + s.id + "' data-vendor-id='" + v.id + "'";
           var productsHtml = (v.products || []).map(function (p) {
             var isMisc = !!v.is_misc || !!p.is_misc;
             var filteredItems = (p.items || []).filter(function (it) {
@@ -461,25 +527,32 @@
             }).join("");
             return "<div class='sm-product'>" +
               "<div class='sm-head-row'><strong>" + e(p.name) + "</strong><span class='small'>" + (isMisc ? ("Qty: " + e(p.quantity_available == null ? 0 : p.quantity_available)) : ("Stock: " + (p.stock_level || 0))) + "</span></div>" +
-              "<div class='sm-head-row' style='margin-top:8px;'><button type='button' " + (isMisc ? ("data-add-misc-lot='" + p.id + "'") : ("data-add-item='" + p.id + "'")) + " data-product-name='" + e(p.name) + "'>" + (isMisc ? "+ Quantity Entry" : "+ Stock Entry") + "</button>" +
+              "<div class='sm-head-row' style='margin-top:8px;'><button type='button' " + (isMisc ? ("data-add-misc-lot='" + p.id + "'" + sidAttr) : ("data-add-item='" + p.id + "'" + sidAttr)) + " data-product-name='" + e(p.name) + "'>" + (isMisc ? "+ Quantity Entry" : "+ Stock Entry") + "</button>" +
               (IS_ADMIN ? "<button type='button' data-edit-product='" + p.id + "' data-product-name='" + e(p.name) + "'>Edit Product</button>" : "") + "</div>" +
               (isMisc ? ("<div class='sm-lots'>" + (lotsHtml || "<div class='muted'>No quantity lots yet.</div>") + "</div>") : ("<div class='sm-items'>" + itemsHtml + "</div>")) +
               "</div>";
           }).filter(function (x) { return !!x; }).join("");
           if (q && !productsHtml) return "";
+          var vendorOpen = isVendorOpen(v.id, !!q);
           return "<div class='sm-vendor'>" +
-            "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-vendor='" + v.id + "'><span>" + e(v.name) + "</span><span class='mono'>" + (q ? "▼" : "▶") + "</span></button>" +
-            (IS_ADMIN ? "<button type='button' data-edit-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'>Edit</button>" : "") + "</div>" +
-            "<div class='sm-body' data-vendor-body='" + v.id + "' style='display:" + (q ? "block" : "none") + ";'>" +
-            "<div class='sm-head-row'><button type='button' data-add-product='" + v.id + "'>+ Product</button></div>" +
+            "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-vendor='" + v.id + "'><span>" + e(v.name) + "</span><span class='mono'>" + (vendorOpen ? "▼" : "▶") + "</span></button>" +
+            (IS_ADMIN ? "<button type='button' data-edit-vendor='" + v.id + "' data-vendor-name='" + e(v.name) + "'" + sidAttr + ">Edit</button>" : "") + "</div>" +
+            "<div class='sm-body' data-vendor-body='" + v.id + "' style='display:" + (vendorOpen ? "block" : "none") + ";'>" +
+            "<div class='sm-head-row'><button type='button' data-add-product='" + v.id + "'" + sidAttr + ">+ Product</button></div>" +
             "<div class='sm-products'>" + productsHtml + "</div></div></div>";
         };
         var vendorsHtml = normalVendors.map(renderVendorBlock).filter(function (x) { return !!x; }).join("");
         var miscVendorsHtml = miscVendors.map(renderVendorBlock).filter(function (x) { return !!x; }).join("");
+        var supplierOpen = isSupplierOpen(s.id, !!q);
+        if (!supplierOpen && !q) {
+          supplierOpen = allVendors.some(function (v) {
+            return smExpandState.vendors.has(String(v.id)) || expandPin.vendorId === String(v.id);
+          });
+        }
         sBox.innerHTML =
-          "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-supplier='" + s.id + "'><span>" + e(s.name) + "</span><span class='mono'>" + (q ? "▼" : "▶") + "</span></button>" +
+          "<div class='sm-head-row'><button type='button' class='sm-toggle' data-toggle-supplier='" + s.id + "'><span>" + e(s.name) + "</span><span class='mono'>" + (supplierOpen ? "▼" : "▶") + "</span></button>" +
           (IS_ADMIN ? "<button type='button' data-edit-supplier='" + s.id + "' data-supplier-name='" + e(s.name) + "'>Edit</button>" : "") + "</div>" +
-          "<div class='sm-body' data-supplier-body='" + s.id + "' style='display:" + (q ? "block" : "none") + ";'>" +
+          "<div class='sm-body' data-supplier-body='" + s.id + "' style='display:" + (supplierOpen ? "block" : "none") + ";'>" +
           "<div class='sm-head-row'><button type='button' data-add-vendor='" + s.id + "'>+ Vendor</button><button type='button' data-add-misc-vendor='" + s.id + "'>+ Miscellaneous</button></div>" +
           "<div class='sm-vendors'>" +
           "<div class='hint' style='margin-top:2px;'><b>Vendors</b></div>" +
@@ -490,6 +563,8 @@
         root.appendChild(sBox);
       });
       if (!root.innerHTML) root.innerHTML = "<div class='muted'>No products matched your search.</div>";
+      scrollToExpandPin();
+      clearExpandPin();
     }
     function renderGlobalMisc(rows) {
       var root = byId("smMiscGlobal");
@@ -699,11 +774,11 @@
             : ("Customer ID: " + e(g.customer_id == null ? "-" : g.customer_id))) +
           (g.customer_invoice_number ? " | Customer Invoice: " + e(g.customer_invoice_number) : "") +
           (g.signed_out_at ? " | Signed Out: " + e(g.signed_out_at) : "") +
-          "</span><span class='mono'>▶</span></button>" +
+          "</span><span class='mono'>" + (isAssignedOpen(toggleKey, !!q) ? "▼" : "▶") + "</span></button>" +
           "<span class='sm-inline-actions'>" +
           "<button type='button' data-act='add-misc-for-target' data-target-type='" + e(g.assignment_target || "customer") + "' data-customer-id='" + e(g.customer_id == null ? "" : g.customer_id) + "' data-customer-name='" + e(g.customer_name || "") + "' data-customer-address='" + e(g.customer_address || "") + "' data-customer-invoice='" + e(g.customer_invoice_number || "") + "' data-location-id='" + e(g.location_id == null ? "" : g.location_id) + "' data-location-name='" + e(g.location_name || "") + "'>Add Misc. Items</button>" +
           "</span></div>" +
-          "<div class='sm-body' data-assigned-body='" + e(toggleKey) + "' style='display:none;'>" +
+          "<div class='sm-body' data-assigned-body='" + e(toggleKey) + "' style='display:" + (isAssignedOpen(toggleKey, !!q) ? "block" : "none") + ";'>" +
           rowsHtml +
           "</div>";
         root.appendChild(box);
@@ -788,6 +863,7 @@
       var name = prompt("New vendor name:");
       if (!name) return;
       await api("/api/stock/suppliers/" + encodeURIComponent(sid) + "/vendors", "POST", { name: String(name).trim() });
+      pinSupplier(sid);
       await refresh();
     }
     async function addMiscVendor(sid) {
@@ -797,12 +873,14 @@
         name: String(name).trim(),
         is_misc: true
       });
+      pinSupplier(sid);
       await refresh();
     }
-    async function addProduct(vid) {
+    async function addProduct(vid, sid) {
       var name = prompt("New product name:");
       if (!name) return;
       await api("/api/stock/vendors/" + encodeURIComponent(vid) + "/products", "POST", { name: String(name).trim() });
+      pinVendor(sid, vid);
       await refresh();
     }
     function addEntryRow() {
@@ -813,9 +891,12 @@
         "<td><div class='sm-inline-actions'><button type='button' data-act='remove-row'>Remove</button></div></td>";
       byId("smEntryRows").appendChild(tr);
     }
-    function openEntryModal(pid, productName) {
+    function openEntryModal(pid, productName, sid, vid) {
       currentProductId = Number(pid || 0);
       currentProductName = String(productName || "");
+      currentSupplierId = Number(sid || 0);
+      currentVendorId = Number(vid || 0);
+      if (currentSupplierId && currentVendorId) pinVendor(currentSupplierId, currentVendorId);
       byId("smEntryTitle").textContent = "New Stock Entry - " + currentProductName;
       byId("smInvoiceNumber").value = "";
       byId("smDateInStock").value = todayIso();
@@ -828,10 +909,15 @@
       byId("smEntryModalWrap").style.display = "none";
       currentProductId = 0;
       currentProductName = "";
+      currentSupplierId = 0;
+      currentVendorId = 0;
     }
-    function openMiscModal(pid, productName) {
+    function openMiscModal(pid, productName, sid, vid) {
       currentMiscProductId = Number(pid || 0);
       currentMiscProductName = String(productName || "");
+      currentSupplierId = Number(sid || 0);
+      currentVendorId = Number(vid || 0);
+      if (currentSupplierId && currentVendorId) pinVendor(currentSupplierId, currentVendorId);
       byId("smMiscTitle").textContent = "New Miscellaneous Quantity Entry - " + currentMiscProductName;
       byId("smMiscInvoiceNumber").value = "";
       byId("smMiscDateInStock").value = todayIso();
@@ -843,6 +929,8 @@
       byId("smMiscModalWrap").style.display = "none";
       currentMiscProductId = 0;
       currentMiscProductName = "";
+      currentSupplierId = 0;
+      currentVendorId = 0;
     }
     async function saveMiscModal() {
       if (!currentMiscProductId) throw new Error("No product selected");
@@ -861,6 +949,7 @@
         value_ex_vat: valNum
       });
       closeMiscModal();
+      if (currentSupplierId && currentVendorId) pinVendor(currentSupplierId, currentVendorId);
       await refresh();
     }
     function openAssignModal(itemId, serialNumber, prefill) {
@@ -1165,6 +1254,7 @@
         items: items
       });
       closeEntryModal();
+      if (currentSupplierId && currentVendorId) pinVendor(currentSupplierId, currentVendorId);
       await refresh();
     }
     async function editSupplier(sid, oldName) {
@@ -1191,15 +1281,36 @@
       await api("/api/stock/items/" + encodeURIComponent(iid), "PATCH", { serial_number: String(sn).trim() });
       await refresh();
     }
-    function toggleBody(sel, btn) {
+    function toggleBody(sel, btn, kind, id) {
       var body = document.querySelector(sel);
       if (!body) return;
       var hidden = body.style.display === "none";
       body.style.display = hidden ? "block" : "none";
+      if (kind && id != null && String(id) !== "") {
+        var set = smExpandState[kind];
+        if (set) {
+          if (hidden) set.add(String(id)); else set.delete(String(id));
+          saveExpandState();
+        }
+      }
       var icon = btn.querySelector(".mono");
       if (icon) icon.textContent = hidden ? "▼" : "▶";
     }
 
+    byId("smExpandAllBtn").addEventListener("click", function () {
+      (suppliersCache || []).forEach(function (s) {
+        smExpandState.suppliers.add(String(s.id));
+        (s.vendors || []).forEach(function (v) { smExpandState.vendors.add(String(v.id)); });
+      });
+      saveExpandState();
+      renderSuppliers(suppliersCache);
+    });
+    byId("smCollapseAllBtn").addEventListener("click", function () {
+      smExpandState.suppliers.clear();
+      smExpandState.vendors.clear();
+      saveExpandState();
+      renderSuppliers(suppliersCache);
+    });
     byId("smAddSupplierBtn").addEventListener("click", function () { addSupplier().catch(function (e) { showErr(String(e)); }); });
     byId("smAddRowBtn").addEventListener("click", function () { addEntryRow(); });
     byId("smCloseModalBtn").addEventListener("click", function () { closeEntryModal(); });
@@ -1223,14 +1334,14 @@
       var t = ev.target && ev.target.closest ? ev.target.closest("[data-toggle-supplier],[data-toggle-vendor],[data-toggle-assigned],[data-add-vendor],[data-add-misc-vendor],[data-add-product],[data-add-item],[data-add-misc-lot],[data-edit-supplier],[data-edit-vendor],[data-edit-product],[data-edit-item],[data-act]") : null;
       if (!t) return;
       var v;
-      v = t.getAttribute("data-toggle-supplier"); if (v) return toggleBody("[data-supplier-body='" + v + "']", t);
-      v = t.getAttribute("data-toggle-vendor"); if (v) return toggleBody("[data-vendor-body='" + v + "']", t);
-      v = t.getAttribute("data-toggle-assigned"); if (v) return toggleBody("[data-assigned-body='" + v + "']", t);
+      v = t.getAttribute("data-toggle-supplier"); if (v) return toggleBody("[data-supplier-body='" + v + "']", t, "suppliers", v);
+      v = t.getAttribute("data-toggle-vendor"); if (v) return toggleBody("[data-vendor-body='" + v + "']", t, "vendors", v);
+      v = t.getAttribute("data-toggle-assigned"); if (v) return toggleBody("[data-assigned-body='" + v + "']", t, "assigned", v);
       v = t.getAttribute("data-add-vendor"); if (v) return addVendor(v).catch(function (e) { showErr(String(e)); });
       v = t.getAttribute("data-add-misc-vendor"); if (v) return addMiscVendor(v).catch(function (e) { showErr(String(e)); });
-      v = t.getAttribute("data-add-product"); if (v) return addProduct(v).catch(function (e) { showErr(String(e)); });
-      v = t.getAttribute("data-add-item"); if (v) return openEntryModal(v, t.getAttribute("data-product-name") || "");
-      v = t.getAttribute("data-add-misc-lot"); if (v) return openMiscModal(v, t.getAttribute("data-product-name") || "");
+      v = t.getAttribute("data-add-product"); if (v) return addProduct(v, t.getAttribute("data-supplier-id")).catch(function (e) { showErr(String(e)); });
+      v = t.getAttribute("data-add-item"); if (v) return openEntryModal(v, t.getAttribute("data-product-name") || "", t.getAttribute("data-supplier-id"), t.getAttribute("data-vendor-id"));
+      v = t.getAttribute("data-add-misc-lot"); if (v) return openMiscModal(v, t.getAttribute("data-product-name") || "", t.getAttribute("data-supplier-id"), t.getAttribute("data-vendor-id"));
       var act = t.getAttribute("data-act");
       if (act === "remove-row") { var tr = t.closest("tr"); if (tr) tr.remove(); return; }
       if (act === "assign-customer") return openAssignModal(
