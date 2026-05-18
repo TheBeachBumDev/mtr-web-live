@@ -491,7 +491,13 @@
   .po-modal .po-actions {
     margin-top: 12px;
     padding-top: 10px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
     border-top: 1px solid var(--line);
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: var(--bg);
+    box-shadow: 0 -10px 20px color-mix(in srgb, var(--bg) 75%, transparent);
   }
   .po-step-track { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .po-step {
@@ -523,18 +529,25 @@
     display: none;
     align-items: center;
     justify-content: center;
-    z-index: 1200;
+    /* Above bottom-nav-dock (2600) on all viewports — zoomed desktop can stay >1023px wide. */
+    z-index: 3200;
     padding: 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
   }
   .po-modal.is-open { display: flex; }
   .po-modal__panel {
     width: min(980px, 96vw);
-    max-height: 92vh;
+    max-height: min(92vh, calc(100vh - 28px));
+    max-height: min(92dvh, calc(100dvh - 28px));
     overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     background: var(--bg);
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 12px;
+    box-sizing: border-box;
   }
   .po-modal__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .po-type-picker__panel { width: min(720px, 94vw); }
@@ -721,14 +734,14 @@
       width: 100%;
     }
     .po-modal {
-      z-index: 3000 !important;
-      padding: 12px;
-      align-items: center;
+      padding: 10px 10px max(10px, env(safe-area-inset-bottom, 0px));
+      align-items: flex-end;
     }
     .po-modal__panel {
-      max-height: min(92dvh, 100%);
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
+      max-height: min(88dvh, calc(100dvh - 20px));
+      max-height: min(88vh, calc(100vh - 20px));
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
     }
     .po-items-wrap {
       overflow-x: visible;
@@ -883,6 +896,15 @@
       border-right: none !important;
       border-radius: 0 !important;
     }
+  }
+
+  /* Hide bottom nav while PO modals are open (avoids covering Submit on zoom / narrow viewports). */
+  body.po-modal-open {
+    overflow: hidden;
+  }
+  body.po-modal-open .bottom-nav-dock {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   @media (max-width: 860px) {
@@ -1086,7 +1108,7 @@
   {% endif %}
 </div>
 
-<div id="poTypePickerModal" class="po-modal" aria-hidden="true" style="z-index:1200;">
+<div id="poTypePickerModal" class="po-modal" aria-hidden="true">
   <div class="po-modal__panel po-type-picker__panel">
     <div class="po-modal__head">
       <h3 style="margin:0">Choose purchase order type</h3>
@@ -1110,7 +1132,7 @@
   </div>
 </div>
 
-<div id="poCreateModal" class="po-modal" data-mode="standard" aria-hidden="true" style="z-index:1250;">
+<div id="poCreateModal" class="po-modal" data-mode="standard" aria-hidden="true">
   <div class="po-modal__panel">
     <div class="po-modal__head">
       <h3 id="poCreateModalTitle" style="margin:0">Create / Edit PO</h3>
@@ -1249,7 +1271,7 @@
   </div>
 </div>
 
-<div id="poPostponeModal" class="po-modal" style="z-index:1300;">
+<div id="poPostponeModal" class="po-modal">
   <div class="po-modal__panel" style="width:min(520px,94vw);">
     <div class="po-modal__head">
       <h3 style="margin:0;">Postpone purchase order</h3>
@@ -1857,6 +1879,13 @@
   };
 
   const poPostponeModalEl = document.getElementById("poPostponeModal");
+  const syncPoModalBodyClass = () => {
+    const anyOpen = ["poCreateModal", "poTypePickerModal", "poPostponeModal"].some((id) => {
+      const el = document.getElementById(id);
+      return el && el.classList.contains("is-open");
+    });
+    document.body.classList.toggle("po-modal-open", anyOpen);
+  };
   const openPostponeModal = (pid) => {
     postponeTargetPoId = Number(pid || 0);
     const ta = document.getElementById("poPostponeComment");
@@ -1864,10 +1893,12 @@
     if (ta) ta.value = "";
     if (dt) dt.value = new Date().toISOString().slice(0, 10);
     if (poPostponeModalEl) poPostponeModalEl.classList.add("is-open");
+    syncPoModalBodyClass();
   };
   const closePostponeModal = () => {
     postponeTargetPoId = 0;
     if (poPostponeModalEl) poPostponeModalEl.classList.remove("is-open");
+    syncPoModalBodyClass();
   };
 
   const loadList = async () => {
@@ -2323,10 +2354,10 @@
     toggleCustomerFields();
     loadSupplierProductSuggestions().catch(() => {});
   };
-  const openCreateModal = () => modal.classList.add("is-open");
-  const closeCreateModal = () => modal.classList.remove("is-open");
-  const openTypePickerModal = () => typePickerModal.classList.add("is-open");
-  const closeTypePickerModal = () => typePickerModal.classList.remove("is-open");
+  const openCreateModal = () => { modal.classList.add("is-open"); syncPoModalBodyClass(); };
+  const closeCreateModal = () => { modal.classList.remove("is-open"); syncPoModalBodyClass(); };
+  const openTypePickerModal = () => { typePickerModal.classList.add("is-open"); syncPoModalBodyClass(); };
+  const closeTypePickerModal = () => { typePickerModal.classList.remove("is-open"); syncPoModalBodyClass(); };
   const prepareNewPoModal = (mode = "standard") => {
     poComposingNew = true;
     selectedPoId = 0;
