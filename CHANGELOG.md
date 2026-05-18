@@ -5,8 +5,8 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
 ## 2026-05-18
-- **71ffcc2** — Stock management: **Misc Products (All Suppliers)** search box; five products per page with Previous/Next pagination.
-- **71ffcc2** — Stock management: admin **Delete** on vendors and products with confirmation; blocks removal when assigned/pre-allocated serialised stock or misc assignments still reference quantity lots.
+- **7ea6492** — Stock management: **Misc Products (All Suppliers)** search box; five products per page with Previous/Next pagination.
+- **7ea6492** — Stock management: admin **Delete** on vendors and products with confirmation; blocks removal when assigned/pre-allocated serialised stock or misc assignments still reference quantity lots.
 - **688103e** — Stock management: optional accent colour per supplier (picker on create; admin Edit to change); subtle background tint and colour dot in the supplier header.
 - **bfa2e51** — Stock management: supplier and vendor sections stay open after adding products or stock (remembered in the session); search still auto-expands matches; **Expand all** / **Collapse all** for bulk tidy-up.
 - **fa3f5f3** — Purchase orders: validation errors (e.g. missing department) appear beside the create/edit modal title instead of only in the page toolbar.
