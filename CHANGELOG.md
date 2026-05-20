@@ -4,6 +4,13 @@ Notable changes pushed to `main` are listed here, newest first. Each line links 
 
 Older entries below were **reconstructed from existing git history** (same commits already on GitHub); new work should append under the current date (or under [Unreleased] until you cut a release).
 
+## 2026-05-20
+
+- **e3a30f5** — Purchase orders: **per-line type** (Stock / Customer / Reserve) when adding items; Customer lines capture Customer ID and Paid/Unpaid in the Add Item modal; line type shown on the grid and on PDF exports.
+- **e3a30f5** — Purchase orders: supplier product **search** when adding a line (type to filter catalog; custom descriptions still allowed); fixes for draft save and false “Customer ID required” errors on catalog lines.
+- **e3a30f5** — Purchase orders: admin can **edit approval rules**; legacy line data hygiene runs on startup and via `scripts/po_line_customer_hygiene.sh`.
+- **e3a30f5** — UI: slightly stronger **panel vs background contrast** in light and dark mode; neutral (non-blue) selection styling in the Add Item modal.
+
 ## 2026-05-18
 - **86becfa** — WhatsApp signups: fix multiple-choice replies (`2`, full line, label, or list position); reload campaign flow per message; repair empty sessions; read button/list WhatsApp replies.
 - **86becfa** — WhatsApp signups: collapse **WhatsApp Inbox**, **Webhook Health**, and **Technical Configuration** into closed dropdown panels below the main signup tools.
