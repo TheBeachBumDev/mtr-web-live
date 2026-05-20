@@ -3265,6 +3265,35 @@ def api_po_add_rule(payload: Dict[str, Any] = Body(...), request: Request = None
     return {"ok": True, "id": rid}
 
 
+@app.put("/api/po/rules/{rule_id}")
+def api_po_update_rule(rule_id: int, payload: Dict[str, Any] = Body(...), request: Request = None):
+    require_admin(request)
+    p = payload or {}
+    try:
+        if not purchase_orders.update_approval_rule(
+            int(rule_id),
+            name=str(p["name"]) if "name" in p else None,
+            min_total=float(p["min_total"]) if "min_total" in p else None,
+            max_total=float(p["max_total"]) if p.get("max_total") not in (None, "") else None,
+            department_id=int(p["department_id"]) if p.get("department_id") not in (None, "") else None,
+            category=str(p["category"]) if "category" in p else None,
+            step_number=int(p["step_number"]) if "step_number" in p else None,
+            step_name=str(p["step_name"]) if "step_name" in p else None,
+            approver_user_id=int(p["approver_user_id"]) if "approver_user_id" in p else None,
+            backup_approver_user_id=int(p["backup_approver_user_id"])
+            if p.get("backup_approver_user_id") not in (None, "")
+            else None,
+            active=bool(p["active"]) if "active" in p else None,
+            clear_max_total="max_total" in p and p.get("max_total") in (None, ""),
+            clear_department="department_id" in p and p.get("department_id") in (None, ""),
+            clear_backup="backup_approver_user_id" in p and p.get("backup_approver_user_id") in (None, ""),
+        ):
+            raise HTTPException(status_code=404, detail="Rule not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
 @app.delete("/api/po/rules/{rule_id}")
 def api_po_delete_rule(rule_id: int, request: Request):
     require_admin(request)

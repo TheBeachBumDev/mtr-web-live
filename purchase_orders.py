@@ -10,6 +10,8 @@ import db_runtime
 
 PO_STATUS_DRAFT = "draft"
 PO_STATUS_SUBMITTED = "submitted"
+# Internal step-slot statuses while a PO waits on approval (1/2/3). User-facing label is always
+# "Pending approval" — see po_status_display_label(); step role names live on approval rows.
 PO_STATUS_PENDING_MANAGER = "pending_manager"
 PO_STATUS_PENDING_FINANCE = "pending_finance"
 PO_STATUS_PENDING_DIRECTOR = "pending_director"
@@ -59,7 +61,8 @@ REMINDER_24H = int(os.getenv("PO_REMINDER_24H_SEC", "86400"))
 REMINDER_48H = int(os.getenv("PO_REMINDER_48H_SEC", "172800"))
 PO_DOCS_DIR = os.getenv("PO_DOCS_DIR", "/app/data/po-docs")
 PO_ATTACHMENTS_DIR = os.getenv("PO_ATTACHMENTS_DIR", "/app/data/po-attachments")
-PO_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs", "custom", "quote_import"}
+PO_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs", "custom", "quote_import", "mixed"}
+PO_LINE_REQUEST_TYPES = {"stock_item", "customer_item", "reserve_stock_hs"}
 PO_PAYMENT_STATUSES = {"paid", "unpaid"}
 PO_URGENCY = {"urgent", "asap", "standard"}
 # Default VAT fraction (e.g. South Africa 15%). Used when persisting new lines and when inferring legacy rows saved with tax_rate=0.
@@ -68,6 +71,196 @@ PO_DEFAULT_VAT_FRAC = Decimal("0.15")
 
 def _is_manual_po_request_type(request_type: str) -> bool:
     return str(request_type or "").strip().lower() in {"custom", "quote_import"}
+
+
+def _normalize_line_request_type(item_request_type: Any, po_header_rt: str) -> str:
+    """Per-line request type (stock / customer / reserve). Manual PO modes always store stock_item on lines."""
+    if _is_manual_po_request_type(po_header_rt):
+        return "stock_item"
+    rt = str(item_request_type or "").strip().lower()
+    if rt in PO_LINE_REQUEST_TYPES:
+        return rt
+    return "stock_item"
+
+
+def _coerce_po_mode_rt(request_type: str) -> str:
+    """PO creation mode for line normalization: manual types pass through; legacy header line types used as fallback."""
+    rt = str(request_type or "").strip().lower()
+    if _is_manual_po_request_type(rt):
+        return rt
+    if rt in PO_LINE_REQUEST_TYPES:
+        return rt
+    return "stock_item"
+
+
+def _derive_po_request_type(po_mode_rt: str, cooked_items: List[Dict[str, Any]]) -> str:
+    rt = str(po_mode_rt or "").strip().lower()
+    if _is_manual_po_request_type(rt):
+        return rt
+    types = sorted({str(r.get("request_type") or "stock_item") for r in cooked_items if r.get("description")})
+    if not types:
+        return "stock_item"
+    if len(types) == 1:
+        return types[0]
+    return "mixed"
+
+
+def _line_types_from_items(cooked_items: List[Dict[str, Any]]) -> List[str]:
+    return sorted({str(r.get("request_type") or "stock_item") for r in cooked_items if r.get("description")})
+
+
+def _backfill_line_request_types(c) -> None:
+    """One-time: copy legacy header request_type onto existing line items."""
+    marker = "po_line_request_type_backfill_v1"
+    row = c.execute("SELECT v FROM po_notification_settings WHERE k = ?", (marker,)).fetchone()
+    if row:
+        return
+    try:
+        c.execute(
+            """
+            UPDATE purchase_order_items AS i
+            SET request_type = LOWER(po.request_type)
+            FROM purchase_orders AS po
+            WHERE po.id = i.purchase_order_id
+              AND LOWER(po.request_type) IN ('stock_item', 'customer_item', 'reserve_stock_hs')
+            """
+        )
+    except Exception:
+        pass
+    ts = _now()
+    c.execute(
+        "INSERT INTO po_notification_settings(k, v, updated_at) VALUES(?, ?, ?) ON CONFLICT (k) DO NOTHING",
+        (marker, "1", ts),
+    )
+
+
+PO_LINE_CUSTOMER_HYGIENE_MARKER = "po_line_customer_hygiene_v1"
+_INVALID_CUSTOMER_ITEM_WHERE = """
+    LOWER(i.request_type) = 'customer_item'
+    AND (i.customer_id IS NULL OR i.customer_id <= 0)
+"""
+
+
+def _count_invalid_customer_item_lines(c) -> int:
+    row = c.execute(
+        f"""
+        SELECT COUNT(*) AS n
+        FROM purchase_order_items AS i
+        WHERE {_INVALID_CUSTOMER_ITEM_WHERE.strip()}
+        """
+    ).fetchone()
+    return int(row["n"] if row else 0)
+
+
+def hygiene_invalid_customer_item_lines(
+    c,
+    *,
+    dry_run: bool = False,
+    skip_marker: bool = False,
+) -> Dict[str, Any]:
+    """Repair customer_item lines missing per-line customer_id (legacy header backfill).
+
+    Step 1: copy PO header customer_id / payment_status onto the line when present.
+    Step 2: demote remaining customer_item rows without customer id to stock_item.
+
+    Idempotent: records po_line_customer_hygiene_v1 in po_notification_settings when applied.
+    """
+    marker = PO_LINE_CUSTOMER_HYGIENE_MARKER
+    if not dry_run and not skip_marker:
+        row = c.execute("SELECT v FROM po_notification_settings WHERE k = ?", (marker,)).fetchone()
+        if row:
+            return {
+                "skipped": True,
+                "reason": "already_applied",
+                "marker": marker,
+                "remaining_bad": _count_invalid_customer_item_lines(c),
+            }
+
+    before_bad = _count_invalid_customer_item_lines(c)
+    repair_where = f"""
+        {_INVALID_CUSTOMER_ITEM_WHERE.strip()}
+        AND po.customer_id IS NOT NULL
+        AND po.customer_id > 0
+    """
+    would_repair = int(
+        c.execute(
+            f"""
+            SELECT COUNT(*) AS n
+            FROM purchase_order_items AS i
+            JOIN purchase_orders AS po ON po.id = i.purchase_order_id
+            WHERE {repair_where}
+            """
+        ).fetchone()["n"]
+    )
+    would_demote = before_bad - would_repair
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "bad_lines_before": before_bad,
+            "would_repair_from_header": would_repair,
+            "would_demote_to_stock": would_demote,
+            "would_remain_bad": max(0, would_demote),
+        }
+
+    repaired = 0
+    demoted = 0
+    try:
+        cur = c.execute(
+            f"""
+            UPDATE purchase_order_items AS i
+            SET customer_id = po.customer_id,
+                payment_status = COALESCE(
+                    NULLIF(TRIM(i.payment_status), ''),
+                    NULLIF(TRIM(po.payment_status), ''),
+                    ''
+                )
+            FROM purchase_orders AS po
+            WHERE po.id = i.purchase_order_id
+              AND {repair_where}
+            """
+        )
+        repaired = int(cur.rowcount if cur.rowcount >= 0 else 0)
+        cur = c.execute(
+            """
+            UPDATE purchase_order_items
+            SET request_type = 'stock_item',
+                customer_id = NULL,
+                payment_status = NULL
+            WHERE LOWER(request_type) = 'customer_item'
+              AND (customer_id IS NULL OR customer_id <= 0)
+            """
+        )
+        demoted = int(cur.rowcount if cur.rowcount >= 0 else 0)
+    except Exception as exc:
+        return {
+            "skipped": False,
+            "error": str(exc),
+            "bad_lines_before": before_bad,
+            "repaired_from_header": repaired,
+            "demoted_to_stock": demoted,
+        }
+
+    remaining_bad = _count_invalid_customer_item_lines(c)
+    ts = _now()
+    c.execute(
+        "INSERT INTO po_notification_settings(k, v, updated_at) VALUES(?, ?, ?) ON CONFLICT (k) DO NOTHING",
+        (marker, "1", ts),
+    )
+    return {
+        "skipped": False,
+        "dry_run": False,
+        "bad_lines_before": before_bad,
+        "repaired_from_header": repaired,
+        "demoted_to_stock": demoted,
+        "remaining_bad": remaining_bad,
+        "marker": marker,
+    }
+
+
+def _backfill_line_customer_hygiene(c) -> None:
+    """One-time on init_db: same as scripts/po_line_customer_hygiene.py --apply."""
+    hygiene_invalid_customer_item_lines(c, dry_run=False)
 
 
 def _now() -> str:
@@ -102,6 +295,58 @@ def _json(v: Any) -> str:
     return json.dumps(v, separators=(",", ":"), ensure_ascii=True)
 
 
+_APPROVAL_WAITING_STATUSES = frozenset(
+    {
+        PO_STATUS_SUBMITTED,
+        PO_STATUS_PENDING_MANAGER,
+        PO_STATUS_PENDING_FINANCE,
+        PO_STATUS_PENDING_DIRECTOR,
+    }
+)
+
+
+def po_status_display_label(status: Optional[str]) -> str:
+    """Human-readable PO status for UI, PDF, and API consumers (internal codes unchanged in DB)."""
+    key = str(status or "").strip().lower()
+    if key in _APPROVAL_WAITING_STATUSES:
+        return "Pending approval"
+    if key == PO_STATUS_REJECTED:
+        return "Declined"
+    if key == PO_STATUS_CHANGES:
+        return "Changes requested"
+    if key == PO_STATUS_POSTPONED:
+        return "Postponed"
+    if key == PO_STATUS_APPROVED:
+        return "Approved"
+    if key == PO_STATUS_SENT:
+        return "Sent to supplier"
+    if key == PO_STATUS_PARTIAL:
+        return "Partially received"
+    if key == PO_STATUS_RECEIVED:
+        return "Received"
+    if key == PO_STATUS_CLOSED:
+        return "Closed"
+    if key == PO_STATUS_CANCELLED:
+        return "Cancelled"
+    if key == PO_STATUS_DRAFT:
+        return "Draft"
+    if not key:
+        return "—"
+    return key.replace("_", " ").title()
+
+
+def _status_for_step_number(step_number: int) -> str:
+    """Internal PO status from approval step index (1–3). Display label comes from rule step_name."""
+    n = int(step_number or 0)
+    if n == 1:
+        return PO_STATUS_PENDING_MANAGER
+    if n == 2:
+        return PO_STATUS_PENDING_FINANCE
+    if n == 3:
+        return PO_STATUS_PENDING_DIRECTOR
+    return PO_STATUS_SUBMITTED
+
+
 def _status_for_step(step_name: str) -> str:
     key = (step_name or "").strip().lower()
     if "manager" in key:
@@ -111,6 +356,17 @@ def _status_for_step(step_name: str) -> str:
     if "director" in key:
         return PO_STATUS_PENDING_DIRECTOR
     return PO_STATUS_SUBMITTED
+
+
+def _step_number_for_role_key(role_key: str) -> int:
+    rk = (role_key or "").strip().lower()
+    if rk == "manager":
+        return 1
+    if rk == "finance":
+        return 2
+    if rk == "director":
+        return 3
+    return 0
 
 
 def init_db() -> None:
@@ -134,6 +390,13 @@ def init_db() -> None:
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS department_name TEXT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_display_name TEXT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'stock_item'")
+            c.execute(
+                "ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS request_type TEXT NOT NULL DEFAULT 'stock_item'"
+            )
+            c.execute("ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS customer_id BIGINT")
+            c.execute("ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS payment_status TEXT")
+            _backfill_line_request_types(c)
+            _backfill_line_customer_hygiene(c)
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS customer_id BIGINT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_status TEXT")
             c.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS date_required TEXT")
@@ -513,6 +776,96 @@ def delete_approval_rule(rule_id: int) -> bool:
         c.close()
 
 
+def update_approval_rule(
+    rule_id: int,
+    *,
+    name: Optional[str] = None,
+    min_total: Optional[float] = None,
+    max_total: Optional[float] = None,
+    department_id: Optional[int] = None,
+    category: Optional[str] = None,
+    step_number: Optional[int] = None,
+    step_name: Optional[str] = None,
+    approver_user_id: Optional[int] = None,
+    backup_approver_user_id: Optional[int] = None,
+    active: Optional[bool] = None,
+    clear_max_total: bool = False,
+    clear_department: bool = False,
+    clear_backup: bool = False,
+) -> bool:
+    rid = int(rule_id)
+    c = _conn()
+    try:
+        row = c.execute("SELECT id FROM approval_rules WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            return False
+        parts: List[str] = []
+        vals: List[Any] = []
+        if name is not None:
+            nm = (name or "").strip() or "Rule"
+            parts.append("name = ?")
+            vals.append(nm)
+        if min_total is not None:
+            parts.append("min_total = ?")
+            vals.append(float(_money(min_total)))
+        if max_total is not None:
+            parts.append("max_total = ?")
+            vals.append(float(_money(max_total)))
+        elif clear_max_total:
+            parts.append("max_total = ?")
+            vals.append(None)
+        if department_id is not None:
+            parts.append("department_id = ?")
+            vals.append(int(department_id) if int(department_id) > 0 else None)
+        elif clear_department:
+            parts.append("department_id = ?")
+            vals.append(None)
+        if category is not None:
+            parts.append("category = ?")
+            vals.append((category or "").strip())
+        if step_number is not None:
+            sn = int(step_number)
+            if sn <= 0:
+                raise ValueError("Step number must be > 0")
+            parts.append("step_number = ?")
+            vals.append(sn)
+        if step_name is not None:
+            lab = (step_name or "").strip()
+            if not lab:
+                raise ValueError("Step role label is required")
+            parts.append("step_name = ?")
+            vals.append(lab)
+        if approver_user_id is not None:
+            uid = int(approver_user_id)
+            if uid <= 0:
+                raise ValueError("Primary approver is required")
+            parts.append("approver_user_id = ?")
+            vals.append(uid)
+        if backup_approver_user_id is not None:
+            parts.append("backup_approver_user_id = ?")
+            vals.append(int(backup_approver_user_id) if int(backup_approver_user_id) > 0 else None)
+        elif clear_backup:
+            parts.append("backup_approver_user_id = ?")
+            vals.append(None)
+        if active is not None:
+            parts.append("active = ?")
+            vals.append(1 if active else 0)
+        if not parts:
+            return True
+        parts.append("updated_at = ?")
+        vals.append(_now())
+        vals.append(rid)
+        c.execute(f"UPDATE approval_rules SET {', '.join(parts)} WHERE id = ?", vals)
+        c.commit()
+        return True
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("Could not update approval rule") from None
+    finally:
+        c.close()
+
+
 def add_department(name: str) -> int:
     nm = (name or "").strip()
     if len(nm) < 2 or len(nm) > 120:
@@ -533,7 +886,53 @@ def add_department(name: str) -> int:
         c.close()
 
 
-def _calc_line_item(item: Dict[str, Any]) -> Dict[str, Any]:
+def _item_payload_customer_id(item: Dict[str, Any]) -> int:
+    raw = item.get("customer_id")
+    if raw in (None, ""):
+        raw = item.get("customerId")
+    try:
+        return int(raw) if raw not in (None, "") else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _item_payload_payment_status(item: Dict[str, Any]) -> str:
+    raw = item.get("payment_status")
+    if raw in (None, ""):
+        raw = item.get("paymentStatus")
+    return str(raw or "").strip().lower()
+
+
+def _item_payload_request_type(item: Dict[str, Any]) -> str:
+    raw = item.get("request_type")
+    if raw in (None, ""):
+        raw = item.get("requestType")
+    return str(raw or "").strip().lower()
+
+
+def _normalize_items_payload(items: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for raw in items:
+        it = dict(raw)
+        rt = _item_payload_request_type(it)
+        if rt:
+            it["request_type"] = rt
+        cid = _item_payload_customer_id(it)
+        if cid > 0:
+            it["customer_id"] = cid
+        pay = _item_payload_payment_status(it)
+        if pay:
+            it["payment_status"] = pay
+        # Legacy/backfill rows: type customer_item but no per-line customer id (catalog SKU, etc.)
+        if str(it.get("request_type") or "").lower() == "customer_item" and cid <= 0:
+            it["request_type"] = "stock_item"
+            it.pop("customer_id", None)
+            it["payment_status"] = ""
+        out.append(it)
+    return out
+
+
+def _calc_line_item(item: Dict[str, Any], po_header_rt: str = "stock_item") -> Dict[str, Any]:
     # Business rule: PO quantities are whole units only.
     qty_raw = _to_decimal(item.get("quantity", 0))
     try:
@@ -549,14 +948,29 @@ def _calc_line_item(item: Dict[str, Any]) -> Dict[str, Any]:
     subtotal = (qty * unit).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     tax_amount = (subtotal * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     line_total = subtotal + tax_amount
-    return {
+    line_rt = _normalize_line_request_type(_item_payload_request_type(item), po_header_rt)
+    row = {
         "description": str(item.get("description") or "").strip(),
         "quantity": float(qty),
         "unit_price": float(unit),
         "tax_rate": float(tax_rate),
         "tax_amount": float(tax_amount),
         "line_total": float(line_total),
+        "request_type": line_rt,
+        "customer_id": None,
+        "payment_status": "",
     }
+    if line_rt == "customer_item" and not _is_manual_po_request_type(po_header_rt):
+        cid = _item_payload_customer_id(item)
+        pay = _item_payload_payment_status(item)
+        label = row["description"][:48] or "Customer Item line"
+        if cid <= 0:
+            raise ValueError(f"Customer ID is required for: {label}")
+        if pay not in PO_PAYMENT_STATUSES:
+            raise ValueError(f"Paid/Unpaid is required for: {label}")
+        row["customer_id"] = cid
+        row["payment_status"] = pay
+    return row
 
 
 def _po_item_row_for_response(r: Any) -> Dict[str, Any]:
@@ -575,11 +989,29 @@ def _po_item_row_for_response(r: Any) -> Dict[str, Any]:
     unit = r["unit_price"]
     tr = r["tax_rate"]
     stored_line = _money(r["line_total"] or 0)
-    cooked = _calc_line_item({"description": desc, "quantity": qty, "unit_price": unit, "tax_rate": tr})
+    line_rt = _normalize_line_request_type(r.get("request_type"), "stock_item")
+    cid = _item_payload_customer_id({"customer_id": r["customer_id"]})
+    pay = _item_payload_payment_status({"payment_status": r["payment_status"]})
+    if line_rt == "customer_item" and cid <= 0:
+        line_rt = "stock_item"
+        cid = 0
+        pay = ""
+    calc_item: Dict[str, Any] = {
+        "description": desc,
+        "quantity": qty,
+        "unit_price": unit,
+        "tax_rate": tr,
+        "request_type": line_rt,
+    }
+    if line_rt == "customer_item":
+        calc_item["customer_id"] = cid
+        calc_item["payment_status"] = pay
+    cooked = _calc_line_item(calc_item, "stock_item")
     if float(cooked["tax_rate"]) <= 0 and float(cooked["tax_amount"]) <= 0:
         sub_ex = _money(cooked["quantity"]) * _money(cooked["unit_price"])
         if sub_ex > 0 and stored_line <= sub_ex + Decimal("0.02"):
-            cooked = _calc_line_item({"description": desc, "quantity": qty, "unit_price": unit, "tax_rate": PO_DEFAULT_VAT_FRAC})
+            calc_item["tax_rate"] = PO_DEFAULT_VAT_FRAC
+            cooked = _calc_line_item(calc_item, "stock_item")
     return {
         "id": int(r["id"]),
         "description": desc,
@@ -588,16 +1020,21 @@ def _po_item_row_for_response(r: Any) -> Dict[str, Any]:
         "tax_rate": float(cooked["tax_rate"]),
         "tax_amount": float(_money(cooked["tax_amount"])),
         "line_total": float(_money(cooked["line_total"])),
+        "request_type": str(cooked.get("request_type") or line_rt),
+        "customer_id": int(r["customer_id"]) if r.get("customer_id") is not None else None,
+        "payment_status": str(r.get("payment_status") or ""),
         "created_at": str(r["created_at"] or ""),
     }
 
 
-def _calc_totals(items: Iterable[Dict[str, Any]]) -> Tuple[Decimal, Decimal, Decimal, List[Dict[str, Any]]]:
+def _calc_totals(
+    items: Iterable[Dict[str, Any]], po_header_rt: str = "stock_item"
+) -> Tuple[Decimal, Decimal, Decimal, List[Dict[str, Any]]]:
     out: List[Dict[str, Any]] = []
     subtotal = Decimal("0")
     tax = Decimal("0")
     for i in items:
-        row = _calc_line_item(i)
+        row = _calc_line_item(i, po_header_rt)
         if not row["description"]:
             continue
         out.append(row)
@@ -783,7 +1220,7 @@ def _load_rules(c, total: Decimal, department_id: Optional[int], category: str) 
         ORDER BY step_number ASC, id ASC
         """
     ).fetchall()
-    dep_role_map: Dict[str, Dict[str, Any]] = {}
+    dep_role_by_step: Dict[int, Dict[str, Any]] = {}
     if int(department_id or 0) > 0:
         dep_rows = c.execute(
             """
@@ -793,13 +1230,14 @@ def _load_rules(c, total: Decimal, department_id: Optional[int], category: str) 
             """,
             (int(department_id),),
         ).fetchall()
-        dep_role_map = {
-            str(rr["role_key"] or "").strip().lower(): {
+        for rr in dep_rows:
+            sn = _step_number_for_role_key(str(rr["role_key"] or ""))
+            if sn <= 0:
+                continue
+            dep_role_by_step[sn] = {
                 "user_id": int(rr["user_id"]),
                 "backup_user_id": int(rr["backup_user_id"]) if rr["backup_user_id"] is not None else None,
             }
-            for rr in dep_rows
-        }
     out: List[Dict[str, Any]] = []
     for r in rows:
         mn = _to_decimal(r["min_total"] or 0)
@@ -814,16 +1252,19 @@ def _load_rules(c, total: Decimal, department_id: Optional[int], category: str) 
         rc = str(r["category"] or "").strip().lower()
         if rc and rc != str(category or "").strip().lower():
             continue
-        step_name = str(r["step_name"])
-        role_key = step_name.strip().lower()
+        step_name = str(r["step_name"]).strip()
+        if not step_name:
+            continue
+        step_num = int(r["step_number"])
         approver_user_id = int(r["approver_user_id"])
         backup_approver_user_id = int(r["backup_approver_user_id"]) if r["backup_approver_user_id"] is not None else None
-        if role_key in dep_role_map:
-            approver_user_id = int(dep_role_map[role_key]["user_id"])
-            backup_approver_user_id = dep_role_map[role_key]["backup_user_id"]
+        # Rule primary approver wins when set; otherwise use department step assignment.
+        if approver_user_id <= 0 and step_num in dep_role_by_step:
+            approver_user_id = int(dep_role_by_step[step_num]["user_id"])
+            backup_approver_user_id = dep_role_by_step[step_num]["backup_user_id"]
         out.append(
             {
-                "step_number": int(r["step_number"]),
+                "step_number": step_num,
                 "step_name": step_name,
                 "approver_user_id": approver_user_id,
                 "backup_approver_user_id": backup_approver_user_id,
@@ -851,6 +1292,24 @@ def _next_po_number(c) -> str:
     return f"PO-{y}-{seq:04d}"
 
 
+def _department_id_for_name(c, department_name: str) -> Optional[int]:
+    nm = str(department_name or "").strip()
+    if not nm:
+        return None
+    row = c.execute(
+        "SELECT id FROM po_departments WHERE lower(name) = lower(?) AND active = 1",
+        (nm,),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
+def _resolve_po_department_id(c, department_id: Optional[int], department_name: str) -> Optional[int]:
+    did = int(department_id or 0)
+    if did > 0:
+        return did
+    return _department_id_for_name(c, department_name)
+
+
 def _resolve_po_header(
     c,
     request_type: str,
@@ -869,18 +1328,25 @@ def _resolve_po_header(
         supplier_display_name = str(supplier_name_in or "").strip()
         if not supplier_display_name:
             raise ValueError("Supplier is required")
-        return None, department_name, None, supplier_display_name
+        dep_id = _resolve_po_department_id(c, None, department_name)
+        return None, department_name, dep_id, supplier_display_name
     if not department_id:
         raise ValueError("Department is required")
     dr = c.execute("SELECT name FROM po_departments WHERE id = ? AND active = 1", (int(department_id),)).fetchone()
     department_name = str(dr["name"]) if dr else ""
     if not department_name:
         raise ValueError("Valid department is required")
-    return (int(supplier_id) if supplier_id else None), department_name, None, ""
+    return (
+        int(supplier_id) if supplier_id else None,
+        department_name,
+        int(department_id),
+        "",
+    )
 
 
 def _resolve_po_request_fields(
     request_type: str,
+    line_types: Iterable[str],
     customer_id: Optional[int],
     payment_status: str,
     date_required: str,
@@ -889,16 +1355,8 @@ def _resolve_po_request_fields(
     rt = str(request_type or "").strip().lower()
     if _is_manual_po_request_type(rt):
         return None, "", "", "standard"
-    cid = int(customer_id or 0) if customer_id not in (None, "") else 0
-    pay = str(payment_status or "").strip().lower()
-    if rt == "customer_item":
-        if cid <= 0:
-            raise ValueError("Customer ID is required for Customer Item")
-        if pay not in PO_PAYMENT_STATUSES:
-            raise ValueError("Paid/Unpaid is required for Customer Item")
-    else:
-        cid = 0
-        pay = ""
+    cid = 0
+    pay = ""
     drq = str(date_required or "").strip()
     if not drq:
         raise ValueError("Date required is mandatory")
@@ -924,23 +1382,27 @@ def create_draft(
     department_name: str = "",
     supplier_name: str = "",
 ) -> int:
-    subtotal, tax, total, cooked = _calc_totals(items)
+    items = _normalize_items_payload(items)
+    po_mode_rt = _coerce_po_mode_rt(request_type)
+    subtotal, tax, total, cooked = _calc_totals(items, po_mode_rt)
     if tax_override is not None:
         tax = _money(tax_override)
         total = _money(subtotal + tax)
+    header_rt = _derive_po_request_type(po_mode_rt, cooked)
     c = _conn()
     try:
-        supplier_id, department_name, _, supplier_display_name = _resolve_po_header(
+        supplier_id, department_name, dep_id, supplier_display_name = _resolve_po_header(
             c,
-            request_type,
+            header_rt,
             supplier_id,
             department_id,
             department_name,
             supplier_name,
         )
-        rt = str(request_type or "").strip().lower()
+        line_types = _line_types_from_items(cooked)
         cid, pay, drq, urg = _resolve_po_request_fields(
-            rt,
+            header_rt,
+            line_types,
             customer_id,
             payment_status,
             date_required,
@@ -958,7 +1420,7 @@ def create_draft(
                 int(requested_by_user_id),
                 supplier_id,
                 supplier_display_name or None,
-                None,
+                int(dep_id) if dep_id else None,
                 department_name,
                 PO_STATUS_DRAFT,
                 float(subtotal),
@@ -966,7 +1428,7 @@ def create_draft(
                 float(total),
                 notes or "",
                 category or "",
-                rt,
+                header_rt,
                 cid,
                 pay,
                 drq,
@@ -979,8 +1441,8 @@ def create_draft(
             c.executemany(
                 """
                 INSERT INTO purchase_order_items(
-                  purchase_order_id, description, quantity, unit_price, tax_rate, tax_amount, line_total, created_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                  purchase_order_id, description, quantity, unit_price, tax_rate, tax_amount, line_total, request_type, customer_id, payment_status, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -991,6 +1453,9 @@ def create_draft(
                         r["tax_rate"],
                         r["tax_amount"],
                         r["line_total"],
+                        r.get("request_type") or "stock_item",
+                        r.get("customer_id"),
+                        r.get("payment_status") or None,
                         ts,
                     )
                     for r in cooked
@@ -1030,21 +1495,25 @@ def update_draft(
             raise ValueError("PO is locked for edits")
         if int(po["requested_by_user_id"]) != int(actor_user_id):
             raise ValueError("Only requester can edit this PO")
-        subtotal, tax, total, cooked = _calc_totals(items)
+        items = _normalize_items_payload(items)
+        po_mode_rt = _coerce_po_mode_rt(request_type)
+        subtotal, tax, total, cooked = _calc_totals(items, po_mode_rt)
         if tax_override is not None:
             tax = _money(tax_override)
             total = _money(subtotal + tax)
-        supplier_id, department_name, _, supplier_display_name = _resolve_po_header(
+        header_rt = _derive_po_request_type(po_mode_rt, cooked)
+        supplier_id, department_name, dep_id, supplier_display_name = _resolve_po_header(
             c,
-            request_type,
+            header_rt,
             supplier_id,
             department_id,
             department_name,
             supplier_name,
         )
-        rt = str(request_type or "").strip().lower()
+        line_types = _line_types_from_items(cooked)
         cid, pay, drq, urg = _resolve_po_request_fields(
-            rt,
+            header_rt,
+            line_types,
             customer_id,
             payment_status,
             date_required,
@@ -1059,11 +1528,11 @@ def update_draft(
             (
                 supplier_id,
                 supplier_display_name or None,
-                None,
+                int(dep_id) if dep_id else None,
                 department_name,
                 category or "",
                 notes or "",
-                rt,
+                header_rt,
                 cid,
                 pay,
                 drq,
@@ -1080,11 +1549,23 @@ def update_draft(
             c.executemany(
                 """
                 INSERT INTO purchase_order_items(
-                  purchase_order_id, description, quantity, unit_price, tax_rate, tax_amount, line_total, created_at
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                  purchase_order_id, description, quantity, unit_price, tax_rate, tax_amount, line_total, request_type, customer_id, payment_status, created_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    (int(po_id), r["description"], r["quantity"], r["unit_price"], r["tax_rate"], r["tax_amount"], r["line_total"], ts)
+                    (
+                        int(po_id),
+                        r["description"],
+                        r["quantity"],
+                        r["unit_price"],
+                        r["tax_rate"],
+                        r["tax_amount"],
+                        r["line_total"],
+                        r.get("request_type") or "stock_item",
+                        r.get("customer_id"),
+                        r.get("payment_status") or None,
+                        ts,
+                    )
                     for r in cooked
                 ],
             )
@@ -1109,7 +1590,12 @@ def submit_po(po_id: int, actor_user_id: int) -> bool:
         if not str(po["department_name"] or "").strip():
             raise ValueError("Department is required before submission")
         total = _money(po["total"] or 0)
-        rules = _load_rules(c, total, int(po["department_id"]) if po["department_id"] is not None else None, str(po["category"] or ""))
+        dep_id = int(po["department_id"]) if po["department_id"] is not None else None
+        if not dep_id:
+            dep_id = _department_id_for_name(c, str(po["department_name"] or ""))
+            if dep_id:
+                c.execute("UPDATE purchase_orders SET department_id = ? WHERE id = ?", (int(dep_id), int(po_id)))
+        rules = _load_rules(c, total, dep_id, str(po["category"] or ""))
         if not rules:
             raise ValueError("No approval rules available")
         # Clear any stray approval-queue rows before rebuilding steps (e.g. partial DB state or missed cancels).
@@ -1118,7 +1604,7 @@ def submit_po(po_id: int, actor_user_id: int) -> bool:
         submitted_at = _now()
         first_step = min(int(r["step_number"]) for r in rules)
         first = [r for r in rules if int(r["step_number"]) == first_step][0]
-        next_status = _status_for_step(str(first["step_name"]))
+        next_status = _status_for_step_number(int(first["step_number"]))
         c.execute("DELETE FROM purchase_order_approvals WHERE purchase_order_id = ?", (int(po_id),))
         for r in rules:
             c.execute(
@@ -1253,7 +1739,7 @@ def approve_step(po_id: int, actor_user_id: int, comments: str = "", force_admin
                     """,
                     (int(po_id), nstep),
                 ).fetchall()
-                next_status = _status_for_step(str(nrow[0]["step_name"])) if nrow else PO_STATUS_SUBMITTED
+                next_status = _status_for_step_number(nstep) if nrow else PO_STATUS_SUBMITTED
                 c.execute(
                     "UPDATE purchase_orders SET status = ?, current_approval_step = ? WHERE id = ?",
                     (next_status, nstep, int(po_id)),
@@ -1695,6 +2181,7 @@ def list_pos(
                 "id": int(r["id"]),
                 "po_number": str(r["po_number"] or ""),
                 "status": str(r["status"]),
+                "status_display": po_status_display_label(str(r["status"])),
                 "total": float(_money(r["total"] or 0)),
                 "created_at": str(r["created_at"] or ""),
                 "submitted_at": str(r["submitted_at"] or ""),
@@ -1724,7 +2211,7 @@ def get_po(po_id: int) -> Dict[str, Any]:
             raise ValueError("PO not found")
         items = c.execute(
             """
-            SELECT id, description, quantity, unit_price, tax_rate, tax_amount, line_total, created_at
+            SELECT id, description, quantity, unit_price, tax_rate, tax_amount, line_total, request_type, customer_id, payment_status, created_at
             FROM purchase_order_items WHERE purchase_order_id = ? ORDER BY id ASC
             """,
             (int(po_id),),
@@ -1775,6 +2262,7 @@ def get_po(po_id: int) -> Dict[str, Any]:
             "id": int(po["id"]),
             "po_number": str(po["po_number"] or ""),
             "status": str(po["status"]),
+            "status_display": po_status_display_label(str(po["status"])),
             "requested_by_user_id": int(po["requested_by_user_id"]),
             "requested_by_username": str(po["requested_by_username"] or ""),
             "supplier_id": int(po["supplier_id"]) if po["supplier_id"] is not None else None,

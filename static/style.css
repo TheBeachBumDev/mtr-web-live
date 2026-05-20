@@ -1,16 +1,20 @@
 /* v1.0.2 stable shared stylesheet */
 :root {
-  --bg: #f6f7f9;
+  /* Page vs panel: keep a small Δ so chrome (sidebar, cards, modals) reads above the canvas */
+  --bg: #eef0f4;
   --fg: #111111;
   --muted: #666666;
   --card: #ffffff;
-  --border: #e8e8e8;
-  --shadow: rgba(0,0,0,0.06);
-  --input-border: #d6d6d6;
-  --focus: rgba(17,17,17,0.10);
+  --border: #dfe3ea;
+  --shadow: rgba(0, 0, 0, 0.09);
+  --input-border: #ccd0d8;
+  --focus: rgba(17, 17, 17, 0.12);
   --btn-bg: #111111;
   --btn-fg: #ffffff;
   --code-bg: #f2f2f2;
+  /* Aliases used by some templates (PO, monitoring) */
+  --line: var(--border);
+  --text: var(--fg);
   /* Full-width nav strip, slide-up sheet, FAB — lighter grey than page bg (light mode) */
   --nav-chrome: #e8eaef;
   --nav-chrome-border: #dcdfe6;
@@ -18,17 +22,19 @@
 }
 
 html[data-theme="dark"] {
-  --bg: #0b0c0f;
+  --bg: #08090d;
   --fg: #f3f4f6;
   --muted: #a1a1aa;
-  --card: #111217;
-  --border: #24262e;
-  --shadow: rgba(0,0,0,0.40);
-  --input-border: #2b2e38;
-  --focus: rgba(243,244,246,0.10);
+  --card: #13151d;
+  --border: #2a2e3a;
+  --shadow: rgba(0, 0, 0, 0.48);
+  --input-border: #2f3442;
+  --focus: rgba(243, 244, 246, 0.12);
   --btn-bg: #f3f4f6;
-  --btn-fg: #0b0c0f;
+  --btn-fg: #08090d;
   --code-bg: #1a1c24;
+  --line: var(--border);
+  --text: var(--fg);
   /* Nav dock / sheet / FAB — slightly above page bg, darker than previous (#1c1f28) */
   --nav-chrome: #12151e;
   --nav-chrome-border: #1f242f;
@@ -99,7 +105,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 22px;
-  box-shadow: 0 10px 30px var(--shadow);
+  box-shadow: 0 8px 28px var(--shadow), 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
 }
 
 label {

@@ -113,7 +113,13 @@ def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:
     row_y = _box_row(c, left_x, row_y, "Supplier", _txt(po.get("supplier_name")), left_w)
     row_y = _box_row(c, left_x, row_y, "Department", _txt(po.get("department_name")), left_w)
     row_y = _box_row(c, right_x, y - 2 * mm, "Requested By", _txt(po.get("requested_by_username")), right_w)
-    row_y = _box_row(c, right_x, row_y, "Status", _txt(po.get("status")).replace("_", " ").title(), right_w)
+    try:
+        import purchase_orders as _po
+
+        status_label = _po.po_status_display_label(po.get("status"))
+    except Exception:
+        status_label = _txt(po.get("status")).replace("_", " ").title()
+    row_y = _box_row(c, right_x, row_y, "Status", status_label, right_w)
     y -= 38 * mm
 
     c.setFont("Helvetica-Bold", 10)
@@ -125,12 +131,13 @@ def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:
     c.rect(x, y - 6.5 * mm, right - x, 6.5 * mm, fill=1, stroke=0)
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 8)
-    cols = [x + 2 * mm, x + 108 * mm, x + 125 * mm, x + 150 * mm, x + 178 * mm]
+    cols = [x + 2 * mm, x + 78 * mm, x + 98 * mm, x + 115 * mm, x + 142 * mm, x + 178 * mm]
     c.drawString(cols[0], y - 4.5 * mm, "Description")
-    c.drawRightString(cols[1], y - 4.5 * mm, "Qty")
-    c.drawRightString(cols[2], y - 4.5 * mm, "Unit")
-    c.drawRightString(cols[3], y - 4.5 * mm, "Tax")
-    c.drawRightString(cols[4], y - 4.5 * mm, "Total")
+    c.drawString(cols[1], y - 4.5 * mm, "Type")
+    c.drawRightString(cols[2], y - 4.5 * mm, "Qty")
+    c.drawRightString(cols[3], y - 4.5 * mm, "Unit")
+    c.drawRightString(cols[4], y - 4.5 * mm, "Tax")
+    c.drawRightString(cols[5], y - 4.5 * mm, "Total")
     c.setFillColor(colors.black)
     y -= 9 * mm
 
@@ -147,11 +154,25 @@ def build_purchase_order_pdf(po: Dict[str, Any]) -> bytes:
             c.rect(x, y - 5.8 * mm, right - x, 6 * mm, fill=1, stroke=0)
             c.setFillColor(colors.black)
         stripe = not stripe
-        c.drawString(cols[0], y - 4.0 * mm, _txt(it.get("description"))[:72])
-        c.drawRightString(cols[1], y - 4.0 * mm, _txt(it.get("quantity")))
-        c.drawRightString(cols[2], y - 4.0 * mm, _money(it.get("unit_price")))
-        c.drawRightString(cols[3], y - 4.0 * mm, _money(it.get("tax_amount")))
-        c.drawRightString(cols[4], y - 4.0 * mm, _money(it.get("line_total")))
+        rt = str(it.get("request_type") or "stock_item").strip().lower()
+        type_lbl = {
+            "stock_item": "Stock",
+            "customer_item": "Customer",
+            "reserve_stock_hs": "Reserve",
+        }.get(rt, rt.replace("_", " ").title()[:12])
+        if rt == "customer_item":
+            cid = it.get("customer_id")
+            pay = str(it.get("payment_status") or "").strip()
+            if cid:
+                type_lbl = f"Cust {cid}"
+            if pay:
+                type_lbl += f" {pay[:1].upper()}"
+        c.drawString(cols[0], y - 4.0 * mm, _txt(it.get("description"))[:52])
+        c.drawString(cols[1], y - 4.0 * mm, type_lbl[:14])
+        c.drawRightString(cols[2], y - 4.0 * mm, _txt(it.get("quantity")))
+        c.drawRightString(cols[3], y - 4.0 * mm, _money(it.get("unit_price")))
+        c.drawRightString(cols[4], y - 4.0 * mm, _money(it.get("tax_amount")))
+        c.drawRightString(cols[5], y - 4.0 * mm, _money(it.get("line_total")))
         y -= 6.2 * mm
 
     y -= 2 * mm

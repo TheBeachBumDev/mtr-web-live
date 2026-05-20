@@ -180,6 +180,14 @@
   .po-items-table { width: 100%; table-layout: fixed; }
   .po-items-table th, .po-items-table td { padding: 5px; font-size: 11px; }
   .po-items-table input { width: 100%; min-width: 0; }
+  .po-items-table input[type="hidden"] {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
   /* Override global .app-body input width (360px) for PO line-item controls. */
   .po-items-table .po-item-desc,
   .po-items-table .po-item-qty,
@@ -237,6 +245,10 @@
     height: 1.1rem;
     flex-shrink: 0;
   }
+  #poCreateModal[data-mode="custom"] .po-item-type-col,
+  #poCreateModal[data-mode="quote"] .po-item-type-col {
+    display: none !important;
+  }
   .po-list.po-purchase-list--cards {
     overflow-x: hidden;
     max-width: 100%;
@@ -253,136 +265,215 @@
   .po-list.po-purchase-list--cards table.po-stack-table thead {
     display: none;
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody tr {
+  .po-list.po-purchase-list--cards table.po-stack-table tbody tr.po-purchase-card {
     display: block;
     border: 1px solid var(--line);
     border-radius: 10px;
     margin-bottom: 10px;
-    padding: 10px 12px;
+    padding: 0;
     background: var(--card);
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  html[data-theme="dark"] .po-list.po-purchase-list--cards table.po-stack-table tbody tr {
+  html[data-theme="dark"] .po-list.po-purchase-list--cards table.po-stack-table tbody tr.po-purchase-card {
     box-shadow: 0 1px 12px rgba(0, 0, 0, 0.38);
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody tr:hover {
+  .po-list.po-purchase-list--cards table.po-stack-table tbody tr.po-purchase-card:hover {
     border-color: color-mix(in srgb, var(--accent, #3b82f6) 45%, var(--line));
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   }
-  html[data-theme="dark"] .po-list.po-purchase-list--cards table.po-stack-table tbody tr:hover {
+  html[data-theme="dark"] .po-list.po-purchase-list--cards table.po-stack-table tbody tr.po-purchase-card:hover {
     box-shadow: 0 2px 16px rgba(0, 0, 0, 0.45);
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody tr:last-child {
+  .po-list.po-purchase-list--cards table.po-stack-table tbody tr.po-purchase-card:last-child {
     margin-bottom: 0;
   }
-  .app-main .po-list.po-purchase-list--cards table.po-stack-table tbody td {
-    display: grid;
-    grid-template-columns: minmax(0, min(8.5rem, 30%)) minmax(0, 1fr);
-    gap: 6px 10px;
-    align-items: start;
+  .app-main .po-list.po-purchase-list--cards table.po-stack-table tbody td.po-purchase-card__cell {
+    display: block;
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: transparent !important;
-    border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent) !important;
-    padding: 6px 0;
-    text-align: left;
-    font-size: 12px;
-    line-height: 1.38;
+    padding: 10px 12px;
     min-width: 0;
-    vertical-align: top;
-    white-space: normal;
   }
-  .app-main .po-list.po-purchase-list--cards table.po-stack-table thead th {
-    white-space: normal;
+  .app-main .po-list.po-purchase-list--cards table.po-stack-table tbody td.po-purchase-card__cell::before {
+    display: none;
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td:last-child {
-    border-bottom: none !important;
-    padding-bottom: 0;
+  .po-purchase-card__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td::before {
-    content: attr(data-label);
+  .po-purchase-card__row--head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 12px;
+    line-height: 1.35;
+    min-width: 0;
+  }
+  .po-purchase-card__po {
+    font-weight: 700;
+    font-size: 13px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .po-purchase-card__status {
+    flex: 0 0 auto;
+  }
+  .po-purchase-card__total {
+    margin-left: auto;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .po-purchase-card__by-label {
     font-weight: 600;
     font-size: 9px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
+    margin-right: 4px;
+  }
+  .po-purchase-card__by {
+    flex: 0 1 auto;
+    font-size: 11px;
     color: var(--muted);
-    line-height: 1.35;
-    padding-top: 3px;
-    max-width: 100%;
+    min-width: 0;
     overflow-wrap: anywhere;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: min(100%, 12rem);
+  }
+  @media (max-width: 380px) {
+    .po-purchase-card__row--head {
+      flex-wrap: wrap;
+    }
+    .po-purchase-card__by {
+      flex: 1 1 100%;
+      max-width: 100%;
+      white-space: normal;
+    }
+  }
+  .po-purchase-card__row--foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px 10px;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
     min-width: 0;
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td.po-td--stack-wide {
-    grid-template-columns: 1fr;
-  }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td.po-td--stack-wide::before {
-    margin-bottom: 4px;
-  }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td.po-td--stack-wide > * {
+  .po-purchase-card__track {
+    flex: 1 1 180px;
     min-width: 0;
-    max-width: 100%;
+    font-size: 11px;
   }
-  .po-list.po-purchase-list--cards table.po-stack-table tbody td > *:not(button) {
-    min-width: 0;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  .po-list.po-purchase-list--cards table.po-stack-table .po-step-track {
+  .po-purchase-card__track .po-step-track {
     flex-wrap: wrap;
     gap: 4px 6px;
   }
-  .po-list.po-purchase-list--cards .po-step {
+  .po-list.po-purchase-list--cards .po-purchase-card__track .po-step {
     white-space: normal;
     word-break: break-word;
     max-width: 100%;
   }
-  .po-purchase-list-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    min-width: 0;
-  }
-  .po-purchase-list-actions__meta {
-    font-size: 11px;
-    line-height: 1.35;
-    color: var(--muted);
-    min-width: 0;
-  }
-  .po-purchase-list-actions__btns {
+  .po-purchase-card__btns {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 6px;
     align-items: center;
+    justify-content: flex-end;
+    flex: 0 1 auto;
     min-width: 0;
-    width: 100%;
+    max-width: 100%;
   }
-  @media (min-width: 520px) {
-    .po-purchase-list-actions {
-      flex-direction: row;
-      align-items: flex-start;
-      gap: 8px;
-    }
-    .po-purchase-list-actions__meta {
-      flex: 0 0 50%;
-      width: 50%;
-      max-width: 50%;
-      padding-right: 6px;
-      box-sizing: border-box;
-    }
-    .po-purchase-list-actions__btns {
-      flex: 0 0 50%;
-      width: 50%;
-      max-width: 50%;
-      justify-content: flex-end;
-      box-sizing: border-box;
-    }
+  .po-purchase-card__details {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--card) 92%, var(--line) 8%);
   }
-  .po-list.po-purchase-list--cards .po-purchase-list-actions__btns button {
+  .po-purchase-card__details summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .po-purchase-card__details summary::-webkit-details-marker {
+    display: none;
+  }
+  .po-purchase-card__details-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+  .po-purchase-card__details-summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--muted);
+    transition: transform 0.15s ease;
+  }
+  .po-purchase-card__details[open] .po-purchase-card__details-summary::before {
+    transform: rotate(90deg);
+  }
+  .po-purchase-card__details-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .po-purchase-card__details[open] .po-purchase-card__details-hint {
+    display: none;
+  }
+  .po-purchase-card__meta {
+    display: grid;
+    grid-template-columns: minmax(100px, 34%) 1fr;
+    margin: 0;
+    font-size: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  }
+  .po-purchase-card__meta dt,
+  .po-purchase-card__meta dd {
+    margin: 0;
+    padding: 7px 10px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .po-purchase-card__meta dt {
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--card) 88%, var(--line) 12%);
+    border-right: 1px solid var(--line);
+  }
+  .po-purchase-card__meta dt:nth-last-child(2),
+  .po-purchase-card__meta dd:last-child {
+    border-bottom: none;
+  }
+  .po-list.po-purchase-list--cards .po-purchase-card__btns button {
     margin-top: 0;
     margin-right: 0;
     font-size: 11px;
@@ -395,12 +486,247 @@
     cursor: pointer;
     transition: background 0.12s ease, border-color 0.12s ease;
   }
-  .po-list.po-purchase-list--cards .po-purchase-list-actions__btns button:hover {
+  .po-list.po-purchase-list--cards .po-purchase-card__btns button:hover {
     border-color: color-mix(in srgb, var(--accent, #3b82f6) 50%, var(--line));
     background: color-mix(in srgb, var(--accent, #3b82f6) 12%, var(--card) 88%);
   }
-  .po-list.po-purchase-list--cards .po-purchase-list-actions__btns button:active {
+  .po-list.po-purchase-list--cards .po-purchase-card__btns button:active {
     transform: scale(0.98);
+  }
+  .po-review-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px 4px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .po-review-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .po-review-head {
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--card) 90%, var(--line) 10%);
+  }
+  .po-review-head h4 {
+    margin: 0 0 6px;
+    font-size: 1.1rem;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .po-review-head .muted {
+    font-size: 12px;
+    margin: 0;
+  }
+  .po-review-section {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card);
+  }
+  .po-review-section__title {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--card) 65%, var(--line) 35%);
+    border-bottom: 1px solid var(--line);
+  }
+  .po-review-section--details summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .po-review-section--details summary::-webkit-details-marker {
+    display: none;
+  }
+  .po-review-details-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: color-mix(in srgb, var(--card) 65%, var(--line) 35%);
+  }
+  .po-review-details-summary::before {
+    content: "";
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--muted);
+    transition: transform 0.15s ease;
+  }
+  .po-review-section--details[open] .po-review-details-summary::before {
+    transform: rotate(90deg);
+  }
+  .po-review-details-summary .po-review-section__title {
+    flex: 0 0 auto;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+  .po-review-details-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
+  }
+  .po-review-section--details[open] .po-review-details-hint {
+    display: none;
+  }
+  .po-review-grid {
+    display: grid;
+    grid-template-columns: minmax(118px, 36%) 1fr;
+    margin: 0;
+  }
+  .po-review-grid dt,
+  .po-review-grid dd {
+    margin: 0;
+    padding: 9px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .po-review-grid dt {
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: color-mix(in srgb, var(--card) 88%, var(--line) 12%);
+    border-right: 1px solid var(--line);
+  }
+  .po-review-grid dd {
+    font-size: 13px;
+  }
+  .po-review-grid dt:nth-last-child(2),
+  .po-review-grid dd:last-child {
+    border-bottom: none;
+  }
+  .po-review-items-wrap {
+    overflow-x: auto;
+    border-top: none;
+  }
+  table.po-review-items {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.po-review-items th,
+  table.po-review-items td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.po-review-items th {
+    background: color-mix(in srgb, var(--card) 60%, var(--line) 40%);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    border-bottom: 2px solid var(--line);
+  }
+  table.po-review-items tbody tr:nth-child(even) td {
+    background: color-mix(in srgb, var(--card) 94%, var(--line) 6%);
+  }
+  table.po-review-items tbody tr:last-child td {
+    border-bottom: none;
+  }
+  table.po-review-items .num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .po-review-section--totals .po-review-section__title {
+    border-bottom: 1px solid var(--line);
+  }
+  .po-review-totals-wrap {
+    padding: 4px 14px 12px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .po-review-totals {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0;
+    min-width: min(100%, 260px);
+    font-size: 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .po-review-totals .lbl,
+  .po-review-totals .val {
+    padding: 7px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  }
+  .po-review-totals .lbl {
+    color: var(--muted);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--card) 88%, var(--line) 12%);
+    border-right: 1px solid var(--line);
+  }
+  .po-review-totals .val {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .po-review-totals .lbl--total,
+  .po-review-totals .val--total {
+    border-bottom: none;
+    border-top: 2px solid var(--line);
+    padding-top: 10px;
+    padding-bottom: 10px;
+    font-size: 14px;
+  }
+  .po-review-totals .val--total {
+    font-weight: 700;
+  }
+  .po-review-notes {
+    padding: 0;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    overflow: hidden;
+    background: var(--card);
+  }
+  .po-review-notes__title {
+    margin: 0;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--card) 65%, var(--line) 35%);
+    border-bottom: 1px solid var(--line);
+  }
+  .po-review-notes__body {
+    padding: 12px 14px;
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  #poReviewModal .po-modal__panel {
+    width: min(680px, 94vw);
+    max-height: min(90vh, 900px);
+    display: flex;
+    flex-direction: column;
   }
   .po-list.po-purchase-list--cards table.po-stack-table tbody td:first-child,
   .po-list.po-purchase-list--cards table.po-stack-table tbody td:last-child {
@@ -496,8 +822,8 @@
     position: sticky;
     bottom: 0;
     z-index: 2;
-    background: var(--bg);
-    box-shadow: 0 -10px 20px color-mix(in srgb, var(--bg) 75%, transparent);
+    background: var(--card);
+    box-shadow: 0 -10px 22px color-mix(in srgb, var(--card) 82%, var(--line) 18%);
   }
   .po-step-track { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .po-step {
@@ -543,11 +869,15 @@
     overflow: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    background: var(--bg);
+    background: var(--card);
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 12px;
     box-sizing: border-box;
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.16), 0 0 0 1px color-mix(in srgb, var(--line) 55%, transparent);
+  }
+  html[data-theme="dark"] .po-modal__panel {
+    box-shadow: 0 18px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px color-mix(in srgb, var(--line) 50%, transparent);
   }
   .po-modal__head {
     display: flex;
@@ -598,8 +928,76 @@
   }
   .po-type-picker__option:hover,
   .po-type-picker__option:focus-visible {
-    border-color: var(--accent, #60a5fa);
+    border-color: color-mix(in srgb, var(--line) 70%, var(--fg) 30%);
+    background: color-mix(in srgb, var(--card) 82%, var(--line) 18%);
     outline: none;
+  }
+  #poAddItemModal .po-add-item-type-btn {
+    position: relative;
+    transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  }
+  #poAddItemModal .po-add-item-type-btn:not(.is-selected) {
+    opacity: 0.78;
+    background: color-mix(in srgb, var(--card) 86%, var(--bg) 14%);
+    border-color: color-mix(in srgb, var(--line) 88%, transparent);
+  }
+  #poAddItemModal .po-add-item-type-btn:not(.is-selected) strong,
+  #poAddItemModal .po-add-item-type-btn:not(.is-selected) span {
+    color: var(--muted);
+  }
+  #poAddItemModal .po-add-item-type-btn:not(.is-selected):hover,
+  #poAddItemModal .po-add-item-type-btn:not(.is-selected):focus-visible {
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--line) 55%, var(--fg) 45%);
+    background: color-mix(in srgb, var(--card) 78%, var(--line) 22%);
+    outline: none;
+  }
+  #poAddItemModal .po-add-item-type-btn.is-selected {
+    opacity: 1;
+    border-width: 2px;
+    border-color: color-mix(in srgb, var(--line) 35%, var(--fg) 65%);
+    background: color-mix(in srgb, var(--card) 72%, var(--line) 28%);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--fg) 12%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--line) 40%, transparent);
+    transform: translateY(-1px);
+  }
+  #poAddItemModal .po-add-item-type-btn.is-selected strong {
+    color: var(--text, inherit);
+  }
+  #poAddItemModal .po-add-item-type-btn.is-selected span {
+    color: color-mix(in srgb, var(--text, #e2e8f0) 72%, var(--muted));
+  }
+  #poAddItemModal .po-add-item-type-btn.is-selected::after {
+    content: "Selected";
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--card) 82%, var(--line) 18%);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    line-height: 1.3;
+  }
+  html[data-theme="dark"] #poAddItemModal .po-add-item-type-btn.is-selected {
+    background: color-mix(in srgb, var(--card) 68%, var(--line) 32%);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px color-mix(in srgb, var(--line) 45%, transparent);
+  }
+  .po-line-type-label {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .po-line-type-label__sub {
+    display: block;
+    font-weight: 400;
+    font-size: 10px;
+    margin-top: 2px;
+    color: var(--muted);
   }
   .po-type-picker__option strong { font-size: 0.98rem; }
   .po-type-picker__option span {
@@ -1072,7 +1470,8 @@
     <h4>Approval Rules (Admin)</h4>
     <p class="hint po-admin-intro">
       Rules decide <strong>who must approve</strong> and in <strong>what order</strong>. Each rule applies when the PO <strong>total</strong> falls in the min/max range (ZAR), and optionally when <strong>department</strong> and <strong>category</strong> match.
-      Use <strong>step number</strong> 1 for the first approval, 2 for the next, and so on. <strong>Step role</strong> must match Manager / Finance / Director so the engine knows which approval slot this is.
+      Use <strong>step number</strong> 1 for the first approval, 2 for the next, and so on (single-step POs use step 1 only).
+      <strong>Step role</strong> is the label shown on the PO (e.g. Finance, Site lead) — type any name; primary approver on the rule is who must approve.
     </p>
     <div class="po-form-grid po-form-grid--narrow">
       <div class="po-field">
@@ -1103,13 +1502,9 @@
         <input id="poRuleStepNo" type="number" min="1" step="1" value="1" />
       </div>
       <div class="po-field">
-        <label for="poRuleStepName">Step role</label>
-        <select id="poRuleStepName" aria-describedby="poRuleStepHint">
-          <option value="Manager">Manager</option>
-          <option value="Finance">Finance</option>
-          <option value="Director">Director</option>
-        </select>
-        <p id="poRuleStepHint" class="po-field__hint">Must align with Manager / Finance / Director assignments above.</p>
+        <label for="poRuleStepName">Step role (label)</label>
+        <input id="poRuleStepName" type="text" placeholder="e.g. Finance" aria-describedby="poRuleStepHint" />
+        <p id="poRuleStepHint" class="po-field__hint">Shown on the approval track and in notifications (any text, e.g. Finance).</p>
       </div>
       <div class="po-field">
         <label for="poRuleApprover">Primary approver</label>
@@ -1123,6 +1518,7 @@
       </div>
       <div class="po-form-grid__action">
         <button id="poRuleAddBtn" type="button">+ Add Rule</button>
+        <input type="hidden" id="poRuleEditId" value="" />
       </div>
     </div>
     <div class="po-table-scroll po-stack-table-wrap">
@@ -1216,30 +1612,6 @@
         </select>
       </div>
     </div>
-    <div class="po-form-grid po-field--standard-only">
-      <div class="po-field">
-        <label for="poRequestType">Request type</label>
-        <select id="poRequestType">
-          <option value="stock_item">Stock Item</option>
-          <option value="customer_item">Customer Item</option>
-          <option value="reserve_stock_hs">Reserve Stock (HS)</option>
-        </select>
-      </div>
-      <div id="poCustomerFields" class="po-customer-fields">
-        <div class="po-field">
-          <label for="poCustomerId">Customer ID</label>
-          <input id="poCustomerId" type="number" min="1" placeholder="Customer ID" />
-        </div>
-        <div class="po-field">
-          <label for="poPaymentStatus">Paid / unpaid</label>
-          <select id="poPaymentStatus">
-            <option value="">-- Select --</option>
-            <option value="paid">Paid</option>
-            <option value="unpaid">Unpaid</option>
-          </select>
-        </div>
-      </div>
-    </div>
     <div class="po-form-grid">
       <div class="po-field po-field--full">
         <label for="poNotes">Notes</label>
@@ -1265,7 +1637,7 @@
       <datalist id="poItemDescOptions"></datalist>
       <table class="po-items-table po-stack-table">
         <thead>
-          <tr><th>Description</th><th>Qty</th><th id="poUnitPriceTh">Unit price (Ex VAT)</th><th id="poLineTotalTh">Line (Ex VAT)</th><th></th></tr>
+          <tr><th>Description</th><th class="po-item-type-col">Type</th><th>Qty</th><th id="poUnitPriceTh">Unit price (Ex VAT)</th><th id="poLineTotalTh">Line (Ex VAT)</th><th></th></tr>
         </thead>
         <tbody id="poItemsBody"></tbody>
       </table>
@@ -1293,8 +1665,72 @@
       {% if is_admin %}
       <button id="poCancelBtn" type="button">Cancel (Admin)</button>
       {% endif %}
+      <button id="poReviewBtn" type="button" style="display:none;">View PO</button>
       <button id="poViewPdfBtn" type="button" style="display:none;">View PDF</button>
       <button id="poDownloadPdfBtn" type="button" style="display:none;">Download PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="poAddItemModal" class="po-modal" aria-hidden="true">
+  <div class="po-modal__panel po-type-picker__panel">
+    <div class="po-modal__head">
+      <h3 style="margin:0;">Add line item</h3>
+      <button type="button" id="poAddItemModalClose">Close</button>
+    </div>
+    <p class="hint" style="margin:0 0 10px;">Choose a line type and description. Customer details are only required for Customer Item lines.</p>
+    <div class="po-field po-field--full" style="margin-bottom:12px;">
+      <datalist id="poAddItemDescOptions"></datalist>
+      <label for="poAddItemDescription">Description *</label>
+      <input id="poAddItemDescription" list="poAddItemDescOptions" placeholder="Type to search supplier products, or enter any description…" autocomplete="off" />
+      <p id="poAddItemCatalogHint" class="hint" style="margin:6px 0 0;font-size:0.85rem;"></p>
+    </div>
+    <div class="po-type-picker__options" role="group" aria-label="Line type">
+      <button type="button" class="po-add-item-type-btn po-type-picker__option is-selected" data-po-line-type="stock_item">
+        <strong>Stock Item</strong>
+        <span>Standard stock purchase</span>
+      </button>
+      <button type="button" class="po-add-item-type-btn po-type-picker__option" data-po-line-type="customer_item">
+        <strong>Customer Item</strong>
+        <span>Bill to a specific customer</span>
+      </button>
+      <button type="button" class="po-add-item-type-btn po-type-picker__option" data-po-line-type="reserve_stock_hs">
+        <strong>Reserve Stock (HS)</strong>
+        <span>High-site reserve stock</span>
+      </button>
+    </div>
+    <div id="poAddItemCustomerFields" class="po-form-grid" style="display:none;margin-top:12px;">
+      <div class="po-field">
+        <label for="poAddItemCustomerId">Customer ID *</label>
+        <input id="poAddItemCustomerId" type="number" min="1" placeholder="Customer ID" />
+      </div>
+      <div class="po-field">
+        <label for="poAddItemPaymentStatus">Paid / unpaid *</label>
+        <select id="poAddItemPaymentStatus">
+          <option value="">-- Select --</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+        </select>
+      </div>
+    </div>
+    <p id="poAddItemModalMsg" class="po-modal__msg" role="alert" style="margin-top:10px;"></p>
+    <div class="po-actions" style="margin-top:12px;">
+      <button type="button" id="poAddItemConfirmBtn">Add line</button>
+      <button type="button" id="poAddItemCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="poReviewModal" class="po-modal" aria-hidden="true">
+  <div class="po-modal__panel">
+    <div class="po-modal__head">
+      <h3 style="margin:0;">Purchase order summary</h3>
+      <button type="button" id="poReviewModalClose">Close</button>
+    </div>
+    <p class="hint" style="margin:0 0 8px;">Read-only view of what is on this PO (same information as the PDF).</p>
+    <div id="poReviewBody" class="po-review-body" role="document"></div>
+    <div class="po-actions">
+      <button type="button" id="poReviewModalCloseFooter">Close</button>
     </div>
   </div>
 </div>
@@ -1337,14 +1773,54 @@
   let supplierProductCatalog = [];
   let supplierProductPriceMap = new Map();
   const poDetailsCache = new Map();
-  const STEP_ORDER = ["manager", "finance", "director"];
-  /** PO statuses where approve / decline / hold apply */
+  /** Internal codes while PO waits on approval; UI shows "Pending approval" via statusBadgeLabel. */
   const APPROVAL_ACTIVE_STATUSES = new Set(["submitted", "pending_manager", "pending_finance", "pending_director"]);
+  const PO_LINE_REQUEST_TYPE_OPTIONS = [
+    { value: "stock_item", label: "Stock Item" },
+    { value: "customer_item", label: "Customer Item" },
+    { value: "reserve_stock_hs", label: "Reserve Stock (HS)" },
+  ];
+  const formatPoRequestTypeLabel = (rt) => {
+    const key = String(rt || "stock_item").toLowerCase();
+    if (key === "mixed") return "Mixed";
+    if (key === "custom") return "Custom";
+    if (key === "quote_import") return "Quote import";
+    const hit = PO_LINE_REQUEST_TYPE_OPTIONS.find((o) => o.value === key);
+    return hit ? hit.label : key.replace(/_/g, " ");
+  };
   const escHtml = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+  const formatPoLineTypeCell = (item) => {
+    const rt = String(item.request_type || "stock_item").toLowerCase();
+    const label = formatPoRequestTypeLabel(rt);
+    if (rt !== "customer_item") {
+      return `<span class="po-line-type-label">${escHtml(label)}</span>`;
+    }
+    const cid = item.customer_id != null && item.customer_id !== "" ? String(item.customer_id) : "";
+    const pay = String(item.payment_status || "").trim();
+    const payLbl = pay ? pay.charAt(0).toUpperCase() + pay.slice(1) : "";
+    let sub = "";
+    if (cid) sub += "Customer #" + cid;
+    if (payLbl) sub += (sub ? " · " : "") + payLbl;
+    return `<span class="po-line-type-label">${escHtml(label)}${sub ? `<span class="po-line-type-label__sub">${escHtml(sub)}</span>` : ""}</span>`;
+  };
+  let poAddItemSelectedType = "stock_item";
+  const lineTypesSummary = (poOrDetail) => {
+    const d = poOrDetail || {};
+    const hdr = String(d.request_type || "").toLowerCase();
+    if (hdr === "custom" || hdr === "quote_import") return formatPoRequestTypeLabel(hdr);
+    const items = Array.isArray(d.items) ? d.items : [];
+    if (items.length) {
+      const uniq = [...new Set(items.map((i) => formatPoRequestTypeLabel(i.request_type || "stock_item")))];
+      return uniq.join(", ");
+    }
+    return formatPoRequestTypeLabel(hdr || "stock_item");
+  };
+
+  const PENDING_APPROVAL_STATUSES = APPROVAL_ACTIVE_STATUSES;
   const escAttr = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
@@ -1356,11 +1832,22 @@
     rej.sort((a, b) => String(b.rejected_at || "").localeCompare(String(a.rejected_at || "")));
     return rej[0] || null;
   };
-  const statusBadgeLabel = (s) => {
+  const statusBadgeLabel = (s, po) => {
+    if (po && po.status_display) return String(po.status_display);
     const x = String(s || "").toLowerCase();
+    if (PENDING_APPROVAL_STATUSES.has(x)) return "Pending approval";
     if (x === "rejected") return "Declined";
+    if (x === "changes_requested") return "Changes requested";
     if (x === "postponed") return "Postponed";
-    return String(s || "—");
+    if (x === "approved") return "Approved";
+    if (x === "sent_to_supplier") return "Sent to supplier";
+    if (x === "partially_received") return "Partially received";
+    if (x === "received") return "Received";
+    if (x === "closed") return "Closed";
+    if (x === "cancelled") return "Cancelled";
+    if (x === "draft") return "Draft";
+    if (!x) return "—";
+    return x.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   };
   const statusBadgeClass = (s) => {
     const x = String(s || "").toLowerCase();
@@ -1419,12 +1906,30 @@
     return d;
   };
   const itemsBody = () => document.getElementById("poItemsBody");
-  const renderItemDescriptionSuggestions = () => {
-    const dl = document.getElementById("poItemDescOptions");
-    if (!dl) return;
-    dl.innerHTML = (supplierProductSuggestions || [])
+  const PO_CATALOG_SUGGEST_MIN = 2;
+  const PO_CATALOG_SUGGEST_MAX = 40;
+  const filterProductSuggestions = (query, limit = PO_CATALOG_SUGGEST_MAX) => {
+    const q = String(query || "").trim().toLowerCase();
+    if (q.length < PO_CATALOG_SUGGEST_MIN) return [];
+    const names = supplierProductSuggestions || [];
+    const out = [];
+    for (let i = 0; i < names.length && out.length < limit; i += 1) {
+      const name = String(names[i] || "");
+      if (name.toLowerCase().includes(q)) out.push(name);
+    }
+    return out;
+  };
+  const renderDatalistOptions = (datalistEl, names) => {
+    if (!datalistEl) return;
+    datalistEl.innerHTML = (names || [])
       .map(name => `<option value="${String(name || "").replace(/"/g, "&quot;")}"></option>`)
       .join("");
+  };
+  const renderItemDescriptionSuggestions = (query = "") => {
+    renderDatalistOptions(document.getElementById("poItemDescOptions"), filterProductSuggestions(query));
+  };
+  const renderAddItemDescriptionSuggestions = (query = "") => {
+    renderDatalistOptions(document.getElementById("poAddItemDescOptions"), filterProductSuggestions(query));
   };
   const rebuildProductPriceMap = () => {
     supplierProductPriceMap = new Map();
@@ -1449,6 +1954,7 @@
       supplierProductCatalog = [];
       rebuildProductPriceMap();
       renderItemDescriptionSuggestions();
+      updatePoAddItemCatalogHint();
       return;
     }
     const supplierId = Number(document.getElementById("poSupplier").value || "0");
@@ -1457,6 +1963,7 @@
       supplierProductCatalog = [];
       rebuildProductPriceMap();
       renderItemDescriptionSuggestions();
+      updatePoAddItemCatalogHint();
       return;
     }
     const d = await j(`/api/po/suppliers/${supplierId}/product-catalog`);
@@ -1464,6 +1971,26 @@
     rebuildProductPriceMap();
     supplierProductSuggestions = supplierProductCatalog.map(p => p.name);
     renderItemDescriptionSuggestions();
+    updatePoAddItemCatalogHint();
+  };
+  const updatePoAddItemCatalogHint = () => {
+    const el = document.getElementById("poAddItemCatalogHint");
+    if (!el) return;
+    if (poCreationMode !== "standard") {
+      el.textContent = "Standard POs with a supplier use Stock Management product suggestions here.";
+      return;
+    }
+    const supplierId = Number(document.getElementById("poSupplier")?.value || "0");
+    if (!supplierId) {
+      el.textContent = "Select a supplier on the PO form first, then type here to pick from that supplier’s products in Stock Management.";
+      return;
+    }
+    const n = (supplierProductCatalog || []).length;
+    if (n === 0) {
+      el.textContent = "No products are linked to this supplier in Stock Management yet. You can still enter any description manually.";
+      return;
+    }
+    el.textContent = `${n} product(s) linked — type at least ${PO_CATALOG_SUGGEST_MIN} characters to search; or enter any custom description.`;
   };
   const PO_DEFAULT_VAT = 0.15;
   let _poPriceBasisIncLast = false;
@@ -1542,15 +2069,89 @@
     syncPoPriceBasisLastFromDom();
     updatePoBasisHeaders();
   };
+  let poLineMetaSeq = 0;
+  const poLineMetaByRow = new WeakMap();
+  const poLineMetaByKey = new Map();
+  const lineMetaFromItem = (item) => {
+    let lineRt = String(item.request_type || "stock_item").toLowerCase();
+    let customerId = item.customer_id != null && item.customer_id !== "" ? String(item.customer_id) : "";
+    let paymentStatus = String(item.payment_status || "").trim().toLowerCase();
+    /* DB/backfill rows: header type copied to lines without per-line customer id */
+    if (lineRt === "customer_item" && !customerId) {
+      lineRt = "stock_item";
+      paymentStatus = "";
+    }
+    return { lineRt, customerId, paymentStatus };
+  };
+  const applyLineMetaToRow = (tr, meta) => {
+    const lineRt = String(meta.lineRt || "stock_item").toLowerCase();
+    tr.setAttribute("data-request-type", lineRt);
+    if (meta.customerId) tr.setAttribute("data-customer-id", String(meta.customerId));
+    else tr.removeAttribute("data-customer-id");
+    if (meta.paymentStatus) tr.setAttribute("data-payment-status", String(meta.paymentStatus));
+    else tr.removeAttribute("data-payment-status");
+  };
+  const persistLineMetaOnRow = (tr, meta) => {
+    if (!tr.dataset.poLineKey) tr.dataset.poLineKey = String(++poLineMetaSeq);
+    const norm = {
+      lineRt: String(meta.lineRt || "stock_item").toLowerCase(),
+      customerId: meta.customerId != null && meta.customerId !== "" ? String(meta.customerId) : "",
+      paymentStatus: String(meta.paymentStatus || "").trim().toLowerCase(),
+    };
+    poLineMetaByRow.set(tr, norm);
+    poLineMetaByKey.set(tr.dataset.poLineKey, norm);
+    applyLineMetaToRow(tr, norm);
+    const rtEl = tr.querySelector(".po-item-line-rt");
+    const cidEl = tr.querySelector(".po-item-line-customer-id");
+    const payEl = tr.querySelector(".po-item-line-payment-status");
+    if (rtEl) rtEl.value = norm.lineRt;
+    if (cidEl) cidEl.value = norm.customerId;
+    if (payEl) payEl.value = norm.paymentStatus;
+  };
+  const readLineMetaFromRow = (tr) => {
+    const key = tr.dataset.poLineKey;
+    const stored = (key && poLineMetaByKey.get(key)) || poLineMetaByRow.get(tr);
+    if (stored) {
+      return {
+        request_type: stored.lineRt,
+        customer_id: stored.customerId && Number(stored.customerId) > 0 ? Number(stored.customerId) : null,
+        payment_status: stored.paymentStatus || "",
+      };
+    }
+    const rtEl = tr.querySelector(".po-item-line-rt");
+    const request_type = String(
+      (rtEl && rtEl.value) || tr.getAttribute("data-request-type") || tr.dataset.requestType || "stock_item"
+    ).toLowerCase();
+    let customer_id = null;
+    let payment_status = "";
+    if (request_type === "customer_item") {
+      const cidEl = tr.querySelector(".po-item-line-customer-id");
+      const payEl = tr.querySelector(".po-item-line-payment-status");
+      const cidRaw = String(
+        (cidEl && cidEl.value) || tr.getAttribute("data-customer-id") || tr.dataset.customerId || ""
+      ).trim();
+      payment_status = String(
+        (payEl && payEl.value) || tr.getAttribute("data-payment-status") || tr.dataset.paymentStatus || ""
+      ).trim().toLowerCase();
+      customer_id = cidRaw && Number(cidRaw) > 0 ? Number(cidRaw) : null;
+    }
+    return { request_type, customer_id, payment_status };
+  };
   const addItemRow = (item = {}) => {
     const tr = document.createElement("tr");
     const lineTax = fractionTaxFromItem(item);
     tr.dataset.lineTaxRate = String(lineTax);
+    const meta = lineMetaFromItem(item);
+    const lineRt = meta.lineRt;
     const qtyInit = Math.max(1, Math.round(Number(item.quantity ?? 1) || 1));
     const exUnit = Number(item.unit_price ?? 0);
     const displayUnit = isPriceBasisInc() ? exUnit * (1 + lineTax) : exUnit;
+    const lineMetaHidden = lineRt === "customer_item"
+      ? `<input type="hidden" class="po-item-line-rt" value="${escAttr(lineRt)}" /><input type="hidden" class="po-item-line-customer-id" value="${escAttr(meta.customerId)}" /><input type="hidden" class="po-item-line-payment-status" value="${escAttr(meta.paymentStatus)}" />`
+      : `<input type="hidden" class="po-item-line-rt" value="${escAttr(lineRt)}" />`;
     tr.innerHTML = `
       <td data-label="Description"><div class="po-col-resize"><input class="po-item-desc" list="poItemDescOptions" value="${String(item.description || "").replace(/"/g, "&quot;")}" placeholder="Item description" /></div></td>
+      <td class="po-item-type-col" data-label="Type"><div class="po-col-resize">${lineMetaHidden}${formatPoLineTypeCell({ request_type: meta.lineRt, customer_id: meta.customerId, payment_status: meta.paymentStatus })}</div></td>
       <td data-label="Qty"><div class="po-col-resize"><input class="po-item-qty" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" value="${qtyInit}" /></div></td>
       <td data-label="Unit price"><div class="po-col-resize"><input class="po-item-unit" type="number" min="0" step="0.01" value="${formatPoMoney(displayUnit)}" /></div></td>
       <td data-label="Line total"><span class="po-item-line-total">R 0.00</span></td>
@@ -1587,8 +2188,13 @@
     tr.querySelector(".po-item-desc").addEventListener("blur", () => { autoFillUnitPrice(); recalc(); });
     tr.querySelector(".po-item-unit").addEventListener("input", recalc);
     itemsBody().appendChild(tr);
+    persistLineMetaOnRow(tr, meta);
     autoFillUnitPrice();
     recalc();
+    const descInput = tr.querySelector(".po-item-desc");
+    if (descInput && !String(descInput.value || "").trim()) {
+      try { descInput.focus({ preventScroll: false }); } catch (_) { descInput.focus(); }
+    }
   };
   const recalcTotals = () => {
     let subtotal = 0;
@@ -1643,22 +2249,48 @@
     return d;
   };
   const parseItems = () => {
+    const tbody = itemsBody();
+    if (!tbody) throw new Error("Line items table is missing");
+    const rows = [...tbody.querySelectorAll("tr")];
     const out = [];
-    itemsBody().querySelectorAll("tr").forEach(tr => {
-      const description = tr.querySelector(".po-item-desc").value.trim();
-      const quantity = parseQtySubmit(tr.querySelector(".po-item-qty").value);
-      const rawUnit = Number(tr.querySelector(".po-item-unit").value || "0");
+    rows.forEach((tr) => {
+      const descEl = tr.querySelector(".po-item-desc");
+      const description = (descEl && descEl.value || "").trim();
+      if (!description) return;
+      const qtyEl = tr.querySelector(".po-item-qty");
+      const unitEl = tr.querySelector(".po-item-unit");
+      const quantity = parseQtySubmit(qtyEl && qtyEl.value);
+      const rawUnit = Number(unitEl && unitEl.value || "0");
       const tax_rate = rowEffectiveTax(tr);
       const unit_price = unitDisplayToEx(tr, rawUnit);
-      if (!description) return;
-      out.push({
+      const lineMeta = readLineMetaFromRow(tr);
+      const request_type = lineMeta.request_type;
+      const row = {
         description,
         quantity: Number.isFinite(quantity) ? quantity : 1,
         unit_price: Number.isFinite(unit_price) ? unit_price : 0,
         tax_rate,
-      });
+        request_type,
+      };
+      if (request_type === "customer_item") {
+        row.customer_id = lineMeta.customer_id;
+        row.payment_status = lineMeta.payment_status;
+        const label = description.slice(0, 48) || "Customer Item line";
+        if (!row.customer_id || row.customer_id < 1) {
+          /* Match server: mis-tagged catalog lines without per-line customer id save as stock */
+          row.request_type = "stock_item";
+          delete row.customer_id;
+          row.payment_status = "";
+        } else if (row.payment_status !== "paid" && row.payment_status !== "unpaid") {
+          throw new Error(`Paid/Unpaid is required for: ${label}. Remove the line and add it again via + Add Item.`);
+        }
+      }
+      out.push(row);
     });
-    if (out.length === 0) throw new Error("Add at least one line item");
+    if (out.length === 0) {
+      if (rows.length === 0) throw new Error("Add at least one line item with + Add Item.");
+      throw new Error("Enter a description for each line item.");
+    }
     return out;
   };
   const loadLookups = async () => {
@@ -1690,12 +2322,44 @@
         <td data-label="Step # / role">${r.step_number} / ${r.step_name}</td>
         <td data-label="Primary approver">${r.approver_username || r.approver_user_id}</td>
         <td data-label="Backup approver">${r.backup_approver_username || "-"}</td>
-        <td class="po-td--stack-wide" data-label="Remove"><button type="button" data-rule-del="${r.id}">Delete</button></td>
+        <td class="po-td--stack-wide" data-label="Actions">
+          <button type="button" data-rule-edit="${r.id}">Edit</button>
+          <button type="button" data-rule-del="${r.id}">Delete</button>
+        </td>
       </tr>
     `).join("");
+    const fillRuleForm = (r) => {
+      const idEl = document.getElementById("poRuleEditId");
+      if (idEl) idEl.value = String(r.id || "");
+      document.getElementById("poRuleName").value = r.name || "";
+      document.getElementById("poRuleMin").value = r.min_total != null ? String(r.min_total) : "0";
+      document.getElementById("poRuleMax").value = r.max_total != null ? String(r.max_total) : "";
+      document.getElementById("poRuleDepartment").value = r.department_id ? String(r.department_id) : "";
+      document.getElementById("poRuleCategory").value = r.category || "";
+      document.getElementById("poRuleStepNo").value = String(r.step_number || 1);
+      document.getElementById("poRuleStepName").value = r.step_name || "";
+      document.getElementById("poRuleApprover").value = r.approver_user_id ? String(r.approver_user_id) : "";
+      document.getElementById("poRuleBackup").value = r.backup_approver_user_id ? String(r.backup_approver_user_id) : "";
+      const btn = document.getElementById("poRuleAddBtn");
+      if (btn) btn.textContent = "Update rule";
+    };
+    const resetRuleForm = () => {
+      const idEl = document.getElementById("poRuleEditId");
+      if (idEl) idEl.value = "";
+      const btn = document.getElementById("poRuleAddBtn");
+      if (btn) btn.textContent = "+ Add Rule";
+    };
+    rows.querySelectorAll("[data-rule-edit]").forEach(btn => {
+      btn.onclick = () => {
+        const id = Number(btn.getAttribute("data-rule-edit"));
+        const r = (d.rules || []).find(x => Number(x.id) === id);
+        if (r) fillRuleForm(r);
+      };
+    });
     rows.querySelectorAll("[data-rule-del]").forEach(btn => {
       btn.onclick = () => act(async () => {
         await fetch(`/api/po/rules/${btn.getAttribute("data-rule-del")}`, {method:"DELETE"});
+        resetRuleForm();
         await loadRules();
         await loadRoleAssignments();
       });
@@ -1820,60 +2484,100 @@
       return inner;
     }
     const approvals = (po && po.approvals) || [];
-    const byRole = {};
-    approvals.forEach(a => {
-      const nm = String(a.step_name || "").toLowerCase();
-      if (nm.includes("manager")) byRole.manager = a;
-      else if (nm.includes("finance")) byRole.finance = a;
-      else if (nm.includes("director")) byRole.director = a;
-    });
-    const presentRoles = STEP_ORDER.filter(role => Boolean(byRole[role]));
-    // Fallback for unknown/custom step names: show all materialized steps.
-    if (presentRoles.length === 0 && approvals.length > 0) {
-      return approvals
-        .sort((a, b) => Number(a.step_number || 0) - Number(b.step_number || 0))
-        .map((item, idx, arr) => {
-          const ok = String(item.status || "").toLowerCase() === "approved";
-          const cls = `po-step ${ok ? "approved" : "current"}`;
-          const stepEsc = escHtml(String(item.step_name || "Step"));
-          const txt = `${ok ? "✓ " : ""}${stepEsc}`;
-          const arrow = idx < arr.length - 1 ? `<span class="po-step-arrow">→</span>` : "";
-          return `<span class="${cls}">${txt}</span>${arrow}`;
-        })
-        .join("");
-    }
-    return presentRoles.map((role, idx) => {
-      const item = byRole[role];
-      let cls = "po-step";
-      let text = role.charAt(0).toUpperCase() + role.slice(1);
-      if (String(item.status || "").toLowerCase() === "approved") {
-        cls += " approved";
-        text = "✓ " + text;
-      } else {
-        cls += " current";
-      }
-      const arrow = idx < presentRoles.length - 1 ? `<span class="po-step-arrow">→</span>` : "";
-      return `<span class="${cls}">${text}</span>${arrow}`;
-    }).join("");
+    if (!approvals.length) return '<span class="muted small">—</span>';
+    const curStep = Number(po && po.current_approval_step || 0);
+    const active = APPROVAL_ACTIVE_STATUSES.has(st);
+    return [...approvals]
+      .sort((a, b) => Number(a.step_number || 0) - Number(b.step_number || 0))
+      .map((item, idx, arr) => {
+        const ok = String(item.status || "").toLowerCase() === "approved";
+        const isCurrent = active && !ok && Number(item.step_number || 0) === curStep;
+        const cls = `po-step ${ok ? "approved" : (isCurrent ? "current" : "")}`;
+        const stepEsc = escHtml(String(item.step_name || "Step"));
+        const txt = `${ok ? "✓ " : ""}${stepEsc}`;
+        const arrow = idx < arr.length - 1 ? `<span class="po-step-arrow">→</span>` : "";
+        return `<span class="${cls}">${txt}</span>${arrow}`;
+      })
+      .join("");
   };
   const pendingCurrentStep = (po) => {
     const approvals = (po && po.approvals) || [];
     const step = Number(po && po.current_approval_step || 0);
     return approvals.filter(a => Number(a.step_number || 0) === step && String(a.status || "").toLowerCase() === "pending");
   };
-  const toggleCustomerFields = () => {
-    const t = String(document.getElementById("poRequestType")?.value || "");
-    const wrap = document.getElementById("poCustomerFields");
-    if (!wrap) return;
-    if (t === "customer_item") {
-      wrap.classList.add("is-visible");
-    } else {
-      wrap.classList.remove("is-visible");
-      const cid = document.getElementById("poCustomerId");
-      const ps = document.getElementById("poPaymentStatus");
-      if (cid) cid.value = "";
-      if (ps) ps.value = "";
+  const poAddItemModalEl = document.getElementById("poAddItemModal");
+  const poAddItemModalMsg = document.getElementById("poAddItemModalMsg");
+  const setPoAddItemModalMsg = (t, ok) => {
+    if (!poAddItemModalMsg) return;
+    poAddItemModalMsg.textContent = t || "";
+    poAddItemModalMsg.classList.toggle("is-error", !!t && !ok);
+    poAddItemModalMsg.classList.toggle("is-ok", !!t && !!ok);
+  };
+  const syncPoAddItemTypeUi = () => {
+    const rt = String(poAddItemSelectedType || "stock_item").toLowerCase();
+    document.querySelectorAll(".po-add-item-type-btn").forEach((btn) => {
+      const on = String(btn.getAttribute("data-po-line-type") || "").toLowerCase() === rt;
+      btn.classList.toggle("is-selected", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const cf = document.getElementById("poAddItemCustomerFields");
+    if (cf) cf.style.display = rt === "customer_item" ? "" : "none";
+  };
+  const resetPoAddItemModal = () => {
+    poAddItemSelectedType = "stock_item";
+    const desc = document.getElementById("poAddItemDescription");
+    const cid = document.getElementById("poAddItemCustomerId");
+    const pay = document.getElementById("poAddItemPaymentStatus");
+    if (desc) desc.value = "";
+    if (cid) cid.value = "";
+    if (pay) pay.value = "";
+    setPoAddItemModalMsg("");
+    syncPoAddItemTypeUi();
+  };
+  const openPoAddItemModal = () => {
+    resetPoAddItemModal();
+    if (poAddItemModalEl) poAddItemModalEl.classList.add("is-open");
+    syncPoModalBodyClass();
+    loadSupplierProductSuggestions()
+      .then(() => {
+        updatePoAddItemCatalogHint();
+        renderAddItemDescriptionSuggestions("");
+      })
+      .catch(() => {
+        updatePoAddItemCatalogHint();
+        renderAddItemDescriptionSuggestions("");
+      });
+    const desc = document.getElementById("poAddItemDescription");
+    if (desc) window.setTimeout(() => { try { desc.focus(); } catch (_) {} }, 0);
+  };
+  const closePoAddItemModal = () => {
+    if (poAddItemModalEl) poAddItemModalEl.classList.remove("is-open");
+    syncPoModalBodyClass();
+  };
+  const confirmPoAddItemModal = () => {
+    const description = String(document.getElementById("poAddItemDescription")?.value || "").trim();
+    if (!description) {
+      setPoAddItemModalMsg("Description is required.", false);
+      return;
     }
+    const rt = String(poAddItemSelectedType || "stock_item").toLowerCase();
+    const payload = { request_type: rt, description };
+    if (rt === "customer_item") {
+      const cid = String(document.getElementById("poAddItemCustomerId")?.value || "").trim();
+      const pay = String(document.getElementById("poAddItemPaymentStatus")?.value || "").trim().toLowerCase();
+      if (!cid || Number(cid) < 1) {
+        setPoAddItemModalMsg("Customer ID is required for Customer Item lines.", false);
+        return;
+      }
+      if (pay !== "paid" && pay !== "unpaid") {
+        setPoAddItemModalMsg("Select Paid or Unpaid for Customer Item lines.", false);
+        return;
+      }
+      payload.customer_id = Number(cid);
+      payload.payment_status = pay;
+    }
+    addItemRow(payload);
+    closePoAddItemModal();
   };
   const canApprovePo = (po) => {
     const st = String((po && po.status) || "").toLowerCase();
@@ -1926,9 +2630,149 @@
     return `/api/po/${Number(po.id)}/document/${Number(doc.version_no)}`;
   };
 
+  const poReviewModalEl = document.getElementById("poReviewModal");
+  const fmtZar = (n) => {
+    const v = Number(n || 0);
+    if (!Number.isFinite(v)) return "R 0.00";
+    return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const buildPoListAccordionHtml = (po, detail) => {
+    const d = detail || po || {};
+    const notes = String(d.notes || po.notes || "").trim();
+    const rows = [
+      ["ID", String(po.id || d.id || "—")],
+      ["Supplier", String(d.supplier_name || po.supplier_name || "—")],
+      ["Department", String(d.department_name || po.department_name || "—")],
+      ["Category", String(d.category || po.category || "—")],
+      ["Line types", lineTypesSummary(d)],
+      ["Date required", String(d.date_required || po.date_required || "—")],
+      ["Urgency", String(d.urgency || po.urgency || "—")],
+      ["Waiting on", waitingOnText(d)],
+      ["Submitted", String(d.submitted_at || po.submitted_at || "—")],
+      ["Created", String(d.created_at || po.created_at || "—")],
+    ];
+    if (notes) rows.push(["Notes", notes]);
+    return rows.map(([label, val]) =>
+      `<dt>${escHtml(label)}</dt><dd>${escHtml(String(val || "—"))}</dd>`
+    ).join("");
+  };
+  const buildPoListCardHtml = (po, detail, parts) => {
+    const d = detail || po || {};
+    const supRaw = String(d.supplier_name || po.supplier_name || "—");
+    const depRaw = String(d.department_name || po.department_name || "—");
+    const hintParts = [];
+    if (supRaw && supRaw !== "—") hintParts.push(supRaw);
+    if (depRaw && depRaw !== "—") hintParts.push(depRaw);
+    const detailsHint = hintParts.length ? hintParts.join(" · ") : "Supplier, department, dates…";
+    return `
+      <td colspan="9" class="po-purchase-card__cell">
+        <article class="po-purchase-card__inner">
+          <div class="po-purchase-card__row po-purchase-card__row--head">
+            <span class="po-purchase-card__po">${parts.pnHtml}</span>
+            <span class="po-purchase-card__status">${parts.statusHtml}</span>
+            <span class="po-purchase-card__total">${parts.totalHtml}</span>
+            ${parts.byHtml}
+          </div>
+          <div class="po-purchase-card__row po-purchase-card__row--foot">
+            <div class="po-purchase-card__track">
+              <div class="po-step-track">${parts.trackHtml}</div>
+            </div>
+            <div class="po-purchase-card__btns">${parts.btnsHtml}</div>
+          </div>
+          <details class="po-purchase-card__details">
+            <summary>
+              <span class="po-purchase-card__details-summary">
+                <span>More details</span>
+                <span class="po-purchase-card__details-hint">${escHtml(detailsHint)}</span>
+              </span>
+            </summary>
+            <dl class="po-purchase-card__meta">${parts.accordionHtml}</dl>
+          </details>
+        </article>
+      </td>
+    `;
+  };
+  const buildPoReviewHtml = (po) => {
+    const pn = String(po.po_number || "").trim() || ("PO #" + String(po.id || ""));
+    const st = statusBadgeLabel(po.status, po);
+    const items = Array.isArray(po.items) ? po.items : [];
+    const itemRows = items.length
+      ? items.map((it) => {
+          const qty = Number(it.quantity || 0);
+          const unit = Number(it.unit_price || 0);
+          const line = Number(it.line_total != null ? it.line_total : qty * unit);
+          const lrt = formatPoLineTypeCell(it);
+          return `<tr>
+            <td>${escHtml(String(it.description || "—"))}</td>
+            <td>${lrt}</td>
+            <td class="num">${escHtml(String(qty))}</td>
+            <td class="num">${escHtml(fmtZar(unit))}</td>
+            <td class="num">${escHtml(fmtZar(line))}</td>
+          </tr>`;
+        }).join("")
+      : `<tr><td colspan="5" class="muted">No line items</td></tr>`;
+    const sub = Number(po.subtotal != null ? po.subtotal : 0);
+    const tax = Number(po.tax != null ? po.tax : 0);
+    const tot = Number(po.total != null ? po.total : sub + tax);
+    const notes = String(po.notes || "").trim();
+    const supplierLabel = String(po.supplier_name || "").trim() || "—";
+    const deptLabel = String(po.department_name || "").trim() || "—";
+    const detailsHintParts = [supplierLabel, deptLabel];
+    const dateReq = String(po.date_required || "").trim();
+    if (dateReq) detailsHintParts.push("Required " + dateReq);
+    const detailsHint = detailsHintParts.join(" · ");
+    return `
+      <div class="po-review-sheet">
+        <div class="po-review-head">
+          <h4>${escHtml(pn)}</h4>
+          <p class="muted">${escHtml(st)} · ${escHtml(waitingOnText(po))}</p>
+        </div>
+        <details class="po-review-section po-review-section--details">
+          <summary>
+            <span class="po-review-details-summary">
+              <span class="po-review-section__title">Order details</span>
+              <span class="po-review-details-hint">${escHtml(detailsHint)}</span>
+            </span>
+          </summary>
+          <div class="po-review-details-body">
+            <dl class="po-review-grid">
+              <dt>Supplier</dt><dd>${escHtml(supplierLabel)}</dd>
+              <dt>Department</dt><dd>${escHtml(deptLabel)}</dd>
+              <dt>Requested by</dt><dd>${escHtml(String(po.requested_by_username || "—"))}</dd>
+              <dt>Line types</dt><dd>${escHtml(lineTypesSummary(po))}</dd>
+              <dt>Category</dt><dd>${escHtml(String(po.category || "—"))}</dd>
+              <dt>Date required</dt><dd>${escHtml(dateReq || "—")}</dd>
+              <dt>Urgency</dt><dd>${escHtml(String(po.urgency || "—"))}</dd>
+              <dt>Submitted</dt><dd>${escHtml(String(po.submitted_at || "—"))}</dd>
+            </dl>
+          </div>
+        </details>
+        <section class="po-review-section">
+          <h5 class="po-review-section__title">Line items</h5>
+          <div class="po-review-items-wrap">
+            <table class="po-review-items">
+              <thead><tr><th>Description</th><th>Type</th><th class="num">Qty</th><th class="num">Unit (ex VAT)</th><th class="num">Line total</th></tr></thead>
+              <tbody>${itemRows}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="po-review-section po-review-section--totals">
+          <h5 class="po-review-section__title">Totals</h5>
+          <div class="po-review-totals-wrap">
+            <div class="po-review-totals">
+              <span class="lbl">Subtotal</span><span class="val">${escHtml(fmtZar(sub))}</span>
+              <span class="lbl">Tax (VAT)</span><span class="val">${escHtml(fmtZar(tax))}</span>
+              <span class="lbl lbl--total">Total</span><span class="val val--total">${escHtml(fmtZar(tot))}</span>
+            </div>
+          </div>
+        </section>
+        ${notes ? `<section class="po-review-notes"><h5 class="po-review-notes__title">Notes</h5><p class="po-review-notes__body">${escHtml(notes)}</p></section>` : ""}
+      </div>
+    `;
+  };
   const poPostponeModalEl = document.getElementById("poPostponeModal");
   const syncPoModalBodyClass = () => {
-    const anyOpen = ["poCreateModal", "poTypePickerModal", "poPostponeModal"].some((id) => {
+    const anyOpen = ["poCreateModal", "poTypePickerModal", "poPostponeModal", "poReviewModal", "poAddItemModal"].some((id) => {
       const el = document.getElementById(id);
       return el && el.classList.contains("is-open");
     });
@@ -1946,6 +2790,25 @@
   const closePostponeModal = () => {
     postponeTargetPoId = 0;
     if (poPostponeModalEl) poPostponeModalEl.classList.remove("is-open");
+    syncPoModalBodyClass();
+  };
+  const openPoReviewModal = async (poOrId) => {
+    let po = poOrId && typeof poOrId === "object" ? poOrId : null;
+    const id = po ? Number(po.id || 0) : Number(poOrId || 0);
+    if (!id) throw new Error("No PO selected");
+    if (!po || !Array.isArray(po.items)) {
+      const d = await j(`/api/po/${id}`);
+      po = d.purchase_order || {};
+      poDetailsCache.set(id, po);
+    }
+    const body = document.getElementById("poReviewBody");
+    if (!body) return;
+    body.innerHTML = buildPoReviewHtml(po);
+    if (poReviewModalEl) poReviewModalEl.classList.add("is-open");
+    syncPoModalBodyClass();
+  };
+  const closePoReviewModal = () => {
+    if (poReviewModalEl) poReviewModalEl.classList.remove("is-open");
     syncPoModalBodyClass();
   };
 
@@ -2007,6 +2870,7 @@
         }
       }
       const tr = document.createElement("tr");
+      tr.className = "po-purchase-card";
       tr.style.cursor = "pointer";
       const poStatus = String((detail && detail.status) || po.status || "").toLowerCase();
       const isApproved = poStatus === "approved";
@@ -2015,6 +2879,7 @@
       const rowEditBtn = canEditRow ? `<button type="button" data-po-open="${po.id}">Edit</button>` : "";
       const approvalActionsAllowed = canApprovePo(detail);
       const rowApproveBtn = approvalActionsAllowed ? `<button type="button" data-po-approve="${po.id}">Approve</button>` : "";
+      const rowReviewBtn = approvalActionsAllowed ? `<button type="button" data-po-review="${po.id}">View PO</button>` : "";
       const rowPostponeBtn = approvalActionsAllowed ? `<button type="button" data-po-postpone="${po.id}">Postpone</button>` : "";
       const rowDeclineBtn = approvalActionsAllowed ? `<button type="button" data-po-decline="${po.id}">Decline</button>` : "";
       const rowPlaceBtn = (isApproved && ({% if is_admin %}true{% else %}false{% endif %} || isOwner)) ? `<button type="button" data-po-place="${po.id}">Place Order</button>` : "";
@@ -2024,37 +2889,38 @@
       const rowDlPdfBtn = docUrl ? `<button type="button" data-po-download-pdf="${po.id}">Download PDF</button>` : "";
       const dispStatus = (detail && detail.status) || po.status || "";
       const pnRaw = String(po.po_number || "-");
-      const supRaw = String(po.supplier_name || "-");
-      const depRaw = String(po.department_name || "-");
       const reqRaw = String(po.requested_by_username || "-");
       const titleIf = (s, minLen = 28) =>
         String(s).length >= minLen ? ` title="${escAttr(String(s))}"` : "";
-      tr.innerHTML = `
-        <td data-label="ID">${po.id}</td>
-        <td data-label="PO #"${titleIf(pnRaw, 14)}>${escHtml(pnRaw)}</td>
-        <td data-label="Status"><span class="${statusBadgeClass(dispStatus)}">${escHtml(statusBadgeLabel(dispStatus))}</span></td>
-        <td data-label="Approval flow"><div class="po-step-track">${buildApprovalTrack(detail)}</div></td>
-        <td data-label="Total (ZAR)">${po.total.toFixed(2)}</td>
-        <td data-label="Supplier"${titleIf(supRaw)}>${escHtml(supRaw)}</td>
-        <td data-label="Department"${titleIf(depRaw)}>${escHtml(depRaw)}</td>
-        <td data-label="Requested by"${titleIf(reqRaw)}>${escHtml(reqRaw)}</td>
-        <td class="po-td--stack-wide" data-label="Actions">
-          <div class="po-purchase-list-actions">
-            <div class="po-purchase-list-actions__meta">${escHtml(waitingOnText(detail))}</div>
-            <div class="po-purchase-list-actions__btns">
-              ${rowEditBtn}
-              ${rowApproveBtn}
-              ${rowPostponeBtn}
-              ${rowDeclineBtn}
-              ${rowPlaceBtn}
-              ${rowDeleteBtn}
-              ${rowViewPdfBtn}
-              ${rowDlPdfBtn}
-            </div>
-          </div>
-        </td>
-      `;
+      const pnHtml = `<span${titleIf(pnRaw, 14)}>${escHtml(pnRaw)}</span>`;
+      const statusHtml = `<span class="${statusBadgeClass(dispStatus)}">${escHtml(statusBadgeLabel(dispStatus, detail || po))}</span>`;
+      const totalHtml = escHtml(fmtZar(Number(po.total != null ? po.total : 0)));
+      const byHtml = `<span class="po-purchase-card__by"${titleIf(reqRaw)}><span class="po-purchase-card__by-label">By</span>${escHtml(reqRaw)}</span>`;
+      const btnsHtml = [
+        rowEditBtn,
+        rowApproveBtn,
+        rowReviewBtn,
+        rowPostponeBtn,
+        rowDeclineBtn,
+        rowPlaceBtn,
+        rowDeleteBtn,
+        rowViewPdfBtn,
+        rowDlPdfBtn,
+      ].filter(Boolean).join("");
+      tr.innerHTML = buildPoListCardHtml(po, detail, {
+        pnHtml,
+        statusHtml,
+        totalHtml,
+        byHtml,
+        trackHtml: buildApprovalTrack(detail),
+        btnsHtml,
+        accordionHtml: buildPoListAccordionHtml(po, detail),
+      });
       tr.onclick = () => { selectPo(po.id); };
+      const cardDetails = tr.querySelector(".po-purchase-card__details");
+      if (cardDetails) {
+        cardDetails.addEventListener("click", (e) => e.stopPropagation());
+      }
       const openBtn = tr.querySelector('[data-po-open]');
       if (openBtn) openBtn.onclick = (e) => { e.stopPropagation(); selectPo(po.id); openCreateModal(); };
       const quickApproveBtn = tr.querySelector('[data-po-approve]');
@@ -2063,6 +2929,13 @@
           e.stopPropagation();
           await j(`/api/po/${po.id}/approve`, {method:"POST", body: JSON.stringify({comments:"Approved from list"})});
         });
+      }
+      const reviewBtn = tr.querySelector('[data-po-review]');
+      if (reviewBtn) {
+        reviewBtn.onclick = (e) => {
+          e.stopPropagation();
+          openPoReviewModal(detail).catch((err) => msg(err.message || String(err), false));
+        };
       }
       const postponeBtn = tr.querySelector('[data-po-postpone]');
       if (postponeBtn) {
@@ -2165,7 +3038,8 @@
       });
     };
   }
-  const selectPo = async (id) => {
+  const selectPo = async (id, opts = {}) => {
+    const reloadItems = opts.reloadItems !== false;
     poComposingNew = false;
     selectedPoId = id;
     const d = await j(`/api/po/${id}`);
@@ -2182,12 +3056,10 @@
       : "";
     detail.innerHTML = `
       <b>PO Number</b><span>${escHtml(String(po.po_number || "-"))}</span>
-      <b>Status</b><span><span class="${statusBadgeClass(po.status)}">${escHtml(statusBadgeLabel(po.status))}</span></span>
+      <b>Status</b><span><span class="${statusBadgeClass(po.status)}">${escHtml(statusBadgeLabel(po.status, po))}</span></span>
       <b>Supplier</b><span>${escHtml(String(po.supplier_name || "-"))}</span>
       <b>Department</b><span>${escHtml(String(po.department_name || "-"))}</span>
-      <b>Type</b><span>${escHtml(String(po.request_type || "stock_item").replace(/_/g, " "))}</span>
-      <b>Customer ID</b><span>${escHtml(String(po.customer_id || "-"))}</span>
-      <b>Payment</b><span>${escHtml(String(po.payment_status || "-"))}</span>
+      <b>Line types</b><span>${escHtml(lineTypesSummary(po))}</span>
       <b>Date Required</b><span>${escHtml(String(po.date_required || "-"))}</span>
       <b>Urgency</b><span>${escHtml(String(po.urgency || "-"))}</span>
       <b>Requested By</b><span>${escHtml(String(po.requested_by_username || "-"))}</span>
@@ -2204,24 +3076,30 @@
     document.getElementById("poDepartmentText").value = po.department_name || "";
     await loadSupplierProductSuggestions();
     document.getElementById("poCategory").value = po.category || "";
-    document.getElementById("poRequestType").value = po.request_type || "stock_item";
-    document.getElementById("poCustomerId").value = po.customer_id || "";
-    document.getElementById("poPaymentStatus").value = po.payment_status || "";
     document.getElementById("poDateRequired").value = po.date_required || "";
     document.getElementById("poUrgency").value = po.urgency || "standard";
-    toggleCustomerFields();
     document.getElementById("poNotes").value = po.notes || "";
     resetPoPriceBasisToEx();
-    itemsBody().innerHTML = "";
-    (po.items || []).forEach(x => addItemRow(x));
-    if ((po.items || []).length === 0) addItemRow();
-    recalcTotals();
+    if (reloadItems) {
+      itemsBody().innerHTML = "";
+      (po.items || []).forEach((x) => {
+        const it = Object.assign({}, x || {});
+        if (String(it.request_type || "").toLowerCase() === "customer_item" && !it.customer_id && po.customer_id) {
+          it.customer_id = po.customer_id;
+          it.payment_status = po.payment_status || "";
+        }
+        addItemRow(it);
+      });
+      if ((po.items || []).length === 0 && poCreationMode !== "standard") addItemRow({ request_type: "stock_item" });
+      recalcTotals();
+    }
     const log = document.getElementById("poLog");
-    log.innerHTML = (po.status_log || []).map(x => `<div><b>${x.created_at}</b> | ${x.actor_username || "-"} | ${x.action} (${x.from_status || "-"} -> ${x.to_status || "-"}) ${x.comments || ""}</div>`).join("");
+    log.innerHTML = (po.status_log || []).map(x => `<div><b>${x.created_at}</b> | ${x.actor_username || "-"} | ${x.action} (${escHtml(statusBadgeLabel(x.from_status))} → ${escHtml(statusBadgeLabel(x.to_status))}) ${x.comments || ""}</div>`).join("");
     const approveBtn = document.getElementById("poApproveBtn");
     const placeBtn = document.getElementById("poPlaceOrderBtn");
     const viewPdfBtn = document.getElementById("poViewPdfBtn");
     const downloadPdfBtn = document.getElementById("poDownloadPdfBtn");
+    const reviewBtn = document.getElementById("poReviewBtn");
     if (approveBtn) {
       const ok = canApprovePo(po);
       const approved = String(po.status || "").toLowerCase() === "approved";
@@ -2251,6 +3129,14 @@
       postponeAdminBtn.disabled = !okAct;
       postponeAdminBtn.title = okAct ? "Postpone approvals" : waitingOnText(po);
       postponeAdminBtn.onclick = () => openPostponeModal(selectedPoId);
+    }
+    if (reviewBtn) {
+      reviewBtn.style.display = approvalLiveModal && okAct ? "" : "none";
+      reviewBtn.disabled = !okAct;
+      reviewBtn.title = okAct ? "Read PO details before approving" : waitingOnText(po);
+      reviewBtn.onclick = () => {
+        openPoReviewModal(po).catch((err) => msg(err.message || String(err), false));
+      };
     }
     const docUrl = poDocumentUrl(po);
     if (viewPdfBtn) {
@@ -2318,22 +3204,36 @@
       supplier_id: document.getElementById("poSupplier").value || null,
       department_id: document.getElementById("poDepartment").value || null,
       category: document.getElementById("poCategory").value || "",
-      request_type: document.getElementById("poRequestType").value || "stock_item",
-      customer_id: document.getElementById("poCustomerId").value || null,
-      payment_status: document.getElementById("poPaymentStatus").value || "",
       date_required: document.getElementById("poDateRequired").value || "",
       urgency: document.getElementById("poUrgency").value || "standard",
     });
   };
-  const act = async (fn) => {
+  let poActBusy = false;
+  const setPoActBusy = (on) => {
+    poActBusy = !!on;
+    ["poCreateBtn", "poUpdateBtn", "poSubmitBtn"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = poActBusy;
+    });
+  };
+  const act = async (fn, opts = {}) => {
+    if (poActBusy) return;
+    setPoActBusy(true);
     try {
+      const preserveLineItems = !!opts.preserveLineItems;
       await fn();
       poDetailsCache.clear();
-      await loadList();
-      if (selectedPoId) await selectPo(selectedPoId);
+      try {
+        await loadList();
+        if (selectedPoId) await selectPo(selectedPoId, { reloadItems: !preserveLineItems });
+      } catch (postErr) {
+        console.warn("PO refresh after save failed", postErr);
+      }
       msg("Success");
     } catch (e) {
       msg(e.message || String(e), false);
+    } finally {
+      setPoActBusy(false);
     }
   };
   const scheduleRealtimeRefresh = (poId = 0) => {
@@ -2342,9 +3242,8 @@
       try {
         poDetailsCache.clear();
         await loadList();
-        /* User is composing a *new* PO (Create PO cleared selection). Do not selectPo —
-           SSE would reload the last PO id and Submit would hit "PO already submitted". */
-        if (isPoCreateModalOpen() && !selectedPoId) return;
+        /* Do not reload the open create form from the server — it would wipe unsaved line edits. */
+        if (isPoCreateModalOpen()) return;
         const id = Number(poId || selectedPoId || 0);
         if (id) await selectPo(id);
       } catch (_) {}
@@ -2395,7 +3294,6 @@
       quoteStatus.textContent = "Automatic quote extraction is not available yet. Upload a file for reference, then complete the form manually.";
     }
     if (quoteUpload && poCreationMode !== "quote") quoteUpload.value = "";
-    toggleCustomerFields();
     loadSupplierProductSuggestions().catch(() => {});
   };
   const openCreateModal = () => { clearCreateModalMsg(); modal.classList.add("is-open"); syncPoModalBodyClass(); };
@@ -2415,14 +3313,11 @@
     document.getElementById("poDateRequired").value = "";
     document.getElementById("poNotes").value = "";
     document.getElementById("poUrgency").value = "standard";
-    document.getElementById("poRequestType").value = "stock_item";
-    document.getElementById("poCustomerId").value = "";
-    document.getElementById("poPaymentStatus").value = "";
     const dn = document.getElementById("poDepartmentNew");
     if (dn) dn.value = "";
     resetPoPriceBasisToEx();
     itemsBody().innerHTML = "";
-    addItemRow();
+    if (mode !== "standard") addItemRow({ request_type: "stock_item" });
   };
   const startNewPo = (mode) => {
     prepareNewPoModal(mode);
@@ -2461,30 +3356,45 @@
     });
   }
   document.getElementById("poCloseCreateBtn").onclick = () => closeCreateModal();
-  document.getElementById("poAddItemBtn").onclick = () => addItemRow();
+  document.getElementById("poAddItemBtn").onclick = () => {
+    if (poCreationMode === "standard") openPoAddItemModal();
+    else addItemRow({ request_type: "stock_item" });
+  };
+  const poItemsTableBody = itemsBody();
+  if (poItemsTableBody) {
+    poItemsTableBody.addEventListener("input", (e) => {
+      const t = e.target;
+      if (!t || !t.classList || !t.classList.contains("po-item-desc")) return;
+      renderItemDescriptionSuggestions(t.value);
+    });
+  }
   document.getElementById("poSupplier").addEventListener("change", () => {
     loadSupplierProductSuggestions().catch(e => msg(e.message || String(e), false));
   });
-  document.getElementById("poRequestType").addEventListener("change", toggleCustomerFields);
   const depBtn = document.getElementById("poDepartmentAddBtn");
   if (depBtn) depBtn.onclick = () => act(async () => addDepartment());
   const ruleBtn = document.getElementById("poRuleAddBtn");
   if (ruleBtn) ruleBtn.onclick = () => act(async () => {
-    await j("/api/po/rules", {
-      method: "POST",
-      body: JSON.stringify({
-        name: document.getElementById("poRuleName").value || "Rule",
-        min_total: Number(document.getElementById("poRuleMin").value || 0),
-        max_total: document.getElementById("poRuleMax").value || null,
-        department_id: document.getElementById("poRuleDepartment").value || null,
-        category: document.getElementById("poRuleCategory").value || "",
-        step_number: Number(document.getElementById("poRuleStepNo").value || 1),
-        step_name: document.getElementById("poRuleStepName").value || "Manager",
-        approver_user_id: Number(document.getElementById("poRuleApprover").value || 0),
-        backup_approver_user_id: document.getElementById("poRuleBackup").value || null,
-        active: true
-      })
-    });
+    const body = {
+      name: document.getElementById("poRuleName").value || "Rule",
+      min_total: Number(document.getElementById("poRuleMin").value || 0),
+      max_total: document.getElementById("poRuleMax").value || null,
+      department_id: document.getElementById("poRuleDepartment").value || null,
+      category: document.getElementById("poRuleCategory").value || "",
+      step_number: Number(document.getElementById("poRuleStepNo").value || 1),
+      step_name: (document.getElementById("poRuleStepName").value || "").trim() || "Approver",
+      approver_user_id: Number(document.getElementById("poRuleApprover").value || 0),
+      backup_approver_user_id: document.getElementById("poRuleBackup").value || null,
+      active: true
+    };
+    const editId = Number(document.getElementById("poRuleEditId")?.value || 0);
+    if (editId > 0) {
+      await j("/api/po/rules/" + editId, {method: "PUT", body: JSON.stringify(body)});
+    } else {
+      await j("/api/po/rules", {method: "POST", body: JSON.stringify(body)});
+    }
+    document.getElementById("poRuleEditId").value = "";
+    ruleBtn.textContent = "+ Add Rule";
     await loadRules();
     await loadRoleAssignments();
   });
@@ -2543,9 +3453,8 @@
     const d = await j("/api/po", {method:"POST", body: JSON.stringify(poPayload())});
     selectedPoId = d.id;
     poComposingNew = false;
-    await selectPo(selectedPoId);
     closeCreateModal();
-  });
+  }, { preserveLineItems: true });
   document.getElementById("poUpdateBtn").onclick = () => act(async () => {
     if (!selectedPoId) throw new Error("Select a PO first");
     await j(`/api/po/${selectedPoId}`, {method:"PUT", body: JSON.stringify(poPayload())});
@@ -2593,6 +3502,47 @@
   const poPostponeSave = document.getElementById("poPostponeModalSave");
   if (poPostponeClose) poPostponeClose.onclick = () => closePostponeModal();
   if (poPostponeCancel) poPostponeCancel.onclick = () => closePostponeModal();
+  const poReviewClose = document.getElementById("poReviewModalClose");
+  const poReviewCloseFooter = document.getElementById("poReviewModalCloseFooter");
+  if (poReviewClose) poReviewClose.onclick = () => closePoReviewModal();
+  if (poReviewCloseFooter) poReviewCloseFooter.onclick = () => closePoReviewModal();
+
+  document.querySelectorAll(".po-add-item-type-btn").forEach((btn) => {
+    btn.onclick = () => {
+      poAddItemSelectedType = String(btn.getAttribute("data-po-line-type") || "stock_item").toLowerCase();
+      syncPoAddItemTypeUi();
+    };
+  });
+  const poAddItemClose = document.getElementById("poAddItemModalClose");
+  const poAddItemCancel = document.getElementById("poAddItemCancelBtn");
+  const poAddItemConfirm = document.getElementById("poAddItemConfirmBtn");
+  if (poAddItemClose) poAddItemClose.onclick = () => closePoAddItemModal();
+  if (poAddItemCancel) poAddItemCancel.onclick = () => closePoAddItemModal();
+  if (poAddItemConfirm) poAddItemConfirm.onclick = () => confirmPoAddItemModal();
+  const poAddItemDescInput = document.getElementById("poAddItemDescription");
+  if (poAddItemDescInput) {
+    poAddItemDescInput.addEventListener("input", () => {
+      renderAddItemDescriptionSuggestions(poAddItemDescInput.value);
+      const hint = document.getElementById("poAddItemCatalogHint");
+      if (!hint) return;
+      const m = matchProductCatalogEntry(poAddItemDescInput.value);
+      if (m && m.unit_price != null) {
+        hint.textContent = `Matched “${m.name}” — unit price R ${Number(m.unit_price).toFixed(2)} (ex VAT) will be applied when you add the line.`;
+        return;
+      }
+      updatePoAddItemCatalogHint();
+    });
+  }
+  if (poAddItemModalEl) {
+    poAddItemModalEl.addEventListener("click", (e) => {
+      if (e.target === poAddItemModalEl) closePoAddItemModal();
+    });
+  }
+  if (poReviewModalEl) {
+    poReviewModalEl.addEventListener("click", (e) => {
+      if (e.target === poReviewModalEl) closePoReviewModal();
+    });
+  }
   if (poPostponeSave) {
     poPostponeSave.onclick = () => act(async () => {
       const pid = postponeTargetPoId || selectedPoId;
@@ -2621,8 +3571,6 @@
   });
   syncPoPriceBasisLastFromDom();
   updatePoBasisHeaders();
-  addItemRow();
-  toggleCustomerFields();
   connectPoEvents();
   loadLookups().then(loadList).then(loadRules).then(loadNotificationSettings).catch(e => msg(e.message || String(e), false));
 })();
